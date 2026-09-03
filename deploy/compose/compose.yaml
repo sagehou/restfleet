@@ -2,7 +2,7 @@ name: restfleet-dev
 
 services:
   postgres:
-    image: postgres:18.6-alpine3.22
+    image: postgres:18.6-alpine3.23
     environment:
       POSTGRES_DB: restfleet
       POSTGRES_USER: restfleet_migrator
