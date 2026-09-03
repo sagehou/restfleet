@@ -30,6 +30,8 @@ jobs:
       RESTFLEET_TEST_DATABASE_URL: postgres://restfleet:test-only-not-a-secret@localhost:5432/restfleet?sslmode=disable
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Validate Compose deployment
         env:
           RESTFLEET_POSTGRES_MIGRATOR_PASSWORD_FILE: /dev/null
@@ -59,6 +61,9 @@ jobs:
       - run: go test -race ./...
       - run: make build cross-build
       - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
       - run: mkdir -p build
       - uses: anchore/sbom-action@v0
         with:
