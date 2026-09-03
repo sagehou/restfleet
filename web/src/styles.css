@@ -1,0 +1,365 @@
+:root {
+  color: #17202a;
+  background: #f3f6f8;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgb(14 116 144 / 30%);
+  outline-offset: 2px;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background:
+    linear-gradient(135deg, rgb(8 47 73 / 96%), rgb(13 78 86 / 90%)),
+    #082f49;
+}
+
+.auth-panel {
+  width: min(32rem, 100%);
+  padding: clamp(2rem, 6vw, 3.5rem);
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 1.25rem;
+  background: #ffffff;
+  box-shadow: 0 1.5rem 5rem rgb(0 20 35 / 30%);
+}
+
+.auth-panel.compact {
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  color: #0e7490;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.19em;
+}
+
+h1,
+h2,
+p {
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  margin: 0.25rem 0 1rem;
+  color: #102a38;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+h2 {
+  margin: 0.5rem 0;
+  color: #163646;
+  font-size: 1.2rem;
+}
+
+.muted {
+  color: #61717c;
+}
+
+form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+label {
+  display: grid;
+  gap: 0.4rem;
+  color: #304854;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid #b8c5cc;
+  border-radius: 0.55rem;
+  color: #17202a;
+  background: #fff;
+}
+
+input:hover {
+  border-color: #74909d;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 2.75rem;
+  padding: 0.7rem 1rem;
+  border-radius: 0.55rem;
+  font-weight: 800;
+}
+
+.primary-button {
+  border: 1px solid #0e7490;
+  color: #fff;
+  background: #0e7490;
+}
+
+.primary-button:hover {
+  background: #075f76;
+}
+
+.secondary-button {
+  border: 1px solid #9eb0ba;
+  color: #173c4d;
+  background: #fff;
+}
+
+.text-button {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  color: #7dd3fc;
+  background: transparent;
+}
+
+.error-message {
+  padding: 0.75rem;
+  border-left: 4px solid #b42318;
+  color: #7a271a;
+  background: #fef3f2;
+  font-size: 0.9rem;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 1.75rem 1.25rem;
+  color: #e8f4f7;
+  background: #0c3545;
+}
+
+.sidebar .eyebrow {
+  color: #67e8f9;
+}
+
+.product-name {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+nav {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.nav-item {
+  width: 100%;
+  padding: 0.62rem 0.75rem;
+  border: 0;
+  border-radius: 0.45rem;
+  color: #d7e7ec;
+  background: transparent;
+  text-align: left;
+}
+
+.nav-item:hover:not(:disabled),
+.nav-item.active {
+  color: #fff;
+  background: rgb(255 255 255 / 12%);
+}
+
+.nav-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.account {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(255 255 255 / 14%);
+}
+
+.account small {
+  color: #afc9d2;
+}
+
+.content {
+  width: min(76rem, 100%);
+  padding: clamp(2rem, 5vw, 4.5rem);
+}
+
+.page-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.page-header time {
+  color: #61717c;
+  font-size: 0.82rem;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.metric-card {
+  padding: 1.2rem;
+  border: 1px solid #d7e0e4;
+  border-radius: 0.8rem;
+  background: #fff;
+  box-shadow: 0 0.3rem 1.4rem rgb(21 50 62 / 5%);
+}
+
+.metric-card dt {
+  color: #60727c;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.metric-card dd {
+  margin: 0.4rem 0 0;
+  color: #123746;
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.empty-state {
+  padding: clamp(2rem, 5vw, 4rem);
+  border: 1px dashed #afc0c8;
+  border-radius: 1rem;
+  color: #52656f;
+  background: #f9fbfc;
+  text-align: center;
+}
+
+.status-mark {
+  display: inline-grid;
+  width: 2.6rem;
+  height: 2.6rem;
+  place-items: center;
+  border-radius: 50%;
+  color: #065f46;
+  background: #d1fae5;
+  font-weight: 900;
+}
+
+.detail-list {
+  max-width: 48rem;
+  margin-top: 2rem;
+  border: 1px solid #d7e0e4;
+  border-radius: 0.8rem;
+  background: #fff;
+}
+
+.detail-list div {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #e5ebee;
+}
+
+.detail-list div:last-child {
+  border-bottom: 0;
+}
+
+.detail-list dt {
+  color: #61717c;
+  font-weight: 700;
+}
+
+.detail-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 800px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    min-height: auto;
+  }
+
+  .sidebar nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account {
+    margin-top: 0;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-shell,
+  .content {
+    padding: 1rem;
+  }
+
+  .auth-panel {
+    padding: 1.5rem;
+  }
+
+  .page-header {
+    align-items: start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-list div {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+}

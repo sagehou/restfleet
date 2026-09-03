@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package restfleet.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1;agentv1";
+
+service AgentControlService {
+  rpc Connect(stream AgentToServer) returns (stream ServerToAgent);
+}
+
+message AgentToServer {
+  string message_id = 1;
+  string protocol_version = 2;
+  google.protobuf.Timestamp sent_at = 3;
+  uint64 sequence = 4;
+}
+
+message ServerToAgent {
+  string message_id = 1;
+  string protocol_version = 2;
+  google.protobuf.Timestamp sent_at = 3;
+  uint64 sequence = 4;
+}

@@ -1,0 +1,14 @@
+/.cache/
+/build/
+/coverage/
+/web/dist/
+/web/node_modules/
+*.local
+*.log
+*.pem
+*.key
+*.crt
+*.db
+*.sqlite*
+deploy/compose/.env
+deploy/compose/secrets/

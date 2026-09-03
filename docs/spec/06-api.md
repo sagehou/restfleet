@@ -19,10 +19,11 @@
 ### 2.1 Bootstrap
 
 ```http
+GET  /api/v1/bootstrap/status
 POST /api/v1/bootstrap
 ```
 
-仅在无 User 且 bootstrap secret 有效时可用。请求通过专用 header/secure form 提交，成功后 bootstrap 永久关闭。
+`status` 仅返回是否需要初始化，不返回 secret 或用户信息。创建首个 Admin 仅在无 User 且 bootstrap secret 有效时可用。请求使用 `X-RestFleet-Bootstrap-Token` 专用 header 提交，成功后 bootstrap 永久关闭。
 
 ### 2.2 Login/Logout
 
@@ -92,6 +93,14 @@ GET /api/v1/dashboard/attention
 ```
 
 `summary` 返回带 `collected_at` 的聚合计数。`attention` 返回 failed/overdue/offline/credential/maintenance 事项，按 severity 和时间排序。
+
+### 4.1 Build Version
+
+```http
+GET /api/v1/version
+```
+
+`version` 返回 Server version、commit、build time 与兼容 schema version，不包含运行环境或依赖 credential。
 
 ## 5. Hosts 与 Agents
 

@@ -2,7 +2,9 @@
 
 RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面。它通过轻量 Agent 统一下发备份计划、采集运行状态、浏览快照、触发恢复并集中执行仓库维护，同时把 rclone 与云存储凭据严格留在中心节点。
 
-> 当前仓库处于 specification-first 阶段。`main` 分支上的规范是 V1 实现的约束来源，代码必须遵守安全不变量与验收条件。
+> 当前仓库按 specification-first 方式开发。M0 与 M1 Control Plane Skeleton and Auth 已完成；`main` 分支上的规范仍是 V1 实现的约束来源。
+
+开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
 
 ## 核心边界
 
@@ -14,6 +16,30 @@ RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面
 - 中心离线时，Agent 使用最近一次已确认配置继续本地调度备份。
 - `forget`、`prune`、`check`、`unlock` 只能由中心 Maintenance Worker 执行。
 - Linux `amd64`、`arm64`，Native systemd 与 Docker 两种 Agent 部署方式均为 V1 要求。
+
+## 开发与运行
+
+常用质量门禁：
+
+```sh
+make generate
+make lint
+make test
+make build cross-build
+```
+
+M1 Server 需要已经迁移到 schema v2 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。开发 Compose 也拆分了 migrator/runtime 数据库身份，并且不向宿主机发布 PostgreSQL 或 metrics 端口。
+
+首次启动：
+
+```sh
+cd deploy/compose
+cp .env.example .env
+./prepare-dev-secrets.sh
+docker compose -f compose.yaml -f compose.bootstrap.yaml up --build
+```
+
+Bootstrap token 仅在首次初始化时从本机 `secrets/bootstrap-token` 读取，不应复制到日志或命令参数。在 Web 中创建首个管理员后，MUST 停止开发栈、删除 `secrets/bootstrap-token`，并只用 `docker compose up --build` 重启；数据库中的 bootstrap 状态会保持永久关闭。公开 HTTP 默认监听 `:8080`，Compose 默认只绑定到宿主机 loopback。
 
 ## 文档导航
 

@@ -1,0 +1,11 @@
+services:
+  server:
+    environment:
+      RESTFLEET_BOOTSTRAP_TOKEN_FILE: /run/secrets/bootstrap-token
+    secrets:
+      - source: bootstrap-token
+        target: bootstrap-token
+
+secrets:
+  bootstrap-token:
+    file: ${RESTFLEET_BOOTSTRAP_TOKEN_FILE:?set RESTFLEET_BOOTSTRAP_TOKEN_FILE}

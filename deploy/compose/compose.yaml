@@ -1,0 +1,82 @@
+name: restfleet-dev
+
+services:
+  postgres:
+    image: postgres:18.6-alpine3.22
+    environment:
+      POSTGRES_DB: restfleet
+      POSTGRES_USER: restfleet_migrator
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-migrator-password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U restfleet_migrator -d restfleet"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    secrets:
+      - postgres-migrator-password
+      - postgres-app-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/Containerfile
+      target: migrator
+    environment:
+      RESTFLEET_DATABASE_URL_FILE: /run/secrets/database-url
+    secrets:
+      - source: migrator-database-url
+        target: database-url
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  server:
+    build:
+      context: ../..
+      dockerfile: deploy/Containerfile
+      args:
+        COMMAND: restfleet-server
+    environment:
+      RESTFLEET_ENV: development
+      RESTFLEET_DATABASE_URL_FILE: /run/secrets/database-url
+      RESTFLEET_HTTP_ADDRESS: ":8080"
+      RESTFLEET_METRICS_ADDRESS: ":9090"
+      RESTFLEET_SECURE_COOKIES: "false"
+    secrets:
+      - source: app-database-url
+        target: database-url
+    ports:
+      - "${RESTFLEET_HTTP_BIND:-127.0.0.1}:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+secrets:
+  postgres-migrator-password:
+    file: ${RESTFLEET_POSTGRES_MIGRATOR_PASSWORD_FILE:?set RESTFLEET_POSTGRES_MIGRATOR_PASSWORD_FILE}
+  postgres-app-password:
+    file: ${RESTFLEET_POSTGRES_APP_PASSWORD_FILE:?set RESTFLEET_POSTGRES_APP_PASSWORD_FILE}
+  migrator-database-url:
+    file: ${RESTFLEET_MIGRATOR_DATABASE_URL_FILE:?set RESTFLEET_MIGRATOR_DATABASE_URL_FILE}
+  app-database-url:
+    file: ${RESTFLEET_APP_DATABASE_URL_FILE:?set RESTFLEET_APP_DATABASE_URL_FILE}
+volumes:
+  postgres-data:
