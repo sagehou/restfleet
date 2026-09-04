@@ -10,6 +10,8 @@
 
 ## M0 — Repository Scaffold
 
+**Status: COMPLETE**
+
 ### Goal
 
 建立可持续开发、测试和发布的 monorepo 骨架。
@@ -36,6 +38,8 @@
 - `AGENTS.md` enforced in contributor docs。
 
 ## M1 — Control Plane Skeleton and Auth
+
+**Status: COMPLETE**
 
 ### Goal
 

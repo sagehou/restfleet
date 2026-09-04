@@ -1,0 +1,16 @@
+[Unit]
+Description=RestFleet Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/restfleet-agent run --config /etc/restfleet/agent.yaml
+Restart=always
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/restfleet-agent /var/cache/restfleet-agent /var/lib/restfleet/restores
+
+[Install]
+WantedBy=multi-user.target

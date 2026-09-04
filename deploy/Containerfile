@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1.7
+ARG GO_IMAGE=golang:1.27.1-alpine3.23
+ARG NODE_IMAGE=node:24.20.0-alpine3.23
+ARG ALPINE_IMAGE=alpine:3.23
+
+FROM ${GO_IMAGE} AS migration-build
+WORKDIR /src/tools
+COPY tools/go.mod tools/go.sum ./
+RUN go mod download github.com/pressly/goose/v3
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build -trimpath -ldflags="-s -w" \
+    -o /out/goose github.com/pressly/goose/v3/cmd/goose
+
+FROM ${ALPINE_IMAGE} AS migrator
+RUN apk add --no-cache ca-certificates
+COPY --from=migration-build /out/goose /usr/local/bin/goose
+COPY --chmod=0555 deploy/migrate-entrypoint.sh /usr/local/bin/migrate-entrypoint
+COPY db/migrations /migrations
+ENV GOOSE_DRIVER=postgres \
+    GOOSE_MIGRATION_DIR=/migrations \
+    NO_COLOR=1
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/migrate-entrypoint"]
+CMD ["up"]
+
+FROM ${NODE_IMAGE} AS web-build
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+FROM ${GO_IMAGE} AS go-build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG TARGETOS=linux
+ARG TARGETARCH
+ARG COMMAND
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
+RUN test -n "${COMMAND}" && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build -trimpath \
+    -ldflags="-s -w -X github.com/sagehou/restfleet/internal/buildinfo.Version=${VERSION} -X github.com/sagehou/restfleet/internal/buildinfo.Commit=${COMMIT} -X github.com/sagehou/restfleet/internal/buildinfo.Date=${BUILD_DATE}" \
+    -o /out/restfleet "./cmd/${COMMAND}"
+
+FROM scratch
+COPY --from=go-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=go-build /out/restfleet /usr/local/bin/restfleet
+COPY --from=web-build /src/web/dist /srv/restfleet/web
+ENV RESTFLEET_WEB_DIR=/srv/restfleet/web
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/restfleet"]

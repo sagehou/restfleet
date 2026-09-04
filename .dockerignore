@@ -1,0 +1,12 @@
+.git
+.cache
+build
+coverage
+web/node_modules
+web/dist
+*.log
+*.pem
+*.key
+*.crt
+*.db
+*.sqlite*

@@ -1,0 +1,112 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6-alpine3.23
+        env:
+          POSTGRES_DB: restfleet
+          POSTGRES_USER: restfleet
+          POSTGRES_PASSWORD: test-only-not-a-secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U restfleet -d restfleet"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://restfleet:test-only-not-a-secret@localhost:5432/restfleet?sslmode=disable
+      RESTFLEET_TEST_DATABASE_URL: postgres://restfleet:test-only-not-a-secret@localhost:5432/restfleet?sslmode=disable
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Validate Compose deployment
+        env:
+          RESTFLEET_POSTGRES_MIGRATOR_PASSWORD_FILE: /dev/null
+          RESTFLEET_POSTGRES_APP_PASSWORD_FILE: /dev/null
+          RESTFLEET_MIGRATOR_DATABASE_URL_FILE: /dev/null
+          RESTFLEET_APP_DATABASE_URL_FILE: /dev/null
+          RESTFLEET_BOOTSTRAP_TOKEN_FILE: /dev/null
+        run: |
+          docker compose -f deploy/compose/compose.yaml config --quiet
+          docker compose -f deploy/compose/compose.yaml -f deploy/compose/compose.bootstrap.yaml config --quiet
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.1
+          cache: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.20.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: make generate
+      - run: git diff --exit-code
+      - run: make lint
+      - run: make migrate
+      - run: make test
+      - run: go test -race ./...
+      - run: make build cross-build
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+      - run: mkdir -p build
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: build/sbom.cdx.json
+      - uses: actions/upload-artifact@v5
+        with:
+          name: sbom
+          path: build/sbom.cdx.json
+
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        command: [restfleet-server, restfleet-gateway, restfleet-agent]
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Containerfile
+          build-args: COMMAND=${{ matrix.command }}
+          platforms: ${{ matrix.platform }}
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  migrator-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Containerfile
+          target: migrator
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
