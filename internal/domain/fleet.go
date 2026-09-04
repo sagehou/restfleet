@@ -58,6 +58,13 @@ type Agent struct {
 	LastConnectedAt      *time.Time
 	DesiredRevision      int64
 	AcceptedRevision     int64
+	Health               string
+	UptimeSeconds        int64
+	StateFreeBytes       int64
+	ClockOffsetMS        int64
+	HeartbeatErrorCode   string
+	ConfigErrorCode      string
+	ConfigErrorField     string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }
@@ -128,6 +135,8 @@ type EnrollmentMaterial struct {
 	Certificate    AgentCertificate
 	CertificatePEM []byte
 	Audit          AuditEvent
+	DesiredState   DesiredState
+	OutboxID       uuid.UUID
 }
 
 type EnrollmentIssuer func(hostID uuid.UUID) (EnrollmentMaterial, error)

@@ -30,10 +30,12 @@ import (
 
 type grpcTestStore struct {
 	control.Store
-	mu      sync.Mutex
-	agent   domain.Agent
-	revoked bool
-	audits  []domain.AuditEvent
+	mu        sync.Mutex
+	agent     domain.Agent
+	revoked   bool
+	audits    []domain.AuditEvent
+	desired   domain.DesiredState
+	published int
 }
 
 func (s *grpcTestStore) AgentByCertificate(
@@ -54,11 +56,37 @@ func (s *grpcTestStore) MarkAgentConnected(
 	_ context.Context,
 	id, installID uuid.UUID,
 	_, _, _, _, _ string,
+	acceptedRevision int64,
+	_ time.Time,
+) (domain.Agent, error) {
+	if id != s.agent.ID || installID != s.agent.InstallID ||
+		acceptedRevision > s.agent.DesiredRevision {
+		return domain.Agent{}, domain.ErrAgentRevoked
+	}
+	s.agent.AcceptedRevision = acceptedRevision
+	return s.agent, nil
+}
+
+func (s *grpcTestStore) DesiredState(
+	_ context.Context,
+	agentID uuid.UUID,
+) (domain.DesiredState, error) {
+	if agentID != s.desired.AgentID {
+		return domain.DesiredState{}, domain.ErrNotFound
+	}
+	return s.desired, nil
+}
+
+func (s *grpcTestStore) MarkDesiredStatePublished(
+	_ context.Context,
+	agentID uuid.UUID,
+	revision int64,
 	_ time.Time,
 ) error {
-	if id != s.agent.ID || installID != s.agent.InstallID {
-		return domain.ErrAgentRevoked
+	if agentID != s.desired.AgentID || revision != s.desired.Revision {
+		return domain.ErrNotFound
 	}
+	s.published++
 	return nil
 }
 

@@ -322,6 +322,14 @@ func (c *ControlPlane) EnrollAgent(
 			if err != nil {
 				return domain.EnrollmentMaterial{}, err
 			}
+			desiredState, err := domain.NewDefaultDesiredState(agentID, 1, now)
+			if err != nil {
+				return domain.EnrollmentMaterial{}, err
+			}
+			outboxID, err := uuid.NewV7()
+			if err != nil {
+				return domain.EnrollmentMaterial{}, err
+			}
 			agent := domain.Agent{
 				ID: agentID, HostID: hostID, InstallID: installID,
 				PublicKeyFingerprint: issued.PublicKeyFingerprint,
@@ -330,7 +338,8 @@ func (c *ControlPlane) EnrollAgent(
 				Status:               domain.AgentActive, Version: request.AgentVersion,
 				ProtocolVersion: request.ProtocolVersion, OS: request.OS,
 				Arch: request.Arch, Hostname: request.Hostname,
-				CreatedAt: now, UpdatedAt: now,
+				DesiredRevision: 1,
+				CreatedAt:       now, UpdatedAt: now,
 			}
 			certificate := domain.AgentCertificate{
 				ID: certificateID, AgentID: agentID, SerialNumber: issued.SerialNumber,
@@ -347,8 +356,9 @@ func (c *ControlPlane) EnrollAgent(
 			audit.Result = domain.AuditSuccess
 			audit.ReasonCode = "AGENT_ENROLLED"
 			return domain.EnrollmentMaterial{
-				Agent: agent, Certificate: certificate,
+				Agent: agent, Certificate: certificate, DesiredState: desiredState,
 				CertificatePEM: issued.CertificatePEM, Audit: audit,
+				OutboxID: outboxID,
 			}, nil
 		},
 	)
@@ -399,11 +409,28 @@ func (c *ControlPlane) AgentsForHost(ctx context.Context, hostID uuid.UUID) ([]d
 	if _, err := c.store.Host(ctx, hostID); err != nil {
 		return nil, err
 	}
-	return c.store.AgentsForHost(ctx, hostID)
+	agents, err := c.store.AgentsForHost(ctx, hostID)
+	if err != nil {
+		return nil, err
+	}
+	return c.withAgentHealth(agents), nil
+}
+
+func (c *ControlPlane) Agents(ctx context.Context) ([]domain.Agent, error) {
+	agents, err := c.store.Agents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.withAgentHealth(agents), nil
 }
 
 func (c *ControlPlane) Agent(ctx context.Context, id uuid.UUID) (domain.Agent, error) {
-	return c.store.Agent(ctx, id)
+	agent, err := c.store.Agent(ctx, id)
+	if err != nil {
+		return domain.Agent{}, err
+	}
+	agent.Health = agent.HealthAt(c.clock().UTC(), agentOfflineAfter)
+	return agent, nil
 }
 
 func (c *ControlPlane) AgentByCertificate(
@@ -419,10 +446,14 @@ func (c *ControlPlane) MarkAgentConnected(
 	ctx context.Context,
 	id, installID uuid.UUID,
 	version, protocolVersion, hostname, bootID, resticVersion string,
-) error {
+	acceptedRevision int64,
+) (domain.Agent, error) {
+	if acceptedRevision < 0 {
+		return domain.Agent{}, &ValidationError{Field: "accepted_config_revision", Code: "INVALID_REVISION"}
+	}
 	return c.store.MarkAgentConnected(
 		ctx, id, installID, version, protocolVersion, hostname, bootID,
-		resticVersion, c.clock().UTC(),
+		resticVersion, acceptedRevision, c.clock().UTC(),
 	)
 }
 

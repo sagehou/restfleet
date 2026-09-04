@@ -18,6 +18,10 @@ message AgentToServer {
   oneof payload {
     Hello hello = 10;
     CertificateRotationRequest certificate_rotation_request = 11;
+    Heartbeat heartbeat = 12;
+    InventoryReport inventory_report = 13;
+    ConfigAccepted config_accepted = 14;
+    ConfigRejected config_rejected = 15;
   }
 }
 
@@ -29,6 +33,7 @@ message ServerToAgent {
   oneof payload {
     Welcome welcome = 10;
     CertificateRotationResponse certificate_rotation_response = 11;
+    DesiredStateSnapshot desired_state_snapshot = 12;
   }
 }
 
@@ -63,4 +68,69 @@ message CertificateRotationResponse {
   string certificate_pem = 1;
   string ca_bundle_pem = 2;
   google.protobuf.Timestamp not_after = 3;
+}
+
+message Heartbeat {
+  string boot_id = 1;
+  uint64 uptime_seconds = 2;
+  int64 accepted_revision = 3;
+  repeated ActiveOperation active_operations = 4;
+  repeated NextRun next_runs = 5;
+  string restic_version = 6;
+  uint64 state_free_bytes = 7;
+  sint64 clock_offset_ms = 8;
+  repeated HealthCheck health_checks = 9;
+  google.protobuf.Timestamp local_time = 10;
+}
+
+message ActiveOperation {
+  string operation_id = 1;
+  string status = 2;
+}
+
+message NextRun {
+  string plan_id = 1;
+  google.protobuf.Timestamp scheduled_at = 2;
+}
+
+message HealthCheck {
+  string name = 1;
+  bool healthy = 2;
+  string error_code = 3;
+}
+
+message InventoryReport {
+  google.protobuf.Timestamp captured_at = 1;
+  string kernel = 2;
+  string os_release = 3;
+  string cpu_arch = 4;
+  string agent_version = 5;
+  string restic_version = 6;
+  bool containerized = 7;
+  map<string, uint64> available_bytes = 8;
+  sint64 clock_offset_ms = 9;
+  repeated string capabilities = 10;
+}
+
+message ConfigAccepted {
+  int64 revision = 1;
+  string config_hash = 2;
+}
+
+message ConfigRejected {
+  int64 revision = 1;
+  string error_code = 2;
+  string field_path = 3;
+}
+
+message DesiredStateSnapshot {
+  int64 revision = 1;
+  google.protobuf.Timestamp generated_at = 2;
+  string config_hash = 3;
+  RuntimePolicy runtime_policy = 4;
+}
+
+message RuntimePolicy {
+  uint32 max_parallel_io_jobs = 1;
+  uint64 log_limit_bytes = 2;
 }

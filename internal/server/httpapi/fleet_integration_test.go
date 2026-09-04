@@ -210,6 +210,57 @@ func TestEnrollmentTokenAndCertificateLifecycle(t *testing.T) {
 	if err != nil || storedAgent.Status != domain.AgentActive {
 		t.Fatalf("stored Agent = %+v, %v", storedAgent, err)
 	}
+	desired, err := store.DesiredState(context.Background(), enrolled.AgentId)
+	if err != nil || desired.Revision != 1 || desired.ConfigHash == "" {
+		t.Fatalf("initial desired state = %+v, %v", desired, err)
+	}
+	var outboxCount int
+	if err := pool.QueryRow(context.Background(), `
+		select count(*) from outbox_events
+		where aggregate_id = $1 and event_type = 'AGENT_DESIRED_STATE_CHANGED'
+	`, enrolled.AgentId).Scan(&outboxCount); err != nil {
+		t.Fatal(err)
+	}
+	if outboxCount != 1 {
+		t.Fatalf("initial desired-state outbox count = %d", outboxCount)
+	}
+	if _, err := store.RecordAgentHeartbeat(context.Background(), domain.AgentHeartbeat{
+		AgentID: enrolled.AgentId, BootID: uuid.Must(uuid.NewV7()).String(),
+		UptimeSeconds: 60, AcceptedRevision: 1, StateFreeBytes: 4096,
+		LocalTime: now, ReceivedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inventory := domain.AgentInventory{
+		ID: uuid.Must(uuid.NewV7()), AgentID: enrolled.AgentId, CapturedAt: now,
+		Kernel: "test-kernel", OSRelease: "Test Linux", CPUArch: "amd64",
+		AgentVersion: "0.2.0-test", AvailableBytes: map[string]uint64{"agent_state": 4096},
+		Capabilities: []string{"desired_state_v1"},
+	}
+	if err := store.RecordAgentInventory(context.Background(), inventory); err != nil {
+		t.Fatal(err)
+	}
+	agentResponse := browser.request(t, http.MethodGet,
+		"/api/v1/agents/"+enrolled.AgentId.String(), nil, nil)
+	if agentResponse.Code != http.StatusOK {
+		t.Fatalf("Agent detail status = %d, body = %s", agentResponse.Code, agentResponse.Body.String())
+	}
+	var agentDetail Agent
+	decodeResponse(t, agentResponse, &agentDetail)
+	if agentDetail.Health != AgentHealthONLINE || agentDetail.AcceptedRevision != 1 {
+		t.Fatalf("Agent health projection = %+v", agentDetail)
+	}
+	inventoryResponse := browser.request(t, http.MethodGet,
+		"/api/v1/hosts/"+host.Id.String()+"/inventory", nil, nil)
+	if inventoryResponse.Code != http.StatusOK {
+		t.Fatalf("inventory status = %d, body = %s", inventoryResponse.Code, inventoryResponse.Body.String())
+	}
+	var inventoryDetail AgentInventory
+	decodeResponse(t, inventoryResponse, &inventoryDetail)
+	if inventoryDetail.AgentId != enrolled.AgentId || inventoryDetail.Kernel != "test-kernel" {
+		t.Fatalf("inventory response = %+v", inventoryDetail)
+	}
+
 	updatedHost, err := store.Host(context.Background(), host.Id)
 	if err != nil || updatedHost.Status != domain.HostActive {
 		t.Fatalf("updated Host = %+v, %v", updatedHost, err)

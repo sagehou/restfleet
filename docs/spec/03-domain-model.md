@@ -88,24 +88,29 @@ install_id       random local UUID, unique
 public_key_fingerprint
 certificate_serial
 certificate_not_after
-status           PENDING | ACTIVE | DEGRADED | OFFLINE | DISABLED | REVOKED
+status           ACTIVE | REVOKED (identity lifecycle)
+health           ONLINE | DEGRADED | OFFLINE | REVOKED (derived, not persisted)
 version
 protocol_version
 os / arch
 hostname
 boot_id
 restic_version
+uptime_seconds
+state_free_bytes
+clock_offset_ms
 last_seen_at
 last_connected_at
 last_ip          optional, access controlled
 desired_revision
 accepted_revision
-last_error_code
-last_error_at
+heartbeat_error_code
+config_error_code
+config_error_field
 created_at / updated_at
 ```
 
-一个 Host 同时只能有一个 ACTIVE Agent。替换 Agent 必须显式 revoke 旧 identity。
+一个 Host 同时只能有一个未撤销的 Agent identity。`status` 只用于授权生命周期；在线、异常和离线由 `last_seen_at` 与诊断状态按 ADR-0006 推导。替换 Agent 必须显式 revoke 旧 identity。
 
 ### AgentInventory
 
@@ -119,6 +124,9 @@ os_release
 cpu_arch
 agent_version
 restic_version
+uptime_seconds
+state_free_bytes
+clock_offset_ms
 containerized
 available_bytes_by_mount (limited)
 clock_offset_ms

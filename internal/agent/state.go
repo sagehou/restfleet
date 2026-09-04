@@ -10,7 +10,12 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-const metadataBucket = "metadata"
+const (
+	metadataBucket       = "metadata"
+	desiredActiveBucket  = "desired_active"
+	desiredStagingBucket = "desired_staging"
+	outboundBucket       = "outbound"
+)
 
 type State struct {
 	directory string
@@ -39,8 +44,14 @@ func OpenState(directory string) (*State, error) {
 	}
 	state := &State{directory: directory, db: db}
 	if err := db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(metadataBucket))
-		return err
+		for _, name := range []string{
+			metadataBucket, desiredActiveBucket, desiredStagingBucket, outboundBucket,
+		} {
+			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
+				return err
+			}
+		}
+		return nil
 	}); err != nil {
 		_ = db.Close()
 		return nil, err

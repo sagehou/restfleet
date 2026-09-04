@@ -88,7 +88,17 @@ func (a *API) NewRootHandler() http.Handler {
 }
 
 func (a *API) MetricsHandler() http.Handler {
-	return a.metrics.Handler()
+	handler := a.metrics.Handler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if counts, err := a.control.AgentHealthCounts(r.Context()); err == nil {
+			a.metrics.setAgentHealth(counts.Online, counts.Degraded, counts.Offline)
+		}
+		handler.ServeHTTP(w, r)
+	})
+}
+
+func (a *API) ObserveAgentHeartbeat(result string) {
+	a.metrics.observeAgentHeartbeat(result)
 }
 
 func (a *API) HealthLive(w http.ResponseWriter, _ *http.Request) {
@@ -247,12 +257,16 @@ func (a *API) DashboardSummary(w http.ResponseWriter, r *http.Request) {
 		a.internalProblem(w, r)
 		return
 	}
+	health, err := a.control.AgentHealthCounts(r.Context())
+	if err != nil {
+		a.internalProblem(w, r)
+		return
+	}
 	a.json(w, http.StatusOK, DashboardSummary{
-		CollectedAt:  time.Now().UTC(),
-		Hosts:        int64(len(hosts)),
-		Plans:        0,
-		Repositories: 0,
-		Operations:   0,
+		CollectedAt: time.Now().UTC(), Hosts: int64(len(hosts)),
+		AgentsOnline: int64(health.Online), AgentsDegraded: int64(health.Degraded),
+		AgentsOffline: int64(health.Offline),
+		Plans:         0, Repositories: 0, Operations: 0,
 	})
 }
 
@@ -269,7 +283,7 @@ func (a *API) Version(w http.ResponseWriter, r *http.Request) {
 		Version:       a.build.Version,
 		Commit:        a.build.Commit,
 		BuiltAt:       a.build.Date,
-		SchemaVersion: 3,
+		SchemaVersion: 4,
 	})
 }
 
@@ -509,6 +523,8 @@ func routeLabel(path string) string {
 		switch {
 		case strings.HasSuffix(path, "/enrollment-tokens"):
 			return "/api/v1/hosts/{host_id}/enrollment-tokens"
+		case strings.HasSuffix(path, "/inventory"):
+			return "/api/v1/hosts/{host_id}/inventory"
 		case strings.HasSuffix(path, "/agents"):
 			return "/api/v1/hosts/{host_id}/agents"
 		case strings.HasSuffix(path, "/disable"):

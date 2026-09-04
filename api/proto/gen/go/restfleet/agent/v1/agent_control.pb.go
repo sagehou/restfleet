@@ -32,6 +32,10 @@ type AgentToServer struct {
 	//
 	//	*AgentToServer_Hello
 	//	*AgentToServer_CertificateRotationRequest
+	//	*AgentToServer_Heartbeat
+	//	*AgentToServer_InventoryReport
+	//	*AgentToServer_ConfigAccepted
+	//	*AgentToServer_ConfigRejected
 	Payload       isAgentToServer_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -120,6 +124,42 @@ func (x *AgentToServer) GetCertificateRotationRequest() *CertificateRotationRequ
 	return nil
 }
 
+func (x *AgentToServer) GetHeartbeat() *Heartbeat {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_Heartbeat); ok {
+			return x.Heartbeat
+		}
+	}
+	return nil
+}
+
+func (x *AgentToServer) GetInventoryReport() *InventoryReport {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_InventoryReport); ok {
+			return x.InventoryReport
+		}
+	}
+	return nil
+}
+
+func (x *AgentToServer) GetConfigAccepted() *ConfigAccepted {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_ConfigAccepted); ok {
+			return x.ConfigAccepted
+		}
+	}
+	return nil
+}
+
+func (x *AgentToServer) GetConfigRejected() *ConfigRejected {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_ConfigRejected); ok {
+			return x.ConfigRejected
+		}
+	}
+	return nil
+}
+
 type isAgentToServer_Payload interface {
 	isAgentToServer_Payload()
 }
@@ -132,9 +172,33 @@ type AgentToServer_CertificateRotationRequest struct {
 	CertificateRotationRequest *CertificateRotationRequest `protobuf:"bytes,11,opt,name=certificate_rotation_request,json=certificateRotationRequest,proto3,oneof"`
 }
 
+type AgentToServer_Heartbeat struct {
+	Heartbeat *Heartbeat `protobuf:"bytes,12,opt,name=heartbeat,proto3,oneof"`
+}
+
+type AgentToServer_InventoryReport struct {
+	InventoryReport *InventoryReport `protobuf:"bytes,13,opt,name=inventory_report,json=inventoryReport,proto3,oneof"`
+}
+
+type AgentToServer_ConfigAccepted struct {
+	ConfigAccepted *ConfigAccepted `protobuf:"bytes,14,opt,name=config_accepted,json=configAccepted,proto3,oneof"`
+}
+
+type AgentToServer_ConfigRejected struct {
+	ConfigRejected *ConfigRejected `protobuf:"bytes,15,opt,name=config_rejected,json=configRejected,proto3,oneof"`
+}
+
 func (*AgentToServer_Hello) isAgentToServer_Payload() {}
 
 func (*AgentToServer_CertificateRotationRequest) isAgentToServer_Payload() {}
+
+func (*AgentToServer_Heartbeat) isAgentToServer_Payload() {}
+
+func (*AgentToServer_InventoryReport) isAgentToServer_Payload() {}
+
+func (*AgentToServer_ConfigAccepted) isAgentToServer_Payload() {}
+
+func (*AgentToServer_ConfigRejected) isAgentToServer_Payload() {}
 
 type ServerToAgent struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -146,6 +210,7 @@ type ServerToAgent struct {
 	//
 	//	*ServerToAgent_Welcome
 	//	*ServerToAgent_CertificateRotationResponse
+	//	*ServerToAgent_DesiredStateSnapshot
 	Payload       isServerToAgent_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -234,6 +299,15 @@ func (x *ServerToAgent) GetCertificateRotationResponse() *CertificateRotationRes
 	return nil
 }
 
+func (x *ServerToAgent) GetDesiredStateSnapshot() *DesiredStateSnapshot {
+	if x != nil {
+		if x, ok := x.Payload.(*ServerToAgent_DesiredStateSnapshot); ok {
+			return x.DesiredStateSnapshot
+		}
+	}
+	return nil
+}
+
 type isServerToAgent_Payload interface {
 	isServerToAgent_Payload()
 }
@@ -246,9 +320,15 @@ type ServerToAgent_CertificateRotationResponse struct {
 	CertificateRotationResponse *CertificateRotationResponse `protobuf:"bytes,11,opt,name=certificate_rotation_response,json=certificateRotationResponse,proto3,oneof"`
 }
 
+type ServerToAgent_DesiredStateSnapshot struct {
+	DesiredStateSnapshot *DesiredStateSnapshot `protobuf:"bytes,12,opt,name=desired_state_snapshot,json=desiredStateSnapshot,proto3,oneof"`
+}
+
 func (*ServerToAgent_Welcome) isServerToAgent_Payload() {}
 
 func (*ServerToAgent_CertificateRotationResponse) isServerToAgent_Payload() {}
+
+func (*ServerToAgent_DesiredStateSnapshot) isServerToAgent_Payload() {}
 
 type Hello struct {
 	state                     protoimpl.MessageState `protogen:"open.v1"`
@@ -562,11 +642,639 @@ func (x *CertificateRotationResponse) GetNotAfter() *timestamppb.Timestamp {
 	return nil
 }
 
+type Heartbeat struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	BootId           string                 `protobuf:"bytes,1,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	UptimeSeconds    uint64                 `protobuf:"varint,2,opt,name=uptime_seconds,json=uptimeSeconds,proto3" json:"uptime_seconds,omitempty"`
+	AcceptedRevision int64                  `protobuf:"varint,3,opt,name=accepted_revision,json=acceptedRevision,proto3" json:"accepted_revision,omitempty"`
+	ActiveOperations []*ActiveOperation     `protobuf:"bytes,4,rep,name=active_operations,json=activeOperations,proto3" json:"active_operations,omitempty"`
+	NextRuns         []*NextRun             `protobuf:"bytes,5,rep,name=next_runs,json=nextRuns,proto3" json:"next_runs,omitempty"`
+	ResticVersion    string                 `protobuf:"bytes,6,opt,name=restic_version,json=resticVersion,proto3" json:"restic_version,omitempty"`
+	StateFreeBytes   uint64                 `protobuf:"varint,7,opt,name=state_free_bytes,json=stateFreeBytes,proto3" json:"state_free_bytes,omitempty"`
+	ClockOffsetMs    int64                  `protobuf:"zigzag64,8,opt,name=clock_offset_ms,json=clockOffsetMs,proto3" json:"clock_offset_ms,omitempty"`
+	HealthChecks     []*HealthCheck         `protobuf:"bytes,9,rep,name=health_checks,json=healthChecks,proto3" json:"health_checks,omitempty"`
+	LocalTime        *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=local_time,json=localTime,proto3" json:"local_time,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *Heartbeat) Reset() {
+	*x = Heartbeat{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Heartbeat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Heartbeat) ProtoMessage() {}
+
+func (x *Heartbeat) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
+func (*Heartbeat) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Heartbeat) GetBootId() string {
+	if x != nil {
+		return x.BootId
+	}
+	return ""
+}
+
+func (x *Heartbeat) GetUptimeSeconds() uint64 {
+	if x != nil {
+		return x.UptimeSeconds
+	}
+	return 0
+}
+
+func (x *Heartbeat) GetAcceptedRevision() int64 {
+	if x != nil {
+		return x.AcceptedRevision
+	}
+	return 0
+}
+
+func (x *Heartbeat) GetActiveOperations() []*ActiveOperation {
+	if x != nil {
+		return x.ActiveOperations
+	}
+	return nil
+}
+
+func (x *Heartbeat) GetNextRuns() []*NextRun {
+	if x != nil {
+		return x.NextRuns
+	}
+	return nil
+}
+
+func (x *Heartbeat) GetResticVersion() string {
+	if x != nil {
+		return x.ResticVersion
+	}
+	return ""
+}
+
+func (x *Heartbeat) GetStateFreeBytes() uint64 {
+	if x != nil {
+		return x.StateFreeBytes
+	}
+	return 0
+}
+
+func (x *Heartbeat) GetClockOffsetMs() int64 {
+	if x != nil {
+		return x.ClockOffsetMs
+	}
+	return 0
+}
+
+func (x *Heartbeat) GetHealthChecks() []*HealthCheck {
+	if x != nil {
+		return x.HealthChecks
+	}
+	return nil
+}
+
+func (x *Heartbeat) GetLocalTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LocalTime
+	}
+	return nil
+}
+
+type ActiveOperation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActiveOperation) Reset() {
+	*x = ActiveOperation{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActiveOperation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActiveOperation) ProtoMessage() {}
+
+func (x *ActiveOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActiveOperation.ProtoReflect.Descriptor instead.
+func (*ActiveOperation) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ActiveOperation) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *ActiveOperation) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type NextRun struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PlanId        string                 `protobuf:"bytes,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	ScheduledAt   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=scheduled_at,json=scheduledAt,proto3" json:"scheduled_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NextRun) Reset() {
+	*x = NextRun{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NextRun) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NextRun) ProtoMessage() {}
+
+func (x *NextRun) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NextRun.ProtoReflect.Descriptor instead.
+func (*NextRun) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *NextRun) GetPlanId() string {
+	if x != nil {
+		return x.PlanId
+	}
+	return ""
+}
+
+func (x *NextRun) GetScheduledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ScheduledAt
+	}
+	return nil
+}
+
+type HealthCheck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Healthy       bool                   `protobuf:"varint,2,opt,name=healthy,proto3" json:"healthy,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HealthCheck) Reset() {
+	*x = HealthCheck{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HealthCheck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HealthCheck) ProtoMessage() {}
+
+func (x *HealthCheck) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HealthCheck.ProtoReflect.Descriptor instead.
+func (*HealthCheck) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *HealthCheck) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *HealthCheck) GetHealthy() bool {
+	if x != nil {
+		return x.Healthy
+	}
+	return false
+}
+
+func (x *HealthCheck) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+type InventoryReport struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	CapturedAt     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=captured_at,json=capturedAt,proto3" json:"captured_at,omitempty"`
+	Kernel         string                 `protobuf:"bytes,2,opt,name=kernel,proto3" json:"kernel,omitempty"`
+	OsRelease      string                 `protobuf:"bytes,3,opt,name=os_release,json=osRelease,proto3" json:"os_release,omitempty"`
+	CpuArch        string                 `protobuf:"bytes,4,opt,name=cpu_arch,json=cpuArch,proto3" json:"cpu_arch,omitempty"`
+	AgentVersion   string                 `protobuf:"bytes,5,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
+	ResticVersion  string                 `protobuf:"bytes,6,opt,name=restic_version,json=resticVersion,proto3" json:"restic_version,omitempty"`
+	Containerized  bool                   `protobuf:"varint,7,opt,name=containerized,proto3" json:"containerized,omitempty"`
+	AvailableBytes map[string]uint64      `protobuf:"bytes,8,rep,name=available_bytes,json=availableBytes,proto3" json:"available_bytes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	ClockOffsetMs  int64                  `protobuf:"zigzag64,9,opt,name=clock_offset_ms,json=clockOffsetMs,proto3" json:"clock_offset_ms,omitempty"`
+	Capabilities   []string               `protobuf:"bytes,10,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *InventoryReport) Reset() {
+	*x = InventoryReport{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InventoryReport) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InventoryReport) ProtoMessage() {}
+
+func (x *InventoryReport) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InventoryReport.ProtoReflect.Descriptor instead.
+func (*InventoryReport) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *InventoryReport) GetCapturedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CapturedAt
+	}
+	return nil
+}
+
+func (x *InventoryReport) GetKernel() string {
+	if x != nil {
+		return x.Kernel
+	}
+	return ""
+}
+
+func (x *InventoryReport) GetOsRelease() string {
+	if x != nil {
+		return x.OsRelease
+	}
+	return ""
+}
+
+func (x *InventoryReport) GetCpuArch() string {
+	if x != nil {
+		return x.CpuArch
+	}
+	return ""
+}
+
+func (x *InventoryReport) GetAgentVersion() string {
+	if x != nil {
+		return x.AgentVersion
+	}
+	return ""
+}
+
+func (x *InventoryReport) GetResticVersion() string {
+	if x != nil {
+		return x.ResticVersion
+	}
+	return ""
+}
+
+func (x *InventoryReport) GetContainerized() bool {
+	if x != nil {
+		return x.Containerized
+	}
+	return false
+}
+
+func (x *InventoryReport) GetAvailableBytes() map[string]uint64 {
+	if x != nil {
+		return x.AvailableBytes
+	}
+	return nil
+}
+
+func (x *InventoryReport) GetClockOffsetMs() int64 {
+	if x != nil {
+		return x.ClockOffsetMs
+	}
+	return 0
+}
+
+func (x *InventoryReport) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+type ConfigAccepted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Revision      int64                  `protobuf:"varint,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	ConfigHash    string                 `protobuf:"bytes,2,opt,name=config_hash,json=configHash,proto3" json:"config_hash,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigAccepted) Reset() {
+	*x = ConfigAccepted{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigAccepted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigAccepted) ProtoMessage() {}
+
+func (x *ConfigAccepted) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigAccepted.ProtoReflect.Descriptor instead.
+func (*ConfigAccepted) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ConfigAccepted) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *ConfigAccepted) GetConfigHash() string {
+	if x != nil {
+		return x.ConfigHash
+	}
+	return ""
+}
+
+type ConfigRejected struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Revision      int64                  `protobuf:"varint,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,2,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	FieldPath     string                 `protobuf:"bytes,3,opt,name=field_path,json=fieldPath,proto3" json:"field_path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigRejected) Reset() {
+	*x = ConfigRejected{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigRejected) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigRejected) ProtoMessage() {}
+
+func (x *ConfigRejected) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigRejected.ProtoReflect.Descriptor instead.
+func (*ConfigRejected) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ConfigRejected) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *ConfigRejected) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *ConfigRejected) GetFieldPath() string {
+	if x != nil {
+		return x.FieldPath
+	}
+	return ""
+}
+
+type DesiredStateSnapshot struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Revision      int64                  `protobuf:"varint,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	GeneratedAt   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=generated_at,json=generatedAt,proto3" json:"generated_at,omitempty"`
+	ConfigHash    string                 `protobuf:"bytes,3,opt,name=config_hash,json=configHash,proto3" json:"config_hash,omitempty"`
+	RuntimePolicy *RuntimePolicy         `protobuf:"bytes,4,opt,name=runtime_policy,json=runtimePolicy,proto3" json:"runtime_policy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DesiredStateSnapshot) Reset() {
+	*x = DesiredStateSnapshot{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DesiredStateSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DesiredStateSnapshot) ProtoMessage() {}
+
+func (x *DesiredStateSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DesiredStateSnapshot.ProtoReflect.Descriptor instead.
+func (*DesiredStateSnapshot) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *DesiredStateSnapshot) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *DesiredStateSnapshot) GetGeneratedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.GeneratedAt
+	}
+	return nil
+}
+
+func (x *DesiredStateSnapshot) GetConfigHash() string {
+	if x != nil {
+		return x.ConfigHash
+	}
+	return ""
+}
+
+func (x *DesiredStateSnapshot) GetRuntimePolicy() *RuntimePolicy {
+	if x != nil {
+		return x.RuntimePolicy
+	}
+	return nil
+}
+
+type RuntimePolicy struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	MaxParallelIoJobs uint32                 `protobuf:"varint,1,opt,name=max_parallel_io_jobs,json=maxParallelIoJobs,proto3" json:"max_parallel_io_jobs,omitempty"`
+	LogLimitBytes     uint64                 `protobuf:"varint,2,opt,name=log_limit_bytes,json=logLimitBytes,proto3" json:"log_limit_bytes,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *RuntimePolicy) Reset() {
+	*x = RuntimePolicy{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RuntimePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RuntimePolicy) ProtoMessage() {}
+
+func (x *RuntimePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RuntimePolicy.ProtoReflect.Descriptor instead.
+func (*RuntimePolicy) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *RuntimePolicy) GetMaxParallelIoJobs() uint32 {
+	if x != nil {
+		return x.MaxParallelIoJobs
+	}
+	return 0
+}
+
+func (x *RuntimePolicy) GetLogLimitBytes() uint64 {
+	if x != nil {
+		return x.LogLimitBytes
+	}
+	return 0
+}
+
 var File_restfleet_agent_v1_agent_control_proto protoreflect.FileDescriptor
 
 const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\n" +
-	"&restfleet/agent/v1/agent_control.proto\x12\x12restfleet.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdc\x02\n" +
+	"&restfleet/agent/v1/agent_control.proto\x12\x12restfleet.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8b\x05\n" +
 	"\rAgentToServer\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12)\n" +
@@ -575,8 +1283,12 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\bsequence\x18\x04 \x01(\x04R\bsequence\x121\n" +
 	"\x05hello\x18\n" +
 	" \x01(\v2\x19.restfleet.agent.v1.HelloH\x00R\x05hello\x12r\n" +
-	"\x1ccertificate_rotation_request\x18\v \x01(\v2..restfleet.agent.v1.CertificateRotationRequestH\x00R\x1acertificateRotationRequestB\t\n" +
-	"\apayload\"\xe5\x02\n" +
+	"\x1ccertificate_rotation_request\x18\v \x01(\v2..restfleet.agent.v1.CertificateRotationRequestH\x00R\x1acertificateRotationRequest\x12=\n" +
+	"\theartbeat\x18\f \x01(\v2\x1d.restfleet.agent.v1.HeartbeatH\x00R\theartbeat\x12P\n" +
+	"\x10inventory_report\x18\r \x01(\v2#.restfleet.agent.v1.InventoryReportH\x00R\x0finventoryReport\x12M\n" +
+	"\x0fconfig_accepted\x18\x0e \x01(\v2\".restfleet.agent.v1.ConfigAcceptedH\x00R\x0econfigAccepted\x12M\n" +
+	"\x0fconfig_rejected\x18\x0f \x01(\v2\".restfleet.agent.v1.ConfigRejectedH\x00R\x0econfigRejectedB\t\n" +
+	"\apayload\"\xc7\x03\n" +
 	"\rServerToAgent\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12)\n" +
@@ -585,7 +1297,8 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\bsequence\x18\x04 \x01(\x04R\bsequence\x127\n" +
 	"\awelcome\x18\n" +
 	" \x01(\v2\x1b.restfleet.agent.v1.WelcomeH\x00R\awelcome\x12u\n" +
-	"\x1dcertificate_rotation_response\x18\v \x01(\v2/.restfleet.agent.v1.CertificateRotationResponseH\x00R\x1bcertificateRotationResponseB\t\n" +
+	"\x1dcertificate_rotation_response\x18\v \x01(\v2/.restfleet.agent.v1.CertificateRotationResponseH\x00R\x1bcertificateRotationResponse\x12`\n" +
+	"\x16desired_state_snapshot\x18\f \x01(\v2(.restfleet.agent.v1.DesiredStateSnapshotH\x00R\x14desiredStateSnapshotB\t\n" +
 	"\apayload\"\xcf\x03\n" +
 	"\x05Hello\x12\x1d\n" +
 	"\n" +
@@ -615,7 +1328,67 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x1bCertificateRotationResponse\x12'\n" +
 	"\x0fcertificate_pem\x18\x01 \x01(\tR\x0ecertificatePem\x12\"\n" +
 	"\rca_bundle_pem\x18\x02 \x01(\tR\vcaBundlePem\x127\n" +
-	"\tnot_after\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter2j\n" +
+	"\tnot_after\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\"\xfe\x03\n" +
+	"\tHeartbeat\x12\x17\n" +
+	"\aboot_id\x18\x01 \x01(\tR\x06bootId\x12%\n" +
+	"\x0euptime_seconds\x18\x02 \x01(\x04R\ruptimeSeconds\x12+\n" +
+	"\x11accepted_revision\x18\x03 \x01(\x03R\x10acceptedRevision\x12P\n" +
+	"\x11active_operations\x18\x04 \x03(\v2#.restfleet.agent.v1.ActiveOperationR\x10activeOperations\x128\n" +
+	"\tnext_runs\x18\x05 \x03(\v2\x1b.restfleet.agent.v1.NextRunR\bnextRuns\x12%\n" +
+	"\x0erestic_version\x18\x06 \x01(\tR\rresticVersion\x12(\n" +
+	"\x10state_free_bytes\x18\a \x01(\x04R\x0estateFreeBytes\x12&\n" +
+	"\x0fclock_offset_ms\x18\b \x01(\x12R\rclockOffsetMs\x12D\n" +
+	"\rhealth_checks\x18\t \x03(\v2\x1f.restfleet.agent.v1.HealthCheckR\fhealthChecks\x129\n" +
+	"\n" +
+	"local_time\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tlocalTime\"L\n" +
+	"\x0fActiveOperation\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"a\n" +
+	"\aNextRun\x12\x17\n" +
+	"\aplan_id\x18\x01 \x01(\tR\x06planId\x12=\n" +
+	"\fscheduled_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\vscheduledAt\"Z\n" +
+	"\vHealthCheck\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\ahealthy\x18\x02 \x01(\bR\ahealthy\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x03 \x01(\tR\terrorCode\"\x83\x04\n" +
+	"\x0fInventoryReport\x12;\n" +
+	"\vcaptured_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"capturedAt\x12\x16\n" +
+	"\x06kernel\x18\x02 \x01(\tR\x06kernel\x12\x1d\n" +
+	"\n" +
+	"os_release\x18\x03 \x01(\tR\tosRelease\x12\x19\n" +
+	"\bcpu_arch\x18\x04 \x01(\tR\acpuArch\x12#\n" +
+	"\ragent_version\x18\x05 \x01(\tR\fagentVersion\x12%\n" +
+	"\x0erestic_version\x18\x06 \x01(\tR\rresticVersion\x12$\n" +
+	"\rcontainerized\x18\a \x01(\bR\rcontainerized\x12`\n" +
+	"\x0favailable_bytes\x18\b \x03(\v27.restfleet.agent.v1.InventoryReport.AvailableBytesEntryR\x0eavailableBytes\x12&\n" +
+	"\x0fclock_offset_ms\x18\t \x01(\x12R\rclockOffsetMs\x12\"\n" +
+	"\fcapabilities\x18\n" +
+	" \x03(\tR\fcapabilities\x1aA\n" +
+	"\x13AvailableBytesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\"M\n" +
+	"\x0eConfigAccepted\x12\x1a\n" +
+	"\brevision\x18\x01 \x01(\x03R\brevision\x12\x1f\n" +
+	"\vconfig_hash\x18\x02 \x01(\tR\n" +
+	"configHash\"j\n" +
+	"\x0eConfigRejected\x12\x1a\n" +
+	"\brevision\x18\x01 \x01(\x03R\brevision\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x02 \x01(\tR\terrorCode\x12\x1d\n" +
+	"\n" +
+	"field_path\x18\x03 \x01(\tR\tfieldPath\"\xdc\x01\n" +
+	"\x14DesiredStateSnapshot\x12\x1a\n" +
+	"\brevision\x18\x01 \x01(\x03R\brevision\x12=\n" +
+	"\fgenerated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\vgeneratedAt\x12\x1f\n" +
+	"\vconfig_hash\x18\x03 \x01(\tR\n" +
+	"configHash\x12H\n" +
+	"\x0eruntime_policy\x18\x04 \x01(\v2!.restfleet.agent.v1.RuntimePolicyR\rruntimePolicy\"h\n" +
+	"\rRuntimePolicy\x12/\n" +
+	"\x14max_parallel_io_jobs\x18\x01 \x01(\rR\x11maxParallelIoJobs\x12&\n" +
+	"\x0flog_limit_bytes\x18\x02 \x01(\x04R\rlogLimitBytes2j\n" +
 	"\x13AgentControlService\x12S\n" +
 	"\aConnect\x12!.restfleet.agent.v1.AgentToServer\x1a!.restfleet.agent.v1.ServerToAgent(\x010\x01BJZHgithub.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1;agentv1b\x06proto3"
 
@@ -631,7 +1404,7 @@ func file_restfleet_agent_v1_agent_control_proto_rawDescGZIP() []byte {
 	return file_restfleet_agent_v1_agent_control_proto_rawDescData
 }
 
-var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_restfleet_agent_v1_agent_control_proto_goTypes = []any{
 	(*AgentToServer)(nil),               // 0: restfleet.agent.v1.AgentToServer
 	(*ServerToAgent)(nil),               // 1: restfleet.agent.v1.ServerToAgent
@@ -639,26 +1412,50 @@ var file_restfleet_agent_v1_agent_control_proto_goTypes = []any{
 	(*Welcome)(nil),                     // 3: restfleet.agent.v1.Welcome
 	(*CertificateRotationRequest)(nil),  // 4: restfleet.agent.v1.CertificateRotationRequest
 	(*CertificateRotationResponse)(nil), // 5: restfleet.agent.v1.CertificateRotationResponse
-	(*timestamppb.Timestamp)(nil),       // 6: google.protobuf.Timestamp
+	(*Heartbeat)(nil),                   // 6: restfleet.agent.v1.Heartbeat
+	(*ActiveOperation)(nil),             // 7: restfleet.agent.v1.ActiveOperation
+	(*NextRun)(nil),                     // 8: restfleet.agent.v1.NextRun
+	(*HealthCheck)(nil),                 // 9: restfleet.agent.v1.HealthCheck
+	(*InventoryReport)(nil),             // 10: restfleet.agent.v1.InventoryReport
+	(*ConfigAccepted)(nil),              // 11: restfleet.agent.v1.ConfigAccepted
+	(*ConfigRejected)(nil),              // 12: restfleet.agent.v1.ConfigRejected
+	(*DesiredStateSnapshot)(nil),        // 13: restfleet.agent.v1.DesiredStateSnapshot
+	(*RuntimePolicy)(nil),               // 14: restfleet.agent.v1.RuntimePolicy
+	nil,                                 // 15: restfleet.agent.v1.InventoryReport.AvailableBytesEntry
+	(*timestamppb.Timestamp)(nil),       // 16: google.protobuf.Timestamp
 }
 var file_restfleet_agent_v1_agent_control_proto_depIdxs = []int32{
-	6,  // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
+	16, // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
 	2,  // 1: restfleet.agent.v1.AgentToServer.hello:type_name -> restfleet.agent.v1.Hello
 	4,  // 2: restfleet.agent.v1.AgentToServer.certificate_rotation_request:type_name -> restfleet.agent.v1.CertificateRotationRequest
-	6,  // 3: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
-	3,  // 4: restfleet.agent.v1.ServerToAgent.welcome:type_name -> restfleet.agent.v1.Welcome
-	5,  // 5: restfleet.agent.v1.ServerToAgent.certificate_rotation_response:type_name -> restfleet.agent.v1.CertificateRotationResponse
-	6,  // 6: restfleet.agent.v1.Hello.local_time:type_name -> google.protobuf.Timestamp
-	6,  // 7: restfleet.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
-	6,  // 8: restfleet.agent.v1.Welcome.drain_deadline:type_name -> google.protobuf.Timestamp
-	6,  // 9: restfleet.agent.v1.CertificateRotationResponse.not_after:type_name -> google.protobuf.Timestamp
-	0,  // 10: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
-	1,  // 11: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
-	11, // [11:12] is the sub-list for method output_type
-	10, // [10:11] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	6,  // 3: restfleet.agent.v1.AgentToServer.heartbeat:type_name -> restfleet.agent.v1.Heartbeat
+	10, // 4: restfleet.agent.v1.AgentToServer.inventory_report:type_name -> restfleet.agent.v1.InventoryReport
+	11, // 5: restfleet.agent.v1.AgentToServer.config_accepted:type_name -> restfleet.agent.v1.ConfigAccepted
+	12, // 6: restfleet.agent.v1.AgentToServer.config_rejected:type_name -> restfleet.agent.v1.ConfigRejected
+	16, // 7: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
+	3,  // 8: restfleet.agent.v1.ServerToAgent.welcome:type_name -> restfleet.agent.v1.Welcome
+	5,  // 9: restfleet.agent.v1.ServerToAgent.certificate_rotation_response:type_name -> restfleet.agent.v1.CertificateRotationResponse
+	13, // 10: restfleet.agent.v1.ServerToAgent.desired_state_snapshot:type_name -> restfleet.agent.v1.DesiredStateSnapshot
+	16, // 11: restfleet.agent.v1.Hello.local_time:type_name -> google.protobuf.Timestamp
+	16, // 12: restfleet.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
+	16, // 13: restfleet.agent.v1.Welcome.drain_deadline:type_name -> google.protobuf.Timestamp
+	16, // 14: restfleet.agent.v1.CertificateRotationResponse.not_after:type_name -> google.protobuf.Timestamp
+	7,  // 15: restfleet.agent.v1.Heartbeat.active_operations:type_name -> restfleet.agent.v1.ActiveOperation
+	8,  // 16: restfleet.agent.v1.Heartbeat.next_runs:type_name -> restfleet.agent.v1.NextRun
+	9,  // 17: restfleet.agent.v1.Heartbeat.health_checks:type_name -> restfleet.agent.v1.HealthCheck
+	16, // 18: restfleet.agent.v1.Heartbeat.local_time:type_name -> google.protobuf.Timestamp
+	16, // 19: restfleet.agent.v1.NextRun.scheduled_at:type_name -> google.protobuf.Timestamp
+	16, // 20: restfleet.agent.v1.InventoryReport.captured_at:type_name -> google.protobuf.Timestamp
+	15, // 21: restfleet.agent.v1.InventoryReport.available_bytes:type_name -> restfleet.agent.v1.InventoryReport.AvailableBytesEntry
+	16, // 22: restfleet.agent.v1.DesiredStateSnapshot.generated_at:type_name -> google.protobuf.Timestamp
+	14, // 23: restfleet.agent.v1.DesiredStateSnapshot.runtime_policy:type_name -> restfleet.agent.v1.RuntimePolicy
+	0,  // 24: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
+	1,  // 25: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
+	25, // [25:26] is the sub-list for method output_type
+	24, // [24:25] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_restfleet_agent_v1_agent_control_proto_init() }
@@ -669,10 +1466,15 @@ func file_restfleet_agent_v1_agent_control_proto_init() {
 	file_restfleet_agent_v1_agent_control_proto_msgTypes[0].OneofWrappers = []any{
 		(*AgentToServer_Hello)(nil),
 		(*AgentToServer_CertificateRotationRequest)(nil),
+		(*AgentToServer_Heartbeat)(nil),
+		(*AgentToServer_InventoryReport)(nil),
+		(*AgentToServer_ConfigAccepted)(nil),
+		(*AgentToServer_ConfigRejected)(nil),
 	}
 	file_restfleet_agent_v1_agent_control_proto_msgTypes[1].OneofWrappers = []any{
 		(*ServerToAgent_Welcome)(nil),
 		(*ServerToAgent_CertificateRotationResponse)(nil),
+		(*ServerToAgent_DesiredStateSnapshot)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -680,7 +1482,7 @@ func file_restfleet_agent_v1_agent_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_restfleet_agent_v1_agent_control_proto_rawDesc), len(file_restfleet_agent_v1_agent_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

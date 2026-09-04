@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +32,7 @@ type Service struct {
 	control          *control.ControlPlane
 	caBundlePEM      []byte
 	heartbeatSeconds uint32
+	observeHeartbeat func(string)
 	mu               sync.Mutex
 	connections      map[uuid.UUID]map[chan struct{}]struct{}
 }
@@ -45,6 +45,10 @@ func New(controlPlane *control.ControlPlane, caBundlePEM []byte, heartbeat time.
 	}
 }
 
+func (s *Service) SetHeartbeatObserver(observe func(string)) {
+	s.observeHeartbeat = observe
+}
+
 func (s *Service) DisconnectAgent(agentID uuid.UUID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -52,106 +56,6 @@ func (s *Service) DisconnectAgent(agentID uuid.UUID) {
 		close(revoked)
 	}
 	delete(s.connections, agentID)
-}
-
-func (s *Service) Connect(
-	stream agentv1.AgentControlService_ConnectServer,
-) error {
-	certificate, meta, err := peerCertificate(stream.Context())
-	if err != nil {
-		return s.denied(stream.Context(), "MTLS_IDENTITY_INVALID", meta, codes.Unauthenticated, "valid Agent client certificate required")
-	}
-	agentID, err := security.AgentIDFromCertificate(certificate)
-	if err != nil {
-		return s.denied(stream.Context(), "CERTIFICATE_IDENTITY_INVALID", meta, codes.Unauthenticated, "valid Agent identity required")
-	}
-	serial := strings.ToUpper(certificate.SerialNumber.Text(16))
-	agent, err := s.control.AgentByCertificate(stream.Context(), agentID, serial, time.Now().UTC())
-	if err != nil {
-		return s.denied(stream.Context(), "AGENT_REVOKED_OR_CERTIFICATE_INVALID", meta, codes.PermissionDenied, "Agent identity is not active")
-	}
-
-	revoked := s.register(agentID)
-	defer s.unregister(agentID, revoked)
-	received := receive(stream)
-	first, err := waitForMessage(stream, received, revoked)
-	if err != nil {
-		return err
-	}
-	hello := first.GetHello()
-	if hello == nil {
-		return status.Error(codes.InvalidArgument, "Hello must be the first message")
-	}
-	if err := validateEnvelope(first.GetMessageId(), first.GetProtocolVersion(), first.GetSentAt()); err != nil {
-		return status.Error(codes.InvalidArgument, "invalid message envelope")
-	}
-	installID, err := uuid.Parse(hello.GetInstallId())
-	if err != nil || installID != agent.InstallID {
-		return s.denied(stream.Context(), "INSTALL_ID_MISMATCH", meta, codes.PermissionDenied, "Agent identity mismatch")
-	}
-	selected := selectProtocol(hello.GetSupportedProtocolVersions())
-	if selected == "" || len(hello.GetPendingResultIds()) > maxPendingResults {
-		return status.Error(codes.FailedPrecondition, "Agent protocol is incompatible")
-	}
-	if err := s.control.MarkAgentConnected(
-		stream.Context(), agentID, installID, hello.GetAgentVersion(), selected,
-		agent.Hostname, hello.GetBootId(), hello.GetResticVersion(),
-	); err != nil {
-		return status.Error(codes.PermissionDenied, "Agent identity is not active")
-	}
-	connectionID, err := uuid.NewV7()
-	if err != nil {
-		return status.Error(codes.Internal, "connection initialization failed")
-	}
-	if err := stream.Send(&agentv1.ServerToAgent{
-		MessageId:       newMessageID(),
-		ProtocolVersion: selected,
-		SentAt:          timestamppb.Now(),
-		Sequence:        1,
-		Payload: &agentv1.ServerToAgent_Welcome{Welcome: &agentv1.Welcome{
-			ConnectionId: connectionID.String(), SelectedProtocolVersion: selected,
-			ServerTime: timestamppb.Now(), HeartbeatIntervalSeconds: s.heartbeatSeconds,
-			DesiredConfigRevision: agent.DesiredRevision, MinimumAgentVersion: "0.1.0",
-		}},
-	}); err != nil {
-		return err
-	}
-
-	message, err := waitForMessage(stream, received, revoked)
-	if err != nil {
-		return err
-	}
-	if err := validateEnvelope(message.GetMessageId(), message.GetProtocolVersion(), message.GetSentAt()); err != nil {
-		return status.Error(codes.InvalidArgument, "invalid message envelope")
-	}
-	rotation := message.GetCertificateRotationRequest()
-	if rotation == nil {
-		return status.Error(codes.InvalidArgument, "unsupported Agent message")
-	}
-	meta.RequestID, _ = uuid.Parse(message.GetMessageId())
-	issued, err := s.control.RotateAgentCertificate(
-		stream.Context(), agentID, serial, []byte(rotation.GetCsrPem()), meta,
-	)
-	if errors.Is(err, control.ErrInvalidEnrollment) {
-		return status.Error(codes.InvalidArgument, "invalid certificate rotation request")
-	}
-	if err != nil {
-		return status.Error(codes.PermissionDenied, "certificate rotation denied")
-	}
-	if err := stream.Send(&agentv1.ServerToAgent{
-		MessageId: newMessageID(), ProtocolVersion: selected,
-		SentAt: timestamppb.Now(), Sequence: message.GetSequence() + 1,
-		Payload: &agentv1.ServerToAgent_CertificateRotationResponse{
-			CertificateRotationResponse: &agentv1.CertificateRotationResponse{
-				CertificatePem: string(issued.CertificatePEM),
-				CaBundlePem:    string(s.caBundlePEM),
-				NotAfter:       timestamppb.New(issued.NotAfter),
-			},
-		},
-	}); err != nil {
-		return err
-	}
-	return nil
 }
 
 type receiveResult struct {

@@ -51,9 +51,17 @@ type Store interface {
 	RevokeEnrollmentToken(context.Context, uuid.UUID, time.Time, domain.AuditEvent) error
 	ConsumeEnrollmentToken(context.Context, []byte, time.Time, domain.EnrollmentIssuer) (domain.EnrollmentMaterial, error)
 	AgentsForHost(context.Context, uuid.UUID) ([]domain.Agent, error)
+	Agents(context.Context) ([]domain.Agent, error)
 	Agent(context.Context, uuid.UUID) (domain.Agent, error)
 	AgentByCertificate(context.Context, uuid.UUID, string, time.Time) (domain.Agent, error)
-	MarkAgentConnected(context.Context, uuid.UUID, uuid.UUID, string, string, string, string, string, time.Time) error
+	MarkAgentConnected(context.Context, uuid.UUID, uuid.UUID, string, string, string, string, string, int64, time.Time) (domain.Agent, error)
+	DesiredState(context.Context, uuid.UUID) (domain.DesiredState, error)
+	MarkDesiredStatePublished(context.Context, uuid.UUID, int64, time.Time) error
+	RecordAgentHeartbeat(context.Context, domain.AgentHeartbeat) (domain.Agent, error)
+	RecordAgentInventory(context.Context, domain.AgentInventory) error
+	LatestAgentInventory(context.Context, uuid.UUID) (domain.AgentInventory, error)
+	AcceptAgentConfig(context.Context, uuid.UUID, domain.AgentConfigResult, time.Time) error
+	RejectAgentConfig(context.Context, uuid.UUID, domain.AgentConfigResult, time.Time) error
 	RevokeAgent(context.Context, uuid.UUID, string, time.Time, domain.AuditEvent) (domain.Agent, error)
 	RotateAgentCertificate(context.Context, uuid.UUID, string, domain.AgentCertificate, time.Time, time.Time, domain.AuditEvent) error
 	AgentCA(context.Context) (domain.AgentCARecord, error)
@@ -117,7 +125,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		settings.PasswordParams = security.DefaultArgon2Params
 	}
 	if settings.ExpectedSchema == 0 {
-		settings.ExpectedSchema = 3
+		settings.ExpectedSchema = 4
 	}
 	if settings.Enrollment.HeartbeatInterval == 0 {
 		settings.Enrollment.HeartbeatInterval = 15 * time.Second

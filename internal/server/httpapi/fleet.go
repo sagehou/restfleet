@@ -159,6 +159,18 @@ func (a *API) ListHostAgents(w http.ResponseWriter, r *http.Request, hostID Host
 	a.json(w, http.StatusOK, AgentList{Items: items})
 }
 
+func (a *API) GetHostInventory(w http.ResponseWriter, r *http.Request, hostID HostId) {
+	if _, ok := a.authorizeRead(w, r); !ok {
+		return
+	}
+	inventory, err := a.control.LatestAgentInventory(r.Context(), hostID)
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	a.json(w, http.StatusOK, agentInventoryResponse(inventory))
+}
+
 func (a *API) GetAgent(w http.ResponseWriter, r *http.Request, agentID AgentId) {
 	if _, ok := a.authorizeRead(w, r); !ok {
 		return
@@ -376,12 +388,16 @@ func agentResponse(agent domain.Agent) Agent {
 		PublicKeyFingerprint: agent.PublicKeyFingerprint,
 		CertificateSerial:    agent.CertificateSerial,
 		CertificateNotAfter:  agent.CertificateNotAfter,
-		Status:               AgentStatus(agent.Status), Version: agent.Version,
-		ProtocolVersion: agent.ProtocolVersion, Os: agent.OS, Arch: agent.Arch,
-		Hostname: agent.Hostname, DesiredRevision: agent.DesiredRevision,
-		AcceptedRevision: agent.AcceptedRevision, CreatedAt: agent.CreatedAt,
-		UpdatedAt: agent.UpdatedAt, LastSeenAt: agent.LastSeenAt,
-		LastConnectedAt: agent.LastConnectedAt,
+		Status:               AgentStatus(agent.Status), Health: AgentHealth(agent.Health),
+		Version: agent.Version, ProtocolVersion: agent.ProtocolVersion,
+		Os: agent.OS, Arch: agent.Arch, Hostname: agent.Hostname,
+		DesiredRevision: agent.DesiredRevision, AcceptedRevision: agent.AcceptedRevision,
+		UptimeSeconds: agent.UptimeSeconds, StateFreeBytes: agent.StateFreeBytes,
+		ClockOffsetMs:      agent.ClockOffsetMS,
+		HeartbeatErrorCode: agent.HeartbeatErrorCode,
+		ConfigErrorCode:    agent.ConfigErrorCode, ConfigErrorField: agent.ConfigErrorField,
+		CreatedAt: agent.CreatedAt, UpdatedAt: agent.UpdatedAt,
+		LastSeenAt: agent.LastSeenAt, LastConnectedAt: agent.LastConnectedAt,
 	}
 	if agent.BootID != "" {
 		response.BootId = &agent.BootID
@@ -390,6 +406,22 @@ func agentResponse(agent domain.Agent) Agent {
 		response.ResticVersion = &agent.ResticVersion
 	}
 	return response
+}
+
+func agentInventoryResponse(inventory domain.AgentInventory) AgentInventory {
+	available := make(map[string]int64, len(inventory.AvailableBytes))
+	for name, value := range inventory.AvailableBytes {
+		available[name] = int64(value)
+	}
+	return AgentInventory{
+		Id: inventory.ID, AgentId: inventory.AgentID, CapturedAt: inventory.CapturedAt,
+		Kernel: inventory.Kernel, OsRelease: inventory.OSRelease,
+		CpuArch:      AgentInventoryCpuArch(inventory.CPUArch),
+		AgentVersion: inventory.AgentVersion, ResticVersion: inventory.ResticVersion,
+		Containerized: inventory.Containerized, AvailableBytes: available,
+		ClockOffsetMs: inventory.ClockOffsetMS,
+		Capabilities:  append([]string(nil), inventory.Capabilities...),
+	}
 }
 
 func enrollmentTokenResponse(token domain.EnrollmentToken, now time.Time) EnrollmentToken {

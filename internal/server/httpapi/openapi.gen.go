@@ -14,6 +14,30 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AgentHealth.
+const (
+	AgentHealthDEGRADED AgentHealth = "DEGRADED"
+	AgentHealthOFFLINE  AgentHealth = "OFFLINE"
+	AgentHealthONLINE   AgentHealth = "ONLINE"
+	AgentHealthREVOKED  AgentHealth = "REVOKED"
+)
+
+// Valid indicates whether the value is a known member of the AgentHealth enum.
+func (e AgentHealth) Valid() bool {
+	switch e {
+	case AgentHealthDEGRADED:
+		return true
+	case AgentHealthOFFLINE:
+		return true
+	case AgentHealthONLINE:
+		return true
+	case AgentHealthREVOKED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentStatus.
 const (
 	AgentStatusACTIVE  AgentStatus = "ACTIVE"
@@ -34,16 +58,16 @@ func (e AgentStatus) Valid() bool {
 
 // Defines values for AgentEnrollmentRequestArch.
 const (
-	Amd64 AgentEnrollmentRequestArch = "amd64"
-	Arm64 AgentEnrollmentRequestArch = "arm64"
+	AgentEnrollmentRequestArchAmd64 AgentEnrollmentRequestArch = "amd64"
+	AgentEnrollmentRequestArchArm64 AgentEnrollmentRequestArch = "arm64"
 )
 
 // Valid indicates whether the value is a known member of the AgentEnrollmentRequestArch enum.
 func (e AgentEnrollmentRequestArch) Valid() bool {
 	switch e {
-	case Amd64:
+	case AgentEnrollmentRequestArchAmd64:
 		return true
-	case Arm64:
+	case AgentEnrollmentRequestArchArm64:
 		return true
 	default:
 		return false
@@ -59,6 +83,24 @@ const (
 func (e AgentEnrollmentRequestOs) Valid() bool {
 	switch e {
 	case Linux:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentInventoryCpuArch.
+const (
+	AgentInventoryCpuArchAmd64 AgentInventoryCpuArch = "amd64"
+	AgentInventoryCpuArchArm64 AgentInventoryCpuArch = "arm64"
+)
+
+// Valid indicates whether the value is a known member of the AgentInventoryCpuArch enum.
+func (e AgentInventoryCpuArch) Valid() bool {
+	switch e {
+	case AgentInventoryCpuArchAmd64:
+		return true
+	case AgentInventoryCpuArchArm64:
 		return true
 	default:
 		return false
@@ -156,8 +198,13 @@ type Agent struct {
 	BootId               *string            `json:"boot_id,omitempty"`
 	CertificateNotAfter  time.Time          `json:"certificate_not_after"`
 	CertificateSerial    string             `json:"certificate_serial"`
+	ClockOffsetMs        int64              `json:"clock_offset_ms"`
+	ConfigErrorCode      string             `json:"config_error_code"`
+	ConfigErrorField     string             `json:"config_error_field"`
 	CreatedAt            time.Time          `json:"created_at"`
 	DesiredRevision      int64              `json:"desired_revision"`
+	Health               AgentHealth        `json:"health"`
+	HeartbeatErrorCode   string             `json:"heartbeat_error_code"`
 	HostId               openapi_types.UUID `json:"host_id"`
 	Hostname             string             `json:"hostname"`
 	Id                   openapi_types.UUID `json:"id"`
@@ -168,10 +215,15 @@ type Agent struct {
 	ProtocolVersion      string             `json:"protocol_version"`
 	PublicKeyFingerprint string             `json:"public_key_fingerprint"`
 	ResticVersion        *string            `json:"restic_version,omitempty"`
+	StateFreeBytes       int64              `json:"state_free_bytes"`
 	Status               AgentStatus        `json:"status"`
 	UpdatedAt            time.Time          `json:"updated_at"`
+	UptimeSeconds        int64              `json:"uptime_seconds"`
 	Version              string             `json:"version"`
 }
+
+// AgentHealth defines model for Agent.Health.
+type AgentHealth string
 
 // AgentStatus defines model for Agent.Status.
 type AgentStatus string
@@ -207,6 +259,25 @@ type AgentEnrollmentResponse struct {
 	ServerName               string             `json:"server_name"`
 }
 
+// AgentInventory defines model for AgentInventory.
+type AgentInventory struct {
+	AgentId        openapi_types.UUID    `json:"agent_id"`
+	AgentVersion   string                `json:"agent_version"`
+	AvailableBytes map[string]int64      `json:"available_bytes"`
+	Capabilities   []string              `json:"capabilities"`
+	CapturedAt     time.Time             `json:"captured_at"`
+	ClockOffsetMs  int64                 `json:"clock_offset_ms"`
+	Containerized  bool                  `json:"containerized"`
+	CpuArch        AgentInventoryCpuArch `json:"cpu_arch"`
+	Id             openapi_types.UUID    `json:"id"`
+	Kernel         string                `json:"kernel"`
+	OsRelease      string                `json:"os_release"`
+	ResticVersion  string                `json:"restic_version"`
+}
+
+// AgentInventoryCpuArch defines model for AgentInventory.CpuArch.
+type AgentInventoryCpuArch string
+
 // AgentList defines model for AgentList.
 type AgentList struct {
 	Items []Agent `json:"items"`
@@ -231,11 +302,14 @@ type BootstrapStatus struct {
 
 // DashboardSummary defines model for DashboardSummary.
 type DashboardSummary struct {
-	CollectedAt  time.Time `json:"collected_at"`
-	Hosts        int64     `json:"hosts"`
-	Operations   int64     `json:"operations"`
-	Plans        int64     `json:"plans"`
-	Repositories int64     `json:"repositories"`
+	AgentsDegraded int64     `json:"agents_degraded"`
+	AgentsOffline  int64     `json:"agents_offline"`
+	AgentsOnline   int64     `json:"agents_online"`
+	CollectedAt    time.Time `json:"collected_at"`
+	Hosts          int64     `json:"hosts"`
+	Operations     int64     `json:"operations"`
+	Plans          int64     `json:"plans"`
+	Repositories   int64     `json:"repositories"`
 }
 
 // EnrollmentInstall defines model for EnrollmentInstall.
@@ -522,6 +596,9 @@ type ServerInterface interface {
 
 	// (POST /api/v1/hosts/{host_id}/enrollment-tokens)
 	CreateEnrollmentToken(w http.ResponseWriter, r *http.Request, hostId HostId, params CreateEnrollmentTokenParams)
+
+	// (GET /api/v1/hosts/{host_id}/inventory)
+	GetHostInventory(w http.ResponseWriter, r *http.Request, hostId HostId)
 
 	// (GET /api/v1/version)
 	Version(w http.ResponseWriter, r *http.Request)
@@ -1281,6 +1358,32 @@ func (siw *ServerInterfaceWrapper) CreateEnrollmentToken(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetHostInventory operation middleware
+func (siw *ServerInterfaceWrapper) GetHostInventory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "host_id" -------------
+	var hostId HostId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "host_id", r.PathValue("host_id"), &hostId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHostInventory(w, r, hostId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Version operation middleware
 func (siw *ServerInterfaceWrapper) Version(w http.ResponseWriter, r *http.Request) {
 
@@ -1459,6 +1562,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/hosts/{host_id}/disable", wrapper.DisableHost)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/hosts/{host_id}/enable", wrapper.EnableHost)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/hosts/{host_id}/agents", wrapper.ListHostAgents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/hosts/{host_id}/inventory", wrapper.GetHostInventory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/hosts/{host_id}/enrollment-tokens", wrapper.ListEnrollmentTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/hosts/{host_id}/enrollment-tokens", wrapper.CreateEnrollmentToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/enrollment-tokens/{token_id}", wrapper.RevokeEnrollmentToken)

@@ -10,9 +10,11 @@ import (
 )
 
 type Metrics struct {
-	registry *prometheus.Registry
-	requests *prometheus.CounterVec
-	duration *prometheus.HistogramVec
+	registry   *prometheus.Registry
+	requests   *prometheus.CounterVec
+	duration   *prometheus.HistogramVec
+	heartbeats *prometheus.CounterVec
+	agents     *prometheus.GaugeVec
 }
 
 func NewMetrics() *Metrics {
@@ -26,8 +28,19 @@ func NewMetrics() *Metrics {
 		Help:    "HTTP request duration by route and method.",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"route", "method"})
-	registry.MustRegister(requests, duration)
-	return &Metrics{registry: registry, requests: requests, duration: duration}
+	heartbeats := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "restfleet_agent_heartbeats_total",
+		Help: "Agent heartbeat messages by bounded processing result.",
+	}, []string{"result"})
+	agents := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "restfleet_agents",
+		Help: "Current active Agent identities by derived health.",
+	}, []string{"health"})
+	registry.MustRegister(requests, duration, heartbeats, agents)
+	return &Metrics{
+		registry: registry, requests: requests, duration: duration,
+		heartbeats: heartbeats, agents: agents,
+	}
 }
 
 func (m *Metrics) Handler() http.Handler {
@@ -38,4 +51,14 @@ func (m *Metrics) observe(route, method string, status int, duration time.Durati
 	statusClass := strconv.Itoa(status/100) + "xx"
 	m.requests.WithLabelValues(route, method, statusClass).Inc()
 	m.duration.WithLabelValues(route, method).Observe(duration.Seconds())
+}
+
+func (m *Metrics) observeAgentHeartbeat(result string) {
+	m.heartbeats.WithLabelValues(result).Inc()
+}
+
+func (m *Metrics) setAgentHealth(online, degraded, offline int) {
+	m.agents.WithLabelValues("online").Set(float64(online))
+	m.agents.WithLabelValues("degraded").Set(float64(degraded))
+	m.agents.WithLabelValues("offline").Set(float64(offline))
 }

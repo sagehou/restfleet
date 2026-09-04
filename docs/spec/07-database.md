@@ -126,20 +126,28 @@ create table agents (
   hostname text not null,
   boot_id text,
   restic_version text,
+  uptime_seconds bigint not null default 0,
+  state_free_bytes bigint not null default 0,
+  clock_offset_ms bigint not null default 0,
   last_seen_at timestamptz,
   last_connected_at timestamptz,
   desired_revision bigint not null default 0,
   accepted_revision bigint not null default 0,
-  last_error_code text,
-  last_error_at timestamptz,
+  heartbeat_error_code text not null default '',
+  config_error_code text not null default '',
+  config_error_field text not null default '',
   created_at timestamptz not null,
   updated_at timestamptz not null,
-  check (status in ('PENDING','ACTIVE','DEGRADED','OFFLINE','DISABLED','REVOKED')),
+  check (status in ('ACTIVE','REVOKED')),
   check (accepted_revision <= desired_revision)
 );
 ```
 
-Partial unique index：每个 Host 最多一个 `status in ('ACTIVE','DEGRADED','OFFLINE')` Agent。
+Partial unique index：每个 Host 最多一个 `status = 'ACTIVE'` Agent。运行 health 不持久化，并按 ADR-0006 在读取时推导。
+
+`agent_desired_states` MUST 以 `(agent_id, revision)` 为主键保存完整规范化 `config_json` 与 `config_hash`。创建或改变 desired revision 的事务 MUST 同时写 `outbox_events`。
+
+`agent_inventories` MUST 保存不可变快照，并在 `(agent_id, captured_at desc)` 上建立索引。清单字段和 JSON map/array MUST 有长度、类型和枚举边界；不得包含环境变量、用户列表、进程列表或文件名。
 
 ### 5.3 secrets
 

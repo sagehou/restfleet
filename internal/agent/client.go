@@ -3,7 +3,6 @@ package agent
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -19,9 +18,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
 	"github.com/sagehou/restfleet/internal/security"
@@ -185,125 +181,6 @@ func Run(ctx context.Context, state *State, config RunConfig) error {
 			}
 		}
 	}
-}
-
-func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, error) {
-	identity, err := LoadIdentity(state)
-	if err != nil {
-		return false, err
-	}
-	installID, err := state.InstallID()
-	if err != nil {
-		return false, err
-	}
-	certificate, roots, err := TLSIdentity(state, identity)
-	if err != nil {
-		return false, err
-	}
-	connection, err := grpc.NewClient(identity.GRPCEndpoint, grpc.WithTransportCredentials(
-		credentials.NewTLS(&tls.Config{
-			MinVersion: tls.VersionTLS12, ServerName: identity.ServerName,
-			RootCAs: roots, Certificates: []tls.Certificate{certificate},
-		}),
-	), grpc.WithDefaultCallOptions(
-		grpc.MaxCallRecvMsgSize(maxEnrollmentResponse), grpc.MaxCallSendMsgSize(maxEnrollmentResponse),
-	))
-	if err != nil {
-		return false, err
-	}
-	defer connection.Close()
-	stream, err := agentv1.NewAgentControlServiceClient(connection).Connect(ctx)
-	if err != nil {
-		return false, err
-	}
-	messageID, err := uuid.NewV7()
-	if err != nil {
-		return false, err
-	}
-	if err := stream.Send(&agentv1.AgentToServer{
-		MessageId: messageID.String(), ProtocolVersion: "1.0",
-		SentAt: timestamppb.Now(), Sequence: 1,
-		Payload: &agentv1.AgentToServer_Hello{Hello: &agentv1.Hello{
-			InstallId: installID.String(), BootId: readBootID(), AgentVersion: config.Version,
-			SupportedProtocolVersions: []string{"1.0", "0.9"},
-			Capabilities:              []string{"certificate_rotation_v1"},
-			LocalTime:                 timestamppb.Now(),
-		}},
-	}); err != nil {
-		return false, err
-	}
-	response, err := stream.Recv()
-	if err != nil {
-		return false, err
-	}
-	if response.GetWelcome() == nil {
-		return false, errors.New("server did not send Welcome")
-	}
-
-	rotateAt := identity.NotAfter.Add(-rotationWindow)
-	delay := time.Until(rotateAt)
-	if delay < 0 {
-		delay = 0
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	incoming := make(chan serverReceive, 1)
-	go func() {
-		message, err := stream.Recv()
-		incoming <- serverReceive{message: message, err: err}
-	}()
-	select {
-	case <-ctx.Done():
-		return true, nil
-	case result := <-incoming:
-		if result.err == nil {
-			result.err = errors.New("unexpected Server message")
-		}
-		return true, result.err
-	case <-timer.C:
-	}
-	privateKey, err := LoadOrCreatePrivateKey(state)
-	if err != nil {
-		return true, err
-	}
-	if err := sendRotation(stream, privateKey); err != nil {
-		return true, err
-	}
-	select {
-	case <-ctx.Done():
-		return true, nil
-	case result := <-incoming:
-		if result.err != nil {
-			return true, result.err
-		}
-		return true, saveRotation(state, identity, result.message)
-	}
-}
-
-type serverReceive struct {
-	message *agentv1.ServerToAgent
-	err     error
-}
-
-func sendRotation(
-	stream agentv1.AgentControlService_ConnectClient,
-	privateKey ed25519.PrivateKey,
-) error {
-	csr, err := CreateCSR(privateKey)
-	if err != nil {
-		return err
-	}
-	messageID, err := uuid.NewV7()
-	if err != nil {
-		return err
-	}
-	return stream.Send(&agentv1.AgentToServer{
-		MessageId: messageID.String(), ProtocolVersion: "1.0",
-		SentAt: timestamppb.Now(), Sequence: 2,
-		Payload: &agentv1.AgentToServer_CertificateRotationRequest{
-			CertificateRotationRequest: &agentv1.CertificateRotationRequest{CsrPem: string(csr)},
-		},
-	})
 }
 
 func saveRotation(state *State, identity Identity, response *agentv1.ServerToAgent) error {
