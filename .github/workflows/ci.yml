@@ -42,7 +42,7 @@ jobs:
         run: |
           docker compose -f deploy/compose/compose.yaml config --quiet
           docker compose -f deploy/compose/compose.yaml -f deploy/compose/compose.bootstrap.yaml config --quiet
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: 1.27.1
           cache: true
