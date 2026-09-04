@@ -17,7 +17,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -26,7 +27,8 @@ button {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 3px solid rgb(14 116 144 / 30%);
   outline-offset: 2px;
 }
@@ -100,7 +102,8 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   padding: 0.72rem 0.8rem;
   border: 1px solid #b8c5cc;
@@ -313,6 +316,129 @@ nav {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.table-wrap {
+  margin-top: 2rem;
+  overflow-x: auto;
+  border: 1px solid #d7e0e4;
+  border-radius: 0.8rem;
+  background: #fff;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid #e5ebee;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: #60727c;
+  background: #f8fafb;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+.table-link,
+.text-dark-button {
+  padding: 0;
+  border: 0;
+  color: #0e7490;
+  background: transparent;
+  font-weight: 800;
+}
+
+.wizard {
+  max-width: 56rem;
+  margin-top: 2rem;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid #cbd8de;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 0.7rem 2rem rgb(21 50 62 / 7%);
+}
+
+.wizard-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wizard form {
+  max-width: 40rem;
+}
+
+.secret-panel {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.warning-text {
+  padding: 0.8rem 1rem;
+  border-left: 4px solid #b45309;
+  color: #78350f;
+  background: #fffbeb;
+}
+
+.secret-code,
+.command-code {
+  display: block;
+  padding: 0.8rem;
+  overflow-x: auto;
+  border-radius: 0.45rem;
+  color: #dff8ff;
+  background: #0b2c38;
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.status-badge {
+  display: inline-flex;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  color: #344a55;
+  background: #e9eff2;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.status-active {
+  color: #065f46;
+  background: #d1fae5;
+}
+
+.status-disabled,
+.status-revoked {
+  color: #7a271a;
+  background: #fee4e2;
+}
+
+.status-pending {
+  color: #854d0e;
+  background: #fef3c7;
+}
+
+.section-title {
+  margin-top: 2rem;
+}
+
+.compact-list {
+  margin-top: 0;
 }
 
 @media (max-width: 800px) {

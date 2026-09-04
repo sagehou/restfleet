@@ -39,7 +39,7 @@ cp .env.example .env
 docker compose -f compose.yaml -f compose.bootstrap.yaml up --build
 ```
 
-Bootstrap token 仅在首次初始化时从本机 `secrets/bootstrap-token` 读取，不应复制到日志或命令参数。在 Web 中创建首个管理员后，MUST 停止开发栈、删除 `secrets/bootstrap-token`，并只用 `docker compose up --build` 重启；数据库中的 bootstrap 状态会保持永久关闭。公开 HTTP 默认监听 `:8080`，Compose 默认只绑定到宿主机 loopback。
+Bootstrap token 仅在首次初始化时从本机 `secrets/bootstrap-token` 读取，不应复制到日志或命令参数。在 Web 中创建首个管理员后，MUST 停止开发栈、删除 `secrets/bootstrap-token`，并只用 `docker compose up --build` 重启；数据库中的 bootstrap 状态会保持永久关闭。启用 Agent enrollment 后，Web/API 默认使用开发自签名证书监听 `https://localhost:8080`，Agent gRPC 监听 `localhost:8443`；两者默认只绑定到宿主机 loopback。浏览器首次访问需要信任开发证书。
 
 ## 文档导航
 

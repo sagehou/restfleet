@@ -39,6 +39,10 @@ jobs:
           RESTFLEET_MIGRATOR_DATABASE_URL_FILE: /dev/null
           RESTFLEET_APP_DATABASE_URL_FILE: /dev/null
           RESTFLEET_BOOTSTRAP_TOKEN_FILE: /dev/null
+          RESTFLEET_MASTER_KEY_FILE: /dev/null
+          RESTFLEET_GRPC_TLS_CERT_FILE: /dev/null
+          RESTFLEET_GRPC_TLS_KEY_FILE: /dev/null
+          RESTFLEET_SERVER_CA_BUNDLE_FILE: /dev/null
         run: |
           docker compose -f deploy/compose/compose.yaml config --quiet
           docker compose -f deploy/compose/compose.yaml -f deploy/compose/compose.bootstrap.yaml config --quiet

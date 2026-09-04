@@ -40,16 +40,17 @@ type Options struct {
 }
 
 type API struct {
-	control          *control.ControlPlane
-	secureCookies    bool
-	staticDir        string
-	logger           *slog.Logger
-	build            BuildInfo
-	metrics          *Metrics
-	loginLimiter     *rateLimiter
-	bootstrapLimiter *rateLimiter
-	readLimiter      *rateLimiter
-	mutationLimiter  *rateLimiter
+	control           *control.ControlPlane
+	secureCookies     bool
+	staticDir         string
+	logger            *slog.Logger
+	build             BuildInfo
+	metrics           *Metrics
+	loginLimiter      *rateLimiter
+	bootstrapLimiter  *rateLimiter
+	enrollmentLimiter *rateLimiter
+	readLimiter       *rateLimiter
+	mutationLimiter   *rateLimiter
 }
 
 func New(controlPlane *control.ControlPlane, options Options) *API {
@@ -58,16 +59,17 @@ func New(controlPlane *control.ControlPlane, options Options) *API {
 		logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	}
 	return &API{
-		control:          controlPlane,
-		secureCookies:    options.SecureCookies,
-		staticDir:        options.StaticDir,
-		logger:           logger,
-		build:            options.Build,
-		metrics:          NewMetrics(),
-		loginLimiter:     newRateLimiter(5, time.Minute),
-		bootstrapLimiter: newRateLimiter(5, time.Minute),
-		readLimiter:      newRateLimiter(300, time.Minute),
-		mutationLimiter:  newRateLimiter(60, time.Minute),
+		control:           controlPlane,
+		secureCookies:     options.SecureCookies,
+		staticDir:         options.StaticDir,
+		logger:            logger,
+		build:             options.Build,
+		metrics:           NewMetrics(),
+		loginLimiter:      newRateLimiter(5, time.Minute),
+		bootstrapLimiter:  newRateLimiter(5, time.Minute),
+		enrollmentLimiter: newRateLimiter(10, time.Minute),
+		readLimiter:       newRateLimiter(300, time.Minute),
+		mutationLimiter:   newRateLimiter(60, time.Minute),
 	}
 }
 
@@ -240,9 +242,14 @@ func (a *API) DashboardSummary(w http.ResponseWriter, r *http.Request) {
 		a.problem(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests", "Try again later.", nil)
 		return
 	}
+	hosts, err := a.control.Hosts(r.Context())
+	if err != nil {
+		a.internalProblem(w, r)
+		return
+	}
 	a.json(w, http.StatusOK, DashboardSummary{
 		CollectedAt:  time.Now().UTC(),
-		Hosts:        0,
+		Hosts:        int64(len(hosts)),
 		Plans:        0,
 		Repositories: 0,
 		Operations:   0,
@@ -262,7 +269,7 @@ func (a *API) Version(w http.ResponseWriter, r *http.Request) {
 		Version:       a.build.Version,
 		Commit:        a.build.Commit,
 		BuiltAt:       a.build.Date,
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 	})
 }
 
@@ -409,6 +416,15 @@ func (a *API) generatedError(w http.ResponseWriter, r *http.Request, _ error) {
 		}
 		a.problem(w, r, http.StatusForbidden, "CSRF_INVALID", "Request denied", "The CSRF token is missing or invalid.", nil)
 	default:
+		if r.Method != http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/") &&
+			r.Header.Get("X-CSRF-Token") == "" && r.URL.Path != "/api/v1/agent-enrollment" {
+			if err := a.control.RecordDenied(r.Context(), "AUTHORIZATION", "SESSION", "CSRF_MISSING", requestMeta(r)); err != nil {
+				a.internalProblem(w, r)
+				return
+			}
+			a.problem(w, r, http.StatusForbidden, "CSRF_INVALID", "Request denied", "The CSRF token is missing or invalid.", nil)
+			return
+		}
 		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request parameters are invalid.", nil)
 	}
 }
@@ -485,9 +501,35 @@ func routeLabel(path string) string {
 	case "/health/live", "/health/ready",
 		"/api/v1/bootstrap/status", "/api/v1/bootstrap",
 		"/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
-		"/api/v1/dashboard/summary", "/api/v1/version":
+		"/api/v1/dashboard/summary", "/api/v1/version",
+		"/api/v1/hosts", "/api/v1/agent-enrollment":
 		return path
-	default:
-		return "static"
 	}
+	if strings.HasPrefix(path, "/api/v1/hosts/") {
+		switch {
+		case strings.HasSuffix(path, "/enrollment-tokens"):
+			return "/api/v1/hosts/{host_id}/enrollment-tokens"
+		case strings.HasSuffix(path, "/agents"):
+			return "/api/v1/hosts/{host_id}/agents"
+		case strings.HasSuffix(path, "/disable"):
+			return "/api/v1/hosts/{host_id}/disable"
+		case strings.HasSuffix(path, "/enable"):
+			return "/api/v1/hosts/{host_id}/enable"
+		default:
+			return "/api/v1/hosts/{host_id}"
+		}
+	}
+	if strings.HasPrefix(path, "/api/v1/enrollment-tokens/") {
+		return "/api/v1/enrollment-tokens/{token_id}"
+	}
+	if strings.HasPrefix(path, "/api/v1/agents/") {
+		if strings.HasSuffix(path, "/revoke") {
+			return "/api/v1/agents/{agent_id}/revoke"
+		}
+		return "/api/v1/agents/{agent_id}"
+	}
+	if strings.HasPrefix(path, "/api/") {
+		return "api_unknown"
+	}
+	return "static"
 }

@@ -15,6 +15,10 @@ message AgentToServer {
   string protocol_version = 2;
   google.protobuf.Timestamp sent_at = 3;
   uint64 sequence = 4;
+  oneof payload {
+    Hello hello = 10;
+    CertificateRotationRequest certificate_rotation_request = 11;
+  }
 }
 
 message ServerToAgent {
@@ -22,4 +26,41 @@ message ServerToAgent {
   string protocol_version = 2;
   google.protobuf.Timestamp sent_at = 3;
   uint64 sequence = 4;
+  oneof payload {
+    Welcome welcome = 10;
+    CertificateRotationResponse certificate_rotation_response = 11;
+  }
+}
+
+message Hello {
+  string install_id = 1;
+  string boot_id = 2;
+  string agent_version = 3;
+  repeated string supported_protocol_versions = 4;
+  int64 accepted_config_revision = 5;
+  uint64 last_acked_server_sequence = 6;
+  repeated string capabilities = 7;
+  string restic_version = 8;
+  google.protobuf.Timestamp local_time = 9;
+  repeated string pending_result_ids = 10;
+}
+
+message Welcome {
+  string connection_id = 1;
+  string selected_protocol_version = 2;
+  google.protobuf.Timestamp server_time = 3;
+  uint32 heartbeat_interval_seconds = 4;
+  int64 desired_config_revision = 5;
+  string minimum_agent_version = 6;
+  google.protobuf.Timestamp drain_deadline = 7;
+}
+
+message CertificateRotationRequest {
+  string csr_pem = 1;
+}
+
+message CertificateRotationResponse {
+  string certificate_pem = 1;
+  string ca_bundle_pem = 2;
+  google.protobuf.Timestamp not_after = 3;
 }

@@ -5,9 +5,14 @@ type Session = components['schemas']['Session']
 type BootstrapStatus = components['schemas']['BootstrapStatus']
 type DashboardSummary = components['schemas']['DashboardSummary']
 type Version = components['schemas']['Version']
+type Host = components['schemas']['Host']
+type HostList = components['schemas']['HostList']
+type Agent = components['schemas']['Agent']
+type AgentList = components['schemas']['AgentList']
+type EnrollmentTokenCreated = components['schemas']['EnrollmentTokenCreated']
 type Problem = components['schemas']['Problem']
 type Phase = 'loading' | 'bootstrap' | 'login' | 'authenticated' | 'error'
-type Page = 'overview' | 'version'
+type Page = 'overview' | 'hosts' | 'version'
 type DataState = 'idle' | 'loading' | 'ready' | 'error'
 
 class ApiError extends Error {
@@ -77,6 +82,7 @@ export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [version, setVersion] = useState<Version | null>(null)
+  const [hosts, setHosts] = useState<Host[]>([])
   const [dataState, setDataState] = useState<DataState>('idle')
   const [page, setPage] = useState<Page>('overview')
   const [message, setMessage] = useState('')
@@ -85,12 +91,14 @@ export function App() {
   const loadAuthenticatedData = useCallback(async () => {
     setDataState('loading')
     try {
-      const [nextSummary, nextVersion] = await Promise.all([
+      const [nextSummary, nextVersion, nextHosts] = await Promise.all([
         requestJSON<DashboardSummary>('/api/v1/dashboard/summary'),
         requestJSON<Version>('/api/v1/version'),
+        requestJSON<HostList>('/api/v1/hosts'),
       ])
       setSummary(nextSummary)
       setVersion(nextVersion)
+      setHosts(nextHosts.items)
       setDataState('ready')
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -202,6 +210,7 @@ export function App() {
       setSession(null)
       setSummary(null)
       setVersion(null)
+      setHosts([])
       setPhase('login')
     } catch (error) {
       setMessage(errorMessage(error))
@@ -283,7 +292,10 @@ export function App() {
           <button className={page === 'overview' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('overview')}>
             Overview
           </button>
-          {navigation.slice(1).map((item) => (
+          <button className={page === 'hosts' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('hosts')}>
+            Hosts
+          </button>
+          {navigation.slice(2).map((item) => (
             <button className="nav-item" disabled key={item} title="后续里程碑提供">
               {item}
             </button>
@@ -300,9 +312,13 @@ export function App() {
       </aside>
       <main className="content">
         {message && <InlineError message={message} />}
-        {page === 'overview' ? (
+        {page === 'overview' && (
           <Overview summary={summary} state={dataState} retry={loadAuthenticatedData} />
-        ) : (
+        )}
+        {page === 'hosts' && (
+          <HostsView hosts={hosts} state={dataState} reload={loadAuthenticatedData} />
+        )}
+        {page === 'version' && (
           <VersionView version={version} state={dataState} />
         )}
       </main>
@@ -401,7 +417,7 @@ function Overview({
         <div className="empty-state">
           <span className="status-mark" aria-hidden="true">✓</span>
           <h2>控制平面已就绪</h2>
-          <p>当前还没有受管 Host。Host 接入将在下一个里程碑开放。</p>
+          <p>当前还没有受管 Host。请进入 Hosts 创建主机并生成一次性注册令牌。</p>
         </div>
       )}
     </section>
@@ -410,6 +426,284 @@ function Overview({
 
 function Metric({ label, value }: { label: string; value: number }) {
   return <div className="metric-card"><dt>{label}</dt><dd>{value}</dd></div>
+}
+
+function HostsView({
+  hosts,
+  state,
+  reload,
+}: {
+  hosts: Host[]
+  state: DataState
+  reload: () => Promise<void>
+}) {
+  const [selectedID, setSelectedID] = useState<string | null>(null)
+  const [wizard, setWizard] = useState(false)
+  const [draftHost, setDraftHost] = useState<Host | null>(null)
+  const [oneTime, setOneTime] = useState<EnrollmentTokenCreated | null>(null)
+  const [step, setStep] = useState<'host' | 'token' | 'secret' | 'wait'>('host')
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [message, setMessage] = useState('')
+  const selected = hosts.find((host) => host.id === selectedID) ?? null
+
+  function closeWizard() {
+    setOneTime(null)
+    setDraftHost(null)
+    setAgents([])
+    setStep('host')
+    setMessage('')
+    setWizard(false)
+  }
+
+  async function createHost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setMessage('')
+    const form = new FormData(event.currentTarget)
+    try {
+      const host = await requestJSON<Host>('/api/v1/hosts', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken() },
+        body: JSON.stringify({
+          display_name: String(form.get('display_name') ?? ''),
+          description: String(form.get('description') ?? ''),
+          timezone: String(form.get('timezone') ?? ''),
+          labels: parseLabels(String(form.get('labels') ?? '')),
+        }),
+      })
+      setDraftHost(host)
+      setStep('token')
+      await reload()
+    } catch (error) {
+      setMessage(errorMessage(error))
+    }
+  }
+
+  async function createToken(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!draftHost) return
+    setMessage('')
+    const form = new FormData(event.currentTarget)
+    try {
+      const token = await requestJSON<EnrollmentTokenCreated>(
+        `/api/v1/hosts/${draftHost.id}/enrollment-tokens`,
+        {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': csrfToken() },
+          body: JSON.stringify({ expires_in_seconds: Number(form.get('ttl') ?? 600) }),
+        },
+      )
+      setOneTime(token)
+      setStep('secret')
+    } catch (error) {
+      setMessage(errorMessage(error))
+    }
+  }
+
+  async function checkAgent() {
+    if (!draftHost) return
+    setMessage('')
+    try {
+      const result = await requestJSON<AgentList>(`/api/v1/hosts/${draftHost.id}/agents`)
+      setAgents(result.items)
+      if (result.items.length > 0) {
+        await reload()
+      }
+    } catch (error) {
+      setMessage(errorMessage(error))
+    }
+  }
+
+  if (selected) {
+    return <HostDetail host={selected} back={() => setSelectedID(null)} reload={reload} />
+  }
+
+  return (
+    <section>
+      <header className="page-header">
+        <div>
+          <p className="eyebrow">MANAGED MACHINES</p>
+          <h1>Hosts</h1>
+        </div>
+        <button className="primary-button" onClick={() => setWizard(true)}>添加 Host</button>
+      </header>
+      {state === 'loading' && <p className="muted">正在加载 Hosts…</p>}
+      {state === 'ready' && hosts.length === 0 && !wizard && (
+        <div className="empty-state">
+          <h2>尚未接入 Host</h2>
+          <p>先创建 Host，再用短期一次性令牌让 Agent 从受管机主动连接。</p>
+          <button className="secondary-button" onClick={() => setWizard(true)}>添加第一个 Host</button>
+        </div>
+      )}
+      {hosts.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Agent</th><th>Timezone</th><th>Labels</th></tr></thead>
+            <tbody>
+              {hosts.map((host) => (
+                <tr key={host.id}>
+                  <td><button className="table-link" onClick={() => setSelectedID(host.id)}>{host.display_name}</button></td>
+                  <td><StatusBadge status={host.status} /></td>
+                  <td>{host.timezone}</td>
+                  <td>{Object.entries(host.labels).map(([key, value]) => `${key}=${value}`).join(', ') || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {wizard && (
+        <div className="wizard" aria-labelledby="wizard-title">
+          <div className="wizard-header">
+            <div><p className="eyebrow">ADD HOST · {stepLabel(step)}</p><h2 id="wizard-title">安全接入 Agent</h2></div>
+            <button className="text-dark-button" onClick={closeWizard}>关闭</button>
+          </div>
+          {message && <InlineError message={message} />}
+          {step === 'host' && (
+            <form onSubmit={createHost}>
+              <label>Host 名称<input name="display_name" maxLength={128} required /></label>
+              <label>描述<input name="description" maxLength={1024} /></label>
+              <label>时区<input name="timezone" defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'} required /></label>
+              <label>标签（逗号分隔 key=value）<input name="labels" placeholder="env=prod, region=ap-east" /></label>
+              <button className="primary-button" type="submit">创建 Host</button>
+            </form>
+          )}
+          {step === 'token' && draftHost && (
+            <form onSubmit={createToken}>
+              <p>Host <strong>{draftHost.display_name}</strong> 已创建。请选择令牌有效期。</p>
+              <label>有效期
+                <select name="ttl" defaultValue="600">
+                  <option value="300">5 分钟</option>
+                  <option value="600">10 分钟</option>
+                  <option value="1800">30 分钟</option>
+                  <option value="3600">60 分钟</option>
+                </select>
+              </label>
+              <button className="primary-button" type="submit">生成一次性令牌</button>
+            </form>
+          )}
+          {step === 'secret' && oneTime && (
+            <div className="secret-panel">
+              <p className="warning-text">此令牌与安装命令只显示一次。离开本步骤后无法再次查看。</p>
+              <p className="muted">命令不会携带令牌。运行所选命令后，在标准输入粘贴上方令牌、回车，再按 Ctrl-D。</p>
+              <label>Enrollment token<code className="secret-code">{oneTime.token}</code></label>
+              <label>Native Linux<code className="command-code">{oneTime.install.native}</code></label>
+              <label>Docker<code className="command-code">{oneTime.install.docker}</code></label>
+              <p className="muted">过期时间：{new Date(oneTime.expires_at).toLocaleString()}</p>
+              <button className="primary-button" onClick={() => { setOneTime(null); setStep('wait') }}>我已保存，检查连接</button>
+            </div>
+          )}
+          {step === 'wait' && draftHost && (
+            <div className="secret-panel" aria-live="polite">
+              {agents.length === 0 ? (
+                <>
+                  <h3>等待 Agent 连接</h3>
+                  <p className="muted">在目标主机执行刚才保存的命令，然后检查连接。</p>
+                  <button className="secondary-button" onClick={() => void checkAgent()}>检查连接</button>
+                </>
+              ) : (
+                <>
+                  <h3>Agent 已接入</h3>
+                  <dl className="detail-list compact-list">
+                    <div><dt>Fingerprint</dt><dd><code>{agents[0].public_key_fingerprint}</code></dd></div>
+                    <div><dt>Hostname</dt><dd>{agents[0].hostname}</dd></div>
+                    <div><dt>Platform</dt><dd>{agents[0].os}/{agents[0].arch}</dd></div>
+                  </dl>
+                  <button className="primary-button" onClick={closeWizard}>完成</button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function HostDetail({ host, back, reload }: { host: Host; back: () => void; reload: () => Promise<void> }) {
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    let active = true
+    void requestJSON<AgentList>(`/api/v1/hosts/${host.id}/agents`)
+      .then((result) => {
+        if (active) setAgents(result.items)
+      })
+      .catch((error: unknown) => {
+        if (active) setMessage(errorMessage(error))
+      })
+    return () => {
+      active = false
+    }
+  }, [host.id])
+
+  async function changeStatus() {
+    setMessage('')
+    const action = host.status === 'DISABLED' ? 'enable' : 'disable'
+    try {
+      await requestJSON<Host>(`/api/v1/hosts/${host.id}/${action}`, {
+        method: 'POST',
+        headers: {
+          'X-CSRF-Token': csrfToken(),
+          'If-Match': String(host.revision),
+        },
+      })
+      await reload()
+      back()
+    } catch (error) {
+      setMessage(errorMessage(error))
+    }
+  }
+
+  return (
+    <section>
+      <button className="text-dark-button" onClick={back}>← 返回 Hosts</button>
+      <header className="page-header">
+        <div><p className="eyebrow">HOST DETAIL</p><h1>{host.display_name}</h1></div>
+        <button className="secondary-button" onClick={() => void changeStatus()}>
+          {host.status === 'DISABLED' ? '启用 Host' : '禁用 Host'}
+        </button>
+      </header>
+      {message && <InlineError message={message} />}
+      <dl className="detail-list">
+        <div><dt>状态</dt><dd><StatusBadge status={host.status} /></dd></div>
+        <div><dt>时区</dt><dd>{host.timezone}</dd></div>
+        <div><dt>描述</dt><dd>{host.description || '—'}</dd></div>
+        <div><dt>Revision</dt><dd>{host.revision}</dd></div>
+      </dl>
+      <h2 className="section-title">Agent</h2>
+      {agents.length === 0 ? <p className="muted">尚无 Agent 接入。</p> : agents.map((agent) => (
+        <dl className="detail-list" key={agent.id}>
+          <div><dt>状态</dt><dd><StatusBadge status={agent.status} /></dd></div>
+          <div><dt>Fingerprint</dt><dd><code>{agent.public_key_fingerprint}</code></dd></div>
+          <div><dt>Hostname</dt><dd>{agent.hostname}</dd></div>
+          <div><dt>平台</dt><dd>{agent.os}/{agent.arch}</dd></div>
+          <div><dt>证书到期</dt><dd>{new Date(agent.certificate_not_after).toLocaleString()}</dd></div>
+        </dl>
+      ))}
+    </section>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const labels: Record<string, string> = {
+    PENDING: '等待接入', ACTIVE: '已连接', DISABLED: '已禁用', REVOKED: '已撤销',
+  }
+  return <span className={`status-badge status-${status.toLowerCase()}`}>{labels[status] ?? status}</span>
+}
+
+function stepLabel(step: 'host' | 'token' | 'secret' | 'wait') {
+  return { host: '1/4', token: '2/4', secret: '3/4', wait: '4/4' }[step]
+}
+
+function parseLabels(value: string): Record<string, string> {
+  const labels: Record<string, string> = {}
+  for (const part of value.split(',').map((item) => item.trim()).filter(Boolean)) {
+    const separator = part.indexOf('=')
+    if (separator < 1) throw new Error('标签格式必须是 key=value。')
+    labels[part.slice(0, separator).trim()] = part.slice(separator + 1).trim()
+  }
+  return labels
 }
 
 function VersionView({ version, state }: { version: Version | null; state: DataState }) {

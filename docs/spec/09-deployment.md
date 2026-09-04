@@ -108,7 +108,34 @@ tls private key or ACME-managed mount
 - 最低 TLS 1.2，推荐 1.3；
 - Basic auth 只允许在 TLS 内使用。
 
+M2 Agent enrollment/gRPC 使用以下分组配置；只要设置其中一项，就 MUST 设置全部：
+
+```text
+RESTFLEET_MASTER_KEY_FILE            # 标准 Base64 编码的 32 bytes
+RESTFLEET_PUBLIC_URL                 # Agent 可访问的 https:// URL
+RESTFLEET_GRPC_ADDRESS               # listener，默认 :8443
+RESTFLEET_GRPC_ENDPOINT              # Agent 可访问的 host:port
+RESTFLEET_GRPC_SERVER_NAME           # 必须匹配 Server certificate SAN
+RESTFLEET_GRPC_TLS_CERT_FILE
+RESTFLEET_GRPC_TLS_KEY_FILE
+RESTFLEET_SERVER_CA_BUNDLE_FILE      # Agent 用于验证 Server 的 PEM bundle
+```
+
+Server 的内部 Agent CA certificate 存在 PostgreSQL，CA private key 使用随机 DEK 加密，DEK 再由 `RESTFLEET_MASTER_KEY_FILE` 中的 key 包裹。master key 文件 MUST 是 mode 0400/只读 secret，数据库与 master key MUST 分开备份。
+
 Traefik/Caddy/Nginx 示例应覆盖：HTTP/2、WebSocket/SSE（若使用）、gRPC、上传/下载 streaming、超时、真实客户端 IP 信任链。
+
+### 6.1 Agent CA 人工轮换 runbook
+
+V1 不自动轮换 Agent CA。计划轮换 MUST 作为维护变更执行：
+
+1. 先验证 master key 与数据库备份可恢复，并冻结新 enrollment；
+2. 发布包含旧、新 CA 的临时 trust bundle，保留至少一个完整 Agent certificate overlap window；
+3. 使用受审计的离线维护工具生成新 CA envelope 并逐 Agent 换发证书；CA private key 不得导出为持久明文；
+4. 确认所有 ACTIVE Agent 已用新链重连后，撤销旧证书并移除旧 CA；
+5. 记录操作人、受影响 Agent、开始/结束时间和验证结果。
+
+在专用维护工具交付前，MUST NOT 直接修改 `server_pki`/ `secrets` 表完成轮换；紧急 key loss 应恢复已验证备份或重新 enrollment，而不是绕过证书校验。
 
 ## 7. Gateway Runtime
 

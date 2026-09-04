@@ -148,6 +148,182 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listHosts"];
+        put?: never;
+        post: operations["createHost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosts/{host_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getHost"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateHost"];
+        trace?: never;
+    };
+    "/api/v1/hosts/{host_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disableHost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosts/{host_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enableHost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosts/{host_id}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get: operations["listHostAgents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosts/{host_id}/enrollment-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get: operations["listEnrollmentTokens"];
+        put?: never;
+        post: operations["createEnrollmentToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/enrollment-tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: components["parameters"]["TokenId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revokeEnrollmentToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enrollAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: components["parameters"]["AgentId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getAgent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{agent_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: components["parameters"]["AgentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revokeAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -204,6 +380,149 @@ export interface components {
                 [key: string]: string;
             };
         };
+        Host: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
+            description: string;
+            labels: {
+                [key: string]: string;
+            };
+            timezone: string;
+            /** @enum {string} */
+            status: "PENDING" | "ACTIVE" | "DISABLED" | "REVOKED";
+            /** Format: int64 */
+            revision: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        HostList: {
+            items: components["schemas"]["Host"][];
+        };
+        HostCreate: {
+            display_name: string;
+            /** @default  */
+            description: string;
+            labels?: {
+                [key: string]: string;
+            };
+            timezone: string;
+        };
+        HostPatch: {
+            display_name?: string;
+            description?: string;
+            labels?: {
+                [key: string]: string;
+            };
+            timezone?: string;
+        };
+        Agent: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            host_id: string;
+            /** Format: uuid */
+            install_id: string;
+            public_key_fingerprint: string;
+            certificate_serial: string;
+            /** Format: date-time */
+            certificate_not_after: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "REVOKED";
+            version: string;
+            protocol_version: string;
+            os: string;
+            arch: string;
+            hostname: string;
+            boot_id?: string;
+            restic_version?: string;
+            /** Format: date-time */
+            last_seen_at?: string;
+            /** Format: date-time */
+            last_connected_at?: string;
+            /** Format: int64 */
+            desired_revision: number;
+            /** Format: int64 */
+            accepted_revision: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AgentList: {
+            items: components["schemas"]["Agent"][];
+        };
+        EnrollmentTokenCreate: {
+            /** @default 600 */
+            expires_in_seconds: number;
+        };
+        EnrollmentInstall: {
+            native: string;
+            docker: string;
+        };
+        EnrollmentTokenCreated: {
+            /** Format: uuid */
+            id: string;
+            token: string;
+            fingerprint: string;
+            /** Format: date-time */
+            expires_at: string;
+            install: components["schemas"]["EnrollmentInstall"];
+        };
+        EnrollmentToken: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            host_id: string;
+            fingerprint: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "USED" | "EXPIRED" | "REVOKED";
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            used_at?: string;
+            /** Format: uuid */
+            used_by_agent_id?: string;
+            /** Format: date-time */
+            revoked_at?: string;
+        };
+        EnrollmentTokenList: {
+            items: components["schemas"]["EnrollmentToken"][];
+        };
+        AgentEnrollmentRequest: {
+            token: string;
+            csr_pem: string;
+            /** Format: uuid */
+            install_id: string;
+            agent_version: string;
+            protocol_version: string;
+            hostname: string;
+            /** @enum {string} */
+            os: "linux";
+            /** @enum {string} */
+            arch: "amd64" | "arm64";
+            capabilities: string[];
+        };
+        AgentEnrollmentResponse: {
+            /** Format: uuid */
+            agent_id: string;
+            /** Format: uuid */
+            host_id: string;
+            certificate_pem: string;
+            ca_bundle_pem: string;
+            /** Format: date-time */
+            not_after: string;
+            server_name: string;
+            grpc_endpoint: string;
+            heartbeat_interval_seconds: number;
+        };
+        AgentRevoke: {
+            reason: string;
+        };
         Problem: {
             /** Format: uri */
             type: string;
@@ -233,6 +552,11 @@ export interface components {
         };
     };
     parameters: {
+        HostId: string;
+        AgentId: string;
+        TokenId: string;
+        IfMatch: string;
+        IdempotencyKey: string;
         CsrfToken: string;
     };
     requestBodies: never;
@@ -454,6 +778,398 @@ export interface operations {
                 };
             };
             401: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listHosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Hosts visible to the current user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    createHost: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostCreate"];
+            };
+        };
+        responses: {
+            /** @description Host created in PENDING state. */
+            201: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Host"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getHost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Host detail. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Host"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    updateHost: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostPatch"];
+            };
+        };
+        responses: {
+            /** @description Host updated. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Host"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            412: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    disableHost: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Host disabled. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Host"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            412: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    enableHost: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Host enabled. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Host"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            412: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listHostAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent identities associated with the Host. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listEnrollmentTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Enrollment token metadata. Bearer tokens are never returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentTokenList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    createEnrollmentToken: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollmentTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Enrollment token created. The bearer value appears only in this response. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentTokenCreated"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    revokeEnrollmentToken: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                token_id: components["parameters"]["TokenId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unused enrollment token revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    enrollAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentEnrollmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Agent identity bundle. The private key is never returned. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentEnrollmentResponse"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: components["parameters"]["AgentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent identity and connection metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    revokeAgent: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                agent_id: components["parameters"]["AgentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRevoke"];
+            };
+        };
+        responses: {
+            /** @description Agent and all currently valid certificates revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };

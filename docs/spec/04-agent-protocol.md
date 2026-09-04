@@ -76,6 +76,8 @@ Agent 协议必须支持：
 
 私钥不在响应中。Agent 先以临时文件写入并 `fsync + rename` 原子替换 identity bundle。
 
+V1 Agent certificate 的 Subject Common Name MUST 是规范化 Agent UUID，并且 MUST 恰好包含一个 `urn:restfleet:agent:<agent_uuid>` URI SAN。Server MUST 忽略 CSR 中请求的 Subject/SAN。连接授权同时校验证书身份、serial 与数据库状态；详见 ADR-0005。
+
 ## 4. 主连接
 
 ```proto

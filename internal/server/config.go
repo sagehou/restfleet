@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -9,14 +10,23 @@ import (
 )
 
 type RuntimeConfig struct {
-	Environment    string
-	DatabaseURL    string
-	BootstrapToken string
-	HTTPAddress    string
-	MetricsAddress string
-	WebDirectory   string
-	SecureCookies  bool
-	Warnings       []string
+	Environment       string
+	DatabaseURL       string
+	BootstrapToken    string
+	HTTPAddress       string
+	MetricsAddress    string
+	WebDirectory      string
+	SecureCookies     bool
+	EnrollmentEnabled bool
+	MasterKey         []byte
+	PublicURL         string
+	GRPCAddress       string
+	GRPCEndpoint      string
+	GRPCServerName    string
+	GRPCTLSCertFile   string
+	GRPCTLSKeyFile    string
+	ServerCABundlePEM []byte
+	Warnings          []string
 }
 
 func LoadRuntimeConfig() (RuntimeConfig, error) {
@@ -25,6 +35,7 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 		HTTPAddress:    envOrDefault("RESTFLEET_HTTP_ADDRESS", ":8080"),
 		MetricsAddress: envOrDefault("RESTFLEET_METRICS_ADDRESS", "127.0.0.1:9090"),
 		WebDirectory:   envOrDefault("RESTFLEET_WEB_DIR", "/srv/restfleet/web"),
+		GRPCAddress:    envOrDefault("RESTFLEET_GRPC_ADDRESS", ":8443"),
 		SecureCookies:  true,
 	}
 	if config.Environment != "production" && config.Environment != "development" && config.Environment != "test" {
@@ -45,6 +56,48 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 	config.BootstrapToken, err = readSecretSetting("RESTFLEET_BOOTSTRAP_TOKEN", config.Environment, &config.Warnings)
 	if err != nil {
 		return RuntimeConfig{}, err
+	}
+
+	config.PublicURL = strings.TrimSpace(os.Getenv("RESTFLEET_PUBLIC_URL"))
+	config.GRPCEndpoint = strings.TrimSpace(os.Getenv("RESTFLEET_GRPC_ENDPOINT"))
+	config.GRPCServerName = strings.TrimSpace(os.Getenv("RESTFLEET_GRPC_SERVER_NAME"))
+	config.GRPCTLSCertFile = strings.TrimSpace(os.Getenv("RESTFLEET_GRPC_TLS_CERT_FILE"))
+	config.GRPCTLSKeyFile = strings.TrimSpace(os.Getenv("RESTFLEET_GRPC_TLS_KEY_FILE"))
+	serverCAFile := strings.TrimSpace(os.Getenv("RESTFLEET_SERVER_CA_BUNDLE_FILE"))
+	masterKeyEncoded, keyErr := readSecretSetting("RESTFLEET_MASTER_KEY", config.Environment, &config.Warnings)
+	if keyErr != nil {
+		return RuntimeConfig{}, keyErr
+	}
+	enrollmentValues := []string{
+		config.PublicURL, config.GRPCEndpoint, config.GRPCServerName,
+		config.GRPCTLSCertFile, config.GRPCTLSKeyFile, serverCAFile, masterKeyEncoded,
+	}
+	for _, value := range enrollmentValues {
+		if value != "" {
+			config.EnrollmentEnabled = true
+			break
+		}
+	}
+	if config.EnrollmentEnabled {
+		for _, value := range enrollmentValues {
+			if value == "" {
+				return RuntimeConfig{}, errors.New("all Agent enrollment and gRPC settings are required when enrollment is enabled")
+			}
+		}
+		if err := ValidateEnrollmentPublicURL(config.PublicURL); err != nil {
+			return RuntimeConfig{}, err
+		}
+		config.MasterKey, err = base64.StdEncoding.DecodeString(strings.TrimSpace(masterKeyEncoded))
+		if err != nil || len(config.MasterKey) != 32 {
+			return RuntimeConfig{}, errors.New("RESTFLEET_MASTER_KEY_FILE must contain base64 for exactly 32 bytes")
+		}
+		config.ServerCABundlePEM, err = os.ReadFile(serverCAFile)
+		if err != nil {
+			return RuntimeConfig{}, fmt.Errorf("read RESTFLEET_SERVER_CA_BUNDLE_FILE: %w", err)
+		}
+		if !strings.Contains(string(config.ServerCABundlePEM), "-----BEGIN CERTIFICATE-----") {
+			return RuntimeConfig{}, errors.New("RESTFLEET_SERVER_CA_BUNDLE_FILE is not a PEM certificate bundle")
+		}
 	}
 
 	if value := os.Getenv("RESTFLEET_SECURE_COOKIES"); value != "" {

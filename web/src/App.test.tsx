@@ -71,9 +71,10 @@ describe('App', () => {
           version: '0.1.0-test',
           commit: 'abc123',
           built_at: '2026-09-03T08:00:00Z',
-          schema_version: 2,
+          schema_version: 3,
         })
       }
+      if (path === '/api/v1/hosts') return response({ items: [] })
       throw new Error(`unexpected request: ${path}`)
     }))
 
@@ -94,4 +95,60 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: '暂时无法连接' })).toBeInTheDocument()
     expect(screen.getByText(/请求 ID/)).toBeInTheDocument()
   })
+
+  it('clears the one-time enrollment token before waiting for the Agent', async () => {
+    document.cookie = 'restfleet_csrf=test-csrf'
+    const host = {
+      id: '0198f1da-2c57-7d3b-9c92-6e2f05293645',
+      display_name: 'edge-01',
+      description: '',
+      labels: {},
+      timezone: 'UTC',
+      status: 'PENDING',
+      revision: 1,
+      created_at: '2026-09-03T08:00:00Z',
+      updated_at: '2026-09-03T08:00:00Z',
+    }
+    let hosts: typeof host[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/v1/auth/session') return response(session)
+      if (path === '/api/v1/dashboard/summary') {
+        return response({ collected_at: '2026-09-03T08:00:00Z', hosts: hosts.length, plans: 0, repositories: 0, operations: 0 })
+      }
+      if (path === '/api/v1/version') {
+        return response({ version: 'test', commit: 'abc', built_at: '2026-09-03T08:00:00Z', schema_version: 3 })
+      }
+      if (path === '/api/v1/hosts' && init?.method === 'POST') {
+        hosts = [host]
+        return response(host, 201)
+      }
+      if (path === '/api/v1/hosts') return response({ items: hosts })
+      if (path.endsWith('/enrollment-tokens') && init?.method === 'POST') {
+        return response({
+          id: '0198f1da-2c57-7d3b-9c92-6e2f05293646',
+          token: 'rfe_one_time_secret',
+          fingerprint: '…cret',
+          expires_at: '2026-09-03T08:10:00Z',
+          install: { native: 'native command', docker: 'docker command' },
+        }, 201)
+      }
+      if (path.endsWith('/agents')) return response({ items: [] })
+      throw new Error(`unexpected request: ${path}`)
+    }))
+
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Hosts' }))
+    fireEvent.click(screen.getByRole('button', { name: '添加第一个 Host' }))
+    fireEvent.change(screen.getByLabelText('Host 名称'), { target: { value: 'edge-01' } })
+    fireEvent.change(screen.getByLabelText('时区'), { target: { value: 'UTC' } })
+    fireEvent.click(screen.getByRole('button', { name: '创建 Host' }))
+    fireEvent.click(await screen.findByRole('button', { name: '生成一次性令牌' }))
+
+    expect(await screen.findByText('rfe_one_time_secret')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '我已保存，检查连接' }))
+    expect(screen.queryByText('rfe_one_time_secret')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '等待 Agent 连接' })).toBeInTheDocument()
+  })
+
 })

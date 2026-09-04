@@ -69,6 +69,8 @@
 
 ## M2 — Host, Enrollment and mTLS
 
+**Status: COMPLETE**
+
 ### Goal
 
 创建 Host，用一次性 token 安全接入 Agent。
