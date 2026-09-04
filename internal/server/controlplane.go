@@ -41,6 +41,23 @@ type Store interface {
 	Logout(context.Context, uuid.UUID, time.Time, domain.AuditEvent) error
 	RecordAudit(context.Context, domain.AuditEvent) error
 	VerifyAuditChain(context.Context) error
+	CreateHost(context.Context, domain.Host, domain.AuditEvent) error
+	Hosts(context.Context) ([]domain.Host, error)
+	Host(context.Context, uuid.UUID) (domain.Host, error)
+	UpdateHost(context.Context, domain.Host, int64, domain.AuditEvent) (domain.Host, error)
+	SetHostStatus(context.Context, uuid.UUID, int64, string, time.Time, domain.AuditEvent) (domain.Host, error)
+	CreateEnrollmentToken(context.Context, domain.EnrollmentToken, domain.AuditEvent) error
+	EnrollmentTokens(context.Context, uuid.UUID) ([]domain.EnrollmentToken, error)
+	RevokeEnrollmentToken(context.Context, uuid.UUID, time.Time, domain.AuditEvent) error
+	ConsumeEnrollmentToken(context.Context, []byte, time.Time, domain.EnrollmentIssuer) (domain.EnrollmentMaterial, error)
+	AgentsForHost(context.Context, uuid.UUID) ([]domain.Agent, error)
+	Agent(context.Context, uuid.UUID) (domain.Agent, error)
+	AgentByCertificate(context.Context, uuid.UUID, string, time.Time) (domain.Agent, error)
+	MarkAgentConnected(context.Context, uuid.UUID, uuid.UUID, string, string, string, string, string, time.Time) error
+	RevokeAgent(context.Context, uuid.UUID, string, time.Time, domain.AuditEvent) (domain.Agent, error)
+	RotateAgentCertificate(context.Context, uuid.UUID, string, domain.AgentCertificate, time.Time, time.Time, domain.AuditEvent) error
+	AgentCA(context.Context) (domain.AgentCARecord, error)
+	InitializeAgentCA(context.Context, domain.AgentCARecord) (domain.AgentCARecord, error)
 }
 
 // Settings controls security policy. Production defaults are applied to zero values.
@@ -51,6 +68,7 @@ type Settings struct {
 	PasswordParams security.Argon2Params
 	ExpectedSchema int
 	Clock          func() time.Time
+	Enrollment     EnrollmentSettings
 }
 
 // RequestMeta contains only non-secret request correlation data.
@@ -84,6 +102,8 @@ type ControlPlane struct {
 	dummyPasswordHash  string
 	expectedSchema     int
 	clock              func() time.Time
+	enrollment         EnrollmentSettings
+	disconnectAgent    func(uuid.UUID)
 }
 
 func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
@@ -97,7 +117,10 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		settings.PasswordParams = security.DefaultArgon2Params
 	}
 	if settings.ExpectedSchema == 0 {
-		settings.ExpectedSchema = 2
+		settings.ExpectedSchema = 3
+	}
+	if settings.Enrollment.HeartbeatInterval == 0 {
+		settings.Enrollment.HeartbeatInterval = 15 * time.Second
 	}
 	if settings.Clock == nil {
 		settings.Clock = time.Now
@@ -118,6 +141,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		dummyPasswordHash:  dummyHash,
 		expectedSchema:     settings.ExpectedSchema,
 		clock:              settings.Clock,
+		enrollment:         settings.Enrollment,
 	}, nil
 }
 

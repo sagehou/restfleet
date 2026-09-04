@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/prometheus/client_golang v1.24.1
+	go.etcd.io/bbolt v1.4.3
 	golang.org/x/crypto v0.56.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12

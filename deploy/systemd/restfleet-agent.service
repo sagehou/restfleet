@@ -4,12 +4,25 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/restfleet-agent run --config /etc/restfleet/agent.yaml
+User=restfleet-agent
+Group=restfleet-agent
+ExecStart=/usr/local/bin/restfleet-agent run --state-dir /var/lib/restfleet-agent
 Restart=always
 RestartSec=5s
+StateDirectory=restfleet-agent
+StateDirectoryMode=0700
+CacheDirectory=restfleet-agent
+CacheDirectoryMode=0700
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
 ReadWritePaths=/var/lib/restfleet-agent /var/cache/restfleet-agent /var/lib/restfleet/restores
 
 [Install]

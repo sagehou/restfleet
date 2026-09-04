@@ -28,8 +28,13 @@ type AgentToServer struct {
 	ProtocolVersion string                 `protobuf:"bytes,2,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
 	SentAt          *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=sent_at,json=sentAt,proto3" json:"sent_at,omitempty"`
 	Sequence        uint64                 `protobuf:"varint,4,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*AgentToServer_Hello
+	//	*AgentToServer_CertificateRotationRequest
+	Payload       isAgentToServer_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AgentToServer) Reset() {
@@ -90,14 +95,60 @@ func (x *AgentToServer) GetSequence() uint64 {
 	return 0
 }
 
+func (x *AgentToServer) GetPayload() isAgentToServer_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *AgentToServer) GetHello() *Hello {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_Hello); ok {
+			return x.Hello
+		}
+	}
+	return nil
+}
+
+func (x *AgentToServer) GetCertificateRotationRequest() *CertificateRotationRequest {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_CertificateRotationRequest); ok {
+			return x.CertificateRotationRequest
+		}
+	}
+	return nil
+}
+
+type isAgentToServer_Payload interface {
+	isAgentToServer_Payload()
+}
+
+type AgentToServer_Hello struct {
+	Hello *Hello `protobuf:"bytes,10,opt,name=hello,proto3,oneof"`
+}
+
+type AgentToServer_CertificateRotationRequest struct {
+	CertificateRotationRequest *CertificateRotationRequest `protobuf:"bytes,11,opt,name=certificate_rotation_request,json=certificateRotationRequest,proto3,oneof"`
+}
+
+func (*AgentToServer_Hello) isAgentToServer_Payload() {}
+
+func (*AgentToServer_CertificateRotationRequest) isAgentToServer_Payload() {}
+
 type ServerToAgent struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	MessageId       string                 `protobuf:"bytes,1,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
 	ProtocolVersion string                 `protobuf:"bytes,2,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
 	SentAt          *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=sent_at,json=sentAt,proto3" json:"sent_at,omitempty"`
 	Sequence        uint64                 `protobuf:"varint,4,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*ServerToAgent_Welcome
+	//	*ServerToAgent_CertificateRotationResponse
+	Payload       isServerToAgent_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ServerToAgent) Reset() {
@@ -158,23 +209,413 @@ func (x *ServerToAgent) GetSequence() uint64 {
 	return 0
 }
 
+func (x *ServerToAgent) GetPayload() isServerToAgent_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *ServerToAgent) GetWelcome() *Welcome {
+	if x != nil {
+		if x, ok := x.Payload.(*ServerToAgent_Welcome); ok {
+			return x.Welcome
+		}
+	}
+	return nil
+}
+
+func (x *ServerToAgent) GetCertificateRotationResponse() *CertificateRotationResponse {
+	if x != nil {
+		if x, ok := x.Payload.(*ServerToAgent_CertificateRotationResponse); ok {
+			return x.CertificateRotationResponse
+		}
+	}
+	return nil
+}
+
+type isServerToAgent_Payload interface {
+	isServerToAgent_Payload()
+}
+
+type ServerToAgent_Welcome struct {
+	Welcome *Welcome `protobuf:"bytes,10,opt,name=welcome,proto3,oneof"`
+}
+
+type ServerToAgent_CertificateRotationResponse struct {
+	CertificateRotationResponse *CertificateRotationResponse `protobuf:"bytes,11,opt,name=certificate_rotation_response,json=certificateRotationResponse,proto3,oneof"`
+}
+
+func (*ServerToAgent_Welcome) isServerToAgent_Payload() {}
+
+func (*ServerToAgent_CertificateRotationResponse) isServerToAgent_Payload() {}
+
+type Hello struct {
+	state                     protoimpl.MessageState `protogen:"open.v1"`
+	InstallId                 string                 `protobuf:"bytes,1,opt,name=install_id,json=installId,proto3" json:"install_id,omitempty"`
+	BootId                    string                 `protobuf:"bytes,2,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	AgentVersion              string                 `protobuf:"bytes,3,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
+	SupportedProtocolVersions []string               `protobuf:"bytes,4,rep,name=supported_protocol_versions,json=supportedProtocolVersions,proto3" json:"supported_protocol_versions,omitempty"`
+	AcceptedConfigRevision    int64                  `protobuf:"varint,5,opt,name=accepted_config_revision,json=acceptedConfigRevision,proto3" json:"accepted_config_revision,omitempty"`
+	LastAckedServerSequence   uint64                 `protobuf:"varint,6,opt,name=last_acked_server_sequence,json=lastAckedServerSequence,proto3" json:"last_acked_server_sequence,omitempty"`
+	Capabilities              []string               `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	ResticVersion             string                 `protobuf:"bytes,8,opt,name=restic_version,json=resticVersion,proto3" json:"restic_version,omitempty"`
+	LocalTime                 *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=local_time,json=localTime,proto3" json:"local_time,omitempty"`
+	PendingResultIds          []string               `protobuf:"bytes,10,rep,name=pending_result_ids,json=pendingResultIds,proto3" json:"pending_result_ids,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *Hello) Reset() {
+	*x = Hello{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Hello) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Hello) ProtoMessage() {}
+
+func (x *Hello) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Hello.ProtoReflect.Descriptor instead.
+func (*Hello) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Hello) GetInstallId() string {
+	if x != nil {
+		return x.InstallId
+	}
+	return ""
+}
+
+func (x *Hello) GetBootId() string {
+	if x != nil {
+		return x.BootId
+	}
+	return ""
+}
+
+func (x *Hello) GetAgentVersion() string {
+	if x != nil {
+		return x.AgentVersion
+	}
+	return ""
+}
+
+func (x *Hello) GetSupportedProtocolVersions() []string {
+	if x != nil {
+		return x.SupportedProtocolVersions
+	}
+	return nil
+}
+
+func (x *Hello) GetAcceptedConfigRevision() int64 {
+	if x != nil {
+		return x.AcceptedConfigRevision
+	}
+	return 0
+}
+
+func (x *Hello) GetLastAckedServerSequence() uint64 {
+	if x != nil {
+		return x.LastAckedServerSequence
+	}
+	return 0
+}
+
+func (x *Hello) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *Hello) GetResticVersion() string {
+	if x != nil {
+		return x.ResticVersion
+	}
+	return ""
+}
+
+func (x *Hello) GetLocalTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LocalTime
+	}
+	return nil
+}
+
+func (x *Hello) GetPendingResultIds() []string {
+	if x != nil {
+		return x.PendingResultIds
+	}
+	return nil
+}
+
+type Welcome struct {
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	ConnectionId             string                 `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	SelectedProtocolVersion  string                 `protobuf:"bytes,2,opt,name=selected_protocol_version,json=selectedProtocolVersion,proto3" json:"selected_protocol_version,omitempty"`
+	ServerTime               *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=server_time,json=serverTime,proto3" json:"server_time,omitempty"`
+	HeartbeatIntervalSeconds uint32                 `protobuf:"varint,4,opt,name=heartbeat_interval_seconds,json=heartbeatIntervalSeconds,proto3" json:"heartbeat_interval_seconds,omitempty"`
+	DesiredConfigRevision    int64                  `protobuf:"varint,5,opt,name=desired_config_revision,json=desiredConfigRevision,proto3" json:"desired_config_revision,omitempty"`
+	MinimumAgentVersion      string                 `protobuf:"bytes,6,opt,name=minimum_agent_version,json=minimumAgentVersion,proto3" json:"minimum_agent_version,omitempty"`
+	DrainDeadline            *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=drain_deadline,json=drainDeadline,proto3" json:"drain_deadline,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *Welcome) Reset() {
+	*x = Welcome{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Welcome) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Welcome) ProtoMessage() {}
+
+func (x *Welcome) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Welcome.ProtoReflect.Descriptor instead.
+func (*Welcome) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Welcome) GetConnectionId() string {
+	if x != nil {
+		return x.ConnectionId
+	}
+	return ""
+}
+
+func (x *Welcome) GetSelectedProtocolVersion() string {
+	if x != nil {
+		return x.SelectedProtocolVersion
+	}
+	return ""
+}
+
+func (x *Welcome) GetServerTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ServerTime
+	}
+	return nil
+}
+
+func (x *Welcome) GetHeartbeatIntervalSeconds() uint32 {
+	if x != nil {
+		return x.HeartbeatIntervalSeconds
+	}
+	return 0
+}
+
+func (x *Welcome) GetDesiredConfigRevision() int64 {
+	if x != nil {
+		return x.DesiredConfigRevision
+	}
+	return 0
+}
+
+func (x *Welcome) GetMinimumAgentVersion() string {
+	if x != nil {
+		return x.MinimumAgentVersion
+	}
+	return ""
+}
+
+func (x *Welcome) GetDrainDeadline() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DrainDeadline
+	}
+	return nil
+}
+
+type CertificateRotationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CsrPem        string                 `protobuf:"bytes,1,opt,name=csr_pem,json=csrPem,proto3" json:"csr_pem,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CertificateRotationRequest) Reset() {
+	*x = CertificateRotationRequest{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CertificateRotationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CertificateRotationRequest) ProtoMessage() {}
+
+func (x *CertificateRotationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CertificateRotationRequest.ProtoReflect.Descriptor instead.
+func (*CertificateRotationRequest) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CertificateRotationRequest) GetCsrPem() string {
+	if x != nil {
+		return x.CsrPem
+	}
+	return ""
+}
+
+type CertificateRotationResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	CertificatePem string                 `protobuf:"bytes,1,opt,name=certificate_pem,json=certificatePem,proto3" json:"certificate_pem,omitempty"`
+	CaBundlePem    string                 `protobuf:"bytes,2,opt,name=ca_bundle_pem,json=caBundlePem,proto3" json:"ca_bundle_pem,omitempty"`
+	NotAfter       *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CertificateRotationResponse) Reset() {
+	*x = CertificateRotationResponse{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CertificateRotationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CertificateRotationResponse) ProtoMessage() {}
+
+func (x *CertificateRotationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CertificateRotationResponse.ProtoReflect.Descriptor instead.
+func (*CertificateRotationResponse) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CertificateRotationResponse) GetCertificatePem() string {
+	if x != nil {
+		return x.CertificatePem
+	}
+	return ""
+}
+
+func (x *CertificateRotationResponse) GetCaBundlePem() string {
+	if x != nil {
+		return x.CaBundlePem
+	}
+	return ""
+}
+
+func (x *CertificateRotationResponse) GetNotAfter() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NotAfter
+	}
+	return nil
+}
+
 var File_restfleet_agent_v1_agent_control_proto protoreflect.FileDescriptor
 
 const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\n" +
-	"&restfleet/agent/v1/agent_control.proto\x12\x12restfleet.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xaa\x01\n" +
+	"&restfleet/agent/v1/agent_control.proto\x12\x12restfleet.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdc\x02\n" +
 	"\rAgentToServer\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12)\n" +
 	"\x10protocol_version\x18\x02 \x01(\tR\x0fprotocolVersion\x123\n" +
 	"\asent_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x06sentAt\x12\x1a\n" +
-	"\bsequence\x18\x04 \x01(\x04R\bsequence\"\xaa\x01\n" +
+	"\bsequence\x18\x04 \x01(\x04R\bsequence\x121\n" +
+	"\x05hello\x18\n" +
+	" \x01(\v2\x19.restfleet.agent.v1.HelloH\x00R\x05hello\x12r\n" +
+	"\x1ccertificate_rotation_request\x18\v \x01(\v2..restfleet.agent.v1.CertificateRotationRequestH\x00R\x1acertificateRotationRequestB\t\n" +
+	"\apayload\"\xe5\x02\n" +
 	"\rServerToAgent\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12)\n" +
 	"\x10protocol_version\x18\x02 \x01(\tR\x0fprotocolVersion\x123\n" +
 	"\asent_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x06sentAt\x12\x1a\n" +
-	"\bsequence\x18\x04 \x01(\x04R\bsequence2j\n" +
+	"\bsequence\x18\x04 \x01(\x04R\bsequence\x127\n" +
+	"\awelcome\x18\n" +
+	" \x01(\v2\x1b.restfleet.agent.v1.WelcomeH\x00R\awelcome\x12u\n" +
+	"\x1dcertificate_rotation_response\x18\v \x01(\v2/.restfleet.agent.v1.CertificateRotationResponseH\x00R\x1bcertificateRotationResponseB\t\n" +
+	"\apayload\"\xcf\x03\n" +
+	"\x05Hello\x12\x1d\n" +
+	"\n" +
+	"install_id\x18\x01 \x01(\tR\tinstallId\x12\x17\n" +
+	"\aboot_id\x18\x02 \x01(\tR\x06bootId\x12#\n" +
+	"\ragent_version\x18\x03 \x01(\tR\fagentVersion\x12>\n" +
+	"\x1bsupported_protocol_versions\x18\x04 \x03(\tR\x19supportedProtocolVersions\x128\n" +
+	"\x18accepted_config_revision\x18\x05 \x01(\x03R\x16acceptedConfigRevision\x12;\n" +
+	"\x1alast_acked_server_sequence\x18\x06 \x01(\x04R\x17lastAckedServerSequence\x12\"\n" +
+	"\fcapabilities\x18\a \x03(\tR\fcapabilities\x12%\n" +
+	"\x0erestic_version\x18\b \x01(\tR\rresticVersion\x129\n" +
+	"\n" +
+	"local_time\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tlocalTime\x12,\n" +
+	"\x12pending_result_ids\x18\n" +
+	" \x03(\tR\x10pendingResultIds\"\x94\x03\n" +
+	"\aWelcome\x12#\n" +
+	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\x12:\n" +
+	"\x19selected_protocol_version\x18\x02 \x01(\tR\x17selectedProtocolVersion\x12;\n" +
+	"\vserver_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"serverTime\x12<\n" +
+	"\x1aheartbeat_interval_seconds\x18\x04 \x01(\rR\x18heartbeatIntervalSeconds\x126\n" +
+	"\x17desired_config_revision\x18\x05 \x01(\x03R\x15desiredConfigRevision\x122\n" +
+	"\x15minimum_agent_version\x18\x06 \x01(\tR\x13minimumAgentVersion\x12A\n" +
+	"\x0edrain_deadline\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\rdrainDeadline\"5\n" +
+	"\x1aCertificateRotationRequest\x12\x17\n" +
+	"\acsr_pem\x18\x01 \x01(\tR\x06csrPem\"\xa3\x01\n" +
+	"\x1bCertificateRotationResponse\x12'\n" +
+	"\x0fcertificate_pem\x18\x01 \x01(\tR\x0ecertificatePem\x12\"\n" +
+	"\rca_bundle_pem\x18\x02 \x01(\tR\vcaBundlePem\x127\n" +
+	"\tnot_after\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter2j\n" +
 	"\x13AgentControlService\x12S\n" +
 	"\aConnect\x12!.restfleet.agent.v1.AgentToServer\x1a!.restfleet.agent.v1.ServerToAgent(\x010\x01BJZHgithub.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1;agentv1b\x06proto3"
 
@@ -190,22 +631,34 @@ func file_restfleet_agent_v1_agent_control_proto_rawDescGZIP() []byte {
 	return file_restfleet_agent_v1_agent_control_proto_rawDescData
 }
 
-var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_restfleet_agent_v1_agent_control_proto_goTypes = []any{
-	(*AgentToServer)(nil),         // 0: restfleet.agent.v1.AgentToServer
-	(*ServerToAgent)(nil),         // 1: restfleet.agent.v1.ServerToAgent
-	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
+	(*AgentToServer)(nil),               // 0: restfleet.agent.v1.AgentToServer
+	(*ServerToAgent)(nil),               // 1: restfleet.agent.v1.ServerToAgent
+	(*Hello)(nil),                       // 2: restfleet.agent.v1.Hello
+	(*Welcome)(nil),                     // 3: restfleet.agent.v1.Welcome
+	(*CertificateRotationRequest)(nil),  // 4: restfleet.agent.v1.CertificateRotationRequest
+	(*CertificateRotationResponse)(nil), // 5: restfleet.agent.v1.CertificateRotationResponse
+	(*timestamppb.Timestamp)(nil),       // 6: google.protobuf.Timestamp
 }
 var file_restfleet_agent_v1_agent_control_proto_depIdxs = []int32{
-	2, // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
-	2, // 1: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
-	0, // 2: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
-	1, // 3: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	6,  // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
+	2,  // 1: restfleet.agent.v1.AgentToServer.hello:type_name -> restfleet.agent.v1.Hello
+	4,  // 2: restfleet.agent.v1.AgentToServer.certificate_rotation_request:type_name -> restfleet.agent.v1.CertificateRotationRequest
+	6,  // 3: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
+	3,  // 4: restfleet.agent.v1.ServerToAgent.welcome:type_name -> restfleet.agent.v1.Welcome
+	5,  // 5: restfleet.agent.v1.ServerToAgent.certificate_rotation_response:type_name -> restfleet.agent.v1.CertificateRotationResponse
+	6,  // 6: restfleet.agent.v1.Hello.local_time:type_name -> google.protobuf.Timestamp
+	6,  // 7: restfleet.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
+	6,  // 8: restfleet.agent.v1.Welcome.drain_deadline:type_name -> google.protobuf.Timestamp
+	6,  // 9: restfleet.agent.v1.CertificateRotationResponse.not_after:type_name -> google.protobuf.Timestamp
+	0,  // 10: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
+	1,  // 11: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
+	11, // [11:12] is the sub-list for method output_type
+	10, // [10:11] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_restfleet_agent_v1_agent_control_proto_init() }
@@ -213,13 +666,21 @@ func file_restfleet_agent_v1_agent_control_proto_init() {
 	if File_restfleet_agent_v1_agent_control_proto != nil {
 		return
 	}
+	file_restfleet_agent_v1_agent_control_proto_msgTypes[0].OneofWrappers = []any{
+		(*AgentToServer_Hello)(nil),
+		(*AgentToServer_CertificateRotationRequest)(nil),
+	}
+	file_restfleet_agent_v1_agent_control_proto_msgTypes[1].OneofWrappers = []any{
+		(*ServerToAgent_Welcome)(nil),
+		(*ServerToAgent_CertificateRotationResponse)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_restfleet_agent_v1_agent_control_proto_rawDesc), len(file_restfleet_agent_v1_agent_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

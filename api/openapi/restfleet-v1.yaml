@@ -179,6 +179,288 @@ paths:
           $ref: "#/components/responses/Problem"
         "503":
           $ref: "#/components/responses/Problem"
+  /api/v1/hosts:
+    get:
+      operationId: listHosts
+      responses:
+        "200":
+          description: Hosts visible to the current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createHost
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HostCreate"
+      responses:
+        "201":
+          description: Host created in PENDING state.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Host"
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/hosts/{host_id}:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    get:
+      operationId: getHost
+      responses:
+        "200":
+          description: Host detail.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Host"
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    patch:
+      operationId: updateHost
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HostPatch"
+      responses:
+        "200":
+          description: Host updated.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Host"
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/hosts/{host_id}/disable:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    post:
+      operationId: disableHost
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Host disabled.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Host"
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/hosts/{host_id}/enable:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    post:
+      operationId: enableHost
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Host enabled.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Host"
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/hosts/{host_id}/agents:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    get:
+      operationId: listHostAgents
+      responses:
+        "200":
+          description: Agent identities associated with the Host.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/hosts/{host_id}/enrollment-tokens:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    get:
+      operationId: listEnrollmentTokens
+      responses:
+        "200":
+          description: Enrollment token metadata. Bearer tokens are never returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentTokenList"
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createEnrollmentToken
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollmentTokenCreate"
+      responses:
+        "201":
+          description: Enrollment token created. The bearer value appears only in this response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentTokenCreated"
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/enrollment-tokens/{token_id}:
+    parameters:
+      - $ref: "#/components/parameters/TokenId"
+    delete:
+      operationId: revokeEnrollmentToken
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Unused enrollment token revoked.
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/agent-enrollment:
+    post:
+      operationId: enrollAgent
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentEnrollmentRequest"
+      responses:
+        "201":
+          description: Agent identity bundle. The private key is never returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentEnrollmentResponse"
+        "400": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/agents/{agent_id}:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+    get:
+      operationId: getAgent
+      responses:
+        "200":
+          description: Agent identity and connection metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/agents/{agent_id}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+    post:
+      operationId: revokeAgent
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRevoke"
+      responses:
+        "200":
+          description: Agent and all currently valid certificates revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
 components:
   securitySchemes:
     sessionCookie:
@@ -186,6 +468,36 @@ components:
       in: cookie
       name: restfleet_session
   parameters:
+    HostId:
+      name: host_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AgentId:
+      name: agent_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TokenId:
+      name: token_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^"?[1-9][0-9]*"?$'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
     CsrfToken:
       name: X-CSRF-Token
       in: header
@@ -318,6 +630,167 @@ components:
           type: object
           additionalProperties:
             type: string
+    Host:
+      type: object
+      additionalProperties: false
+      required: [id, display_name, description, labels, timezone, status, revision, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        description: { type: string }
+        labels:
+          type: object
+          additionalProperties: { type: string }
+        timezone: { type: string }
+        status: { type: string, enum: [PENDING, ACTIVE, DISABLED, REVOKED] }
+        revision: { type: integer, format: int64, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    HostList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Host" }
+    HostCreate:
+      type: object
+      additionalProperties: false
+      required: [display_name, timezone]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 128 }
+        description: { type: string, maxLength: 1024, default: "" }
+        labels:
+          type: object
+          maxProperties: 32
+          additionalProperties: { type: string, maxLength: 128 }
+        timezone: { type: string, minLength: 1, maxLength: 128 }
+    HostPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 128 }
+        description: { type: string, maxLength: 1024 }
+        labels:
+          type: object
+          maxProperties: 32
+          additionalProperties: { type: string, maxLength: 128 }
+        timezone: { type: string, minLength: 1, maxLength: 128 }
+    Agent:
+      type: object
+      additionalProperties: false
+      required: [id, host_id, install_id, public_key_fingerprint, certificate_serial, certificate_not_after, status, version, protocol_version, os, arch, hostname, desired_revision, accepted_revision, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        host_id: { type: string, format: uuid }
+        install_id: { type: string, format: uuid }
+        public_key_fingerprint: { type: string }
+        certificate_serial: { type: string }
+        certificate_not_after: { type: string, format: date-time }
+        status: { type: string, enum: [ACTIVE, REVOKED] }
+        version: { type: string }
+        protocol_version: { type: string }
+        os: { type: string }
+        arch: { type: string }
+        hostname: { type: string }
+        boot_id: { type: string }
+        restic_version: { type: string }
+        last_seen_at: { type: string, format: date-time }
+        last_connected_at: { type: string, format: date-time }
+        desired_revision: { type: integer, format: int64 }
+        accepted_revision: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AgentList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Agent" }
+    EnrollmentTokenCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        expires_in_seconds: { type: integer, minimum: 1, maximum: 3600, default: 600 }
+    EnrollmentInstall:
+      type: object
+      additionalProperties: false
+      required: [native, docker]
+      properties:
+        native: { type: string }
+        docker: { type: string }
+    EnrollmentTokenCreated:
+      type: object
+      additionalProperties: false
+      required: [id, token, fingerprint, expires_at, install]
+      properties:
+        id: { type: string, format: uuid }
+        token: { type: string, pattern: "^rfe_[A-Za-z0-9_-]+$" }
+        fingerprint: { type: string }
+        expires_at: { type: string, format: date-time }
+        install: { $ref: "#/components/schemas/EnrollmentInstall" }
+    EnrollmentToken:
+      type: object
+      additionalProperties: false
+      required: [id, host_id, fingerprint, status, expires_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        host_id: { type: string, format: uuid }
+        fingerprint: { type: string }
+        status: { type: string, enum: [ACTIVE, USED, EXPIRED, REVOKED] }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        used_at: { type: string, format: date-time }
+        used_by_agent_id: { type: string, format: uuid }
+        revoked_at: { type: string, format: date-time }
+    EnrollmentTokenList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/EnrollmentToken" }
+    AgentEnrollmentRequest:
+      type: object
+      additionalProperties: false
+      required: [token, csr_pem, install_id, agent_version, protocol_version, hostname, os, arch, capabilities]
+      properties:
+        token: { type: string, minLength: 1, maxLength: 128 }
+        csr_pem: { type: string, minLength: 1, maxLength: 16384 }
+        install_id: { type: string, format: uuid }
+        agent_version: { type: string, minLength: 1, maxLength: 64 }
+        protocol_version: { type: string, minLength: 1, maxLength: 16 }
+        hostname: { type: string, minLength: 1, maxLength: 255 }
+        os: { type: string, enum: [linux] }
+        arch: { type: string, enum: [amd64, arm64] }
+        capabilities:
+          type: array
+          maxItems: 64
+          items: { type: string, maxLength: 64 }
+    AgentEnrollmentResponse:
+      type: object
+      additionalProperties: false
+      required: [agent_id, host_id, certificate_pem, ca_bundle_pem, not_after, server_name, grpc_endpoint, heartbeat_interval_seconds]
+      properties:
+        agent_id: { type: string, format: uuid }
+        host_id: { type: string, format: uuid }
+        certificate_pem: { type: string }
+        ca_bundle_pem: { type: string }
+        not_after: { type: string, format: date-time }
+        server_name: { type: string }
+        grpc_endpoint: { type: string }
+        heartbeat_interval_seconds: { type: integer, minimum: 1 }
+    AgentRevoke:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 512 }
     Problem:
       type: object
       additionalProperties: false

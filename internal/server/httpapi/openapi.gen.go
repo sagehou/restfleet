@@ -14,6 +14,81 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AgentStatus.
+const (
+	AgentStatusACTIVE  AgentStatus = "ACTIVE"
+	AgentStatusREVOKED AgentStatus = "REVOKED"
+)
+
+// Valid indicates whether the value is a known member of the AgentStatus enum.
+func (e AgentStatus) Valid() bool {
+	switch e {
+	case AgentStatusACTIVE:
+		return true
+	case AgentStatusREVOKED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentEnrollmentRequestArch.
+const (
+	Amd64 AgentEnrollmentRequestArch = "amd64"
+	Arm64 AgentEnrollmentRequestArch = "arm64"
+)
+
+// Valid indicates whether the value is a known member of the AgentEnrollmentRequestArch enum.
+func (e AgentEnrollmentRequestArch) Valid() bool {
+	switch e {
+	case Amd64:
+		return true
+	case Arm64:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentEnrollmentRequestOs.
+const (
+	Linux AgentEnrollmentRequestOs = "linux"
+)
+
+// Valid indicates whether the value is a known member of the AgentEnrollmentRequestOs enum.
+func (e AgentEnrollmentRequestOs) Valid() bool {
+	switch e {
+	case Linux:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnrollmentTokenStatus.
+const (
+	EnrollmentTokenStatusACTIVE  EnrollmentTokenStatus = "ACTIVE"
+	EnrollmentTokenStatusEXPIRED EnrollmentTokenStatus = "EXPIRED"
+	EnrollmentTokenStatusREVOKED EnrollmentTokenStatus = "REVOKED"
+	EnrollmentTokenStatusUSED    EnrollmentTokenStatus = "USED"
+)
+
+// Valid indicates whether the value is a known member of the EnrollmentTokenStatus enum.
+func (e EnrollmentTokenStatus) Valid() bool {
+	switch e {
+	case EnrollmentTokenStatusACTIVE:
+		return true
+	case EnrollmentTokenStatusEXPIRED:
+		return true
+	case EnrollmentTokenStatusREVOKED:
+		return true
+	case EnrollmentTokenStatusUSED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Ok          HealthStatus = "ok"
@@ -26,6 +101,30 @@ func (e HealthStatus) Valid() bool {
 	case Ok:
 		return true
 	case Unavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HostStatus.
+const (
+	HostStatusACTIVE   HostStatus = "ACTIVE"
+	HostStatusDISABLED HostStatus = "DISABLED"
+	HostStatusPENDING  HostStatus = "PENDING"
+	HostStatusREVOKED  HostStatus = "REVOKED"
+)
+
+// Valid indicates whether the value is a known member of the HostStatus enum.
+func (e HostStatus) Valid() bool {
+	switch e {
+	case HostStatusACTIVE:
+		return true
+	case HostStatusDISABLED:
+		return true
+	case HostStatusPENDING:
+		return true
+	case HostStatusREVOKED:
 		return true
 	default:
 		return false
@@ -50,6 +149,74 @@ func (e UserRole) Valid() bool {
 	}
 }
 
+// Agent defines model for Agent.
+type Agent struct {
+	AcceptedRevision     int64              `json:"accepted_revision"`
+	Arch                 string             `json:"arch"`
+	BootId               *string            `json:"boot_id,omitempty"`
+	CertificateNotAfter  time.Time          `json:"certificate_not_after"`
+	CertificateSerial    string             `json:"certificate_serial"`
+	CreatedAt            time.Time          `json:"created_at"`
+	DesiredRevision      int64              `json:"desired_revision"`
+	HostId               openapi_types.UUID `json:"host_id"`
+	Hostname             string             `json:"hostname"`
+	Id                   openapi_types.UUID `json:"id"`
+	InstallId            openapi_types.UUID `json:"install_id"`
+	LastConnectedAt      *time.Time         `json:"last_connected_at,omitempty"`
+	LastSeenAt           *time.Time         `json:"last_seen_at,omitempty"`
+	Os                   string             `json:"os"`
+	ProtocolVersion      string             `json:"protocol_version"`
+	PublicKeyFingerprint string             `json:"public_key_fingerprint"`
+	ResticVersion        *string            `json:"restic_version,omitempty"`
+	Status               AgentStatus        `json:"status"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+	Version              string             `json:"version"`
+}
+
+// AgentStatus defines model for Agent.Status.
+type AgentStatus string
+
+// AgentEnrollmentRequest defines model for AgentEnrollmentRequest.
+type AgentEnrollmentRequest struct {
+	AgentVersion    string                     `json:"agent_version"`
+	Arch            AgentEnrollmentRequestArch `json:"arch"`
+	Capabilities    []string                   `json:"capabilities"`
+	CsrPem          string                     `json:"csr_pem"`
+	Hostname        string                     `json:"hostname"`
+	InstallId       openapi_types.UUID         `json:"install_id"`
+	Os              AgentEnrollmentRequestOs   `json:"os"`
+	ProtocolVersion string                     `json:"protocol_version"`
+	Token           string                     `json:"token"`
+}
+
+// AgentEnrollmentRequestArch defines model for AgentEnrollmentRequest.Arch.
+type AgentEnrollmentRequestArch string
+
+// AgentEnrollmentRequestOs defines model for AgentEnrollmentRequest.Os.
+type AgentEnrollmentRequestOs string
+
+// AgentEnrollmentResponse defines model for AgentEnrollmentResponse.
+type AgentEnrollmentResponse struct {
+	AgentId                  openapi_types.UUID `json:"agent_id"`
+	CaBundlePem              string             `json:"ca_bundle_pem"`
+	CertificatePem           string             `json:"certificate_pem"`
+	GrpcEndpoint             string             `json:"grpc_endpoint"`
+	HeartbeatIntervalSeconds int                `json:"heartbeat_interval_seconds"`
+	HostId                   openapi_types.UUID `json:"host_id"`
+	NotAfter                 time.Time          `json:"not_after"`
+	ServerName               string             `json:"server_name"`
+}
+
+// AgentList defines model for AgentList.
+type AgentList struct {
+	Items []Agent `json:"items"`
+}
+
+// AgentRevoke defines model for AgentRevoke.
+type AgentRevoke struct {
+	Reason string `json:"reason"`
+}
+
 // BootstrapRequest defines model for BootstrapRequest.
 type BootstrapRequest struct {
 	DisplayName string `json:"display_name"`
@@ -71,6 +238,47 @@ type DashboardSummary struct {
 	Repositories int64     `json:"repositories"`
 }
 
+// EnrollmentInstall defines model for EnrollmentInstall.
+type EnrollmentInstall struct {
+	Docker string `json:"docker"`
+	Native string `json:"native"`
+}
+
+// EnrollmentToken defines model for EnrollmentToken.
+type EnrollmentToken struct {
+	CreatedAt     time.Time             `json:"created_at"`
+	ExpiresAt     time.Time             `json:"expires_at"`
+	Fingerprint   string                `json:"fingerprint"`
+	HostId        openapi_types.UUID    `json:"host_id"`
+	Id            openapi_types.UUID    `json:"id"`
+	RevokedAt     *time.Time            `json:"revoked_at,omitempty"`
+	Status        EnrollmentTokenStatus `json:"status"`
+	UsedAt        *time.Time            `json:"used_at,omitempty"`
+	UsedByAgentId *openapi_types.UUID   `json:"used_by_agent_id,omitempty"`
+}
+
+// EnrollmentTokenStatus defines model for EnrollmentToken.Status.
+type EnrollmentTokenStatus string
+
+// EnrollmentTokenCreate defines model for EnrollmentTokenCreate.
+type EnrollmentTokenCreate struct {
+	ExpiresInSeconds *int `json:"expires_in_seconds,omitempty"`
+}
+
+// EnrollmentTokenCreated defines model for EnrollmentTokenCreated.
+type EnrollmentTokenCreated struct {
+	ExpiresAt   time.Time          `json:"expires_at"`
+	Fingerprint string             `json:"fingerprint"`
+	Id          openapi_types.UUID `json:"id"`
+	Install     EnrollmentInstall  `json:"install"`
+	Token       string             `json:"token"`
+}
+
+// EnrollmentTokenList defines model for EnrollmentTokenList.
+type EnrollmentTokenList struct {
+	Items []EnrollmentToken `json:"items"`
+}
+
 // FieldError defines model for FieldError.
 type FieldError struct {
 	Code  string `json:"code"`
@@ -85,6 +293,43 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// Host defines model for Host.
+type Host struct {
+	CreatedAt   time.Time          `json:"created_at"`
+	Description string             `json:"description"`
+	DisplayName string             `json:"display_name"`
+	Id          openapi_types.UUID `json:"id"`
+	Labels      map[string]string  `json:"labels"`
+	Revision    int64              `json:"revision"`
+	Status      HostStatus         `json:"status"`
+	Timezone    string             `json:"timezone"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+// HostStatus defines model for Host.Status.
+type HostStatus string
+
+// HostCreate defines model for HostCreate.
+type HostCreate struct {
+	Description *string            `json:"description,omitempty"`
+	DisplayName string             `json:"display_name"`
+	Labels      *map[string]string `json:"labels,omitempty"`
+	Timezone    string             `json:"timezone"`
+}
+
+// HostList defines model for HostList.
+type HostList struct {
+	Items []Host `json:"items"`
+}
+
+// HostPatch defines model for HostPatch.
+type HostPatch struct {
+	Description *string            `json:"description,omitempty"`
+	DisplayName *string            `json:"display_name,omitempty"`
+	Labels      *map[string]string `json:"labels,omitempty"`
+	Timezone    *string            `json:"timezone,omitempty"`
+}
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -130,8 +375,29 @@ type Version struct {
 	Version       string `json:"version"`
 }
 
+// AgentId defines model for AgentId.
+type AgentId = openapi_types.UUID
+
 // CsrfToken defines model for CsrfToken.
 type CsrfToken = string
+
+// HostId defines model for HostId.
+type HostId = openapi_types.UUID
+
+// IdempotencyKey defines model for IdempotencyKey.
+type IdempotencyKey = string
+
+// IfMatch defines model for IfMatch.
+type IfMatch = string
+
+// TokenId defines model for TokenId.
+type TokenId = openapi_types.UUID
+
+// RevokeAgentParams defines parameters for RevokeAgent.
+type RevokeAgentParams struct {
+	XCSRFToken     CsrfToken      `json:"X-CSRF-Token"`
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
 
 // LogoutParams defines parameters for Logout.
 type LogoutParams struct {
@@ -143,14 +409,71 @@ type BootstrapParams struct {
 	XRestFleetBootstrapToken string `json:"X-RestFleet-Bootstrap-Token"`
 }
 
+// RevokeEnrollmentTokenParams defines parameters for RevokeEnrollmentToken.
+type RevokeEnrollmentTokenParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// CreateHostParams defines parameters for CreateHost.
+type CreateHostParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// UpdateHostParams defines parameters for UpdateHost.
+type UpdateHostParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
+// DisableHostParams defines parameters for DisableHost.
+type DisableHostParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
+// EnableHostParams defines parameters for EnableHost.
+type EnableHostParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
+// CreateEnrollmentTokenParams defines parameters for CreateEnrollmentToken.
+type CreateEnrollmentTokenParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// EnrollAgentJSONRequestBody defines body for EnrollAgent for application/json ContentType.
+type EnrollAgentJSONRequestBody = AgentEnrollmentRequest
+
+// RevokeAgentJSONRequestBody defines body for RevokeAgent for application/json ContentType.
+type RevokeAgentJSONRequestBody = AgentRevoke
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
 // BootstrapJSONRequestBody defines body for Bootstrap for application/json ContentType.
 type BootstrapJSONRequestBody = BootstrapRequest
 
+// CreateHostJSONRequestBody defines body for CreateHost for application/json ContentType.
+type CreateHostJSONRequestBody = HostCreate
+
+// UpdateHostJSONRequestBody defines body for UpdateHost for application/json ContentType.
+type UpdateHostJSONRequestBody = HostPatch
+
+// CreateEnrollmentTokenJSONRequestBody defines body for CreateEnrollmentToken for application/json ContentType.
+type CreateEnrollmentTokenJSONRequestBody = EnrollmentTokenCreate
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+
+	// (POST /api/v1/agent-enrollment)
+	EnrollAgent(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/agents/{agent_id})
+	GetAgent(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (POST /api/v1/agents/{agent_id}/revoke)
+	RevokeAgent(w http.ResponseWriter, r *http.Request, agentId AgentId, params RevokeAgentParams)
 
 	// (POST /api/v1/auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -170,6 +493,36 @@ type ServerInterface interface {
 	// (GET /api/v1/dashboard/summary)
 	DashboardSummary(w http.ResponseWriter, r *http.Request)
 
+	// (DELETE /api/v1/enrollment-tokens/{token_id})
+	RevokeEnrollmentToken(w http.ResponseWriter, r *http.Request, tokenId TokenId, params RevokeEnrollmentTokenParams)
+
+	// (GET /api/v1/hosts)
+	ListHosts(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/v1/hosts)
+	CreateHost(w http.ResponseWriter, r *http.Request, params CreateHostParams)
+
+	// (GET /api/v1/hosts/{host_id})
+	GetHost(w http.ResponseWriter, r *http.Request, hostId HostId)
+
+	// (PATCH /api/v1/hosts/{host_id})
+	UpdateHost(w http.ResponseWriter, r *http.Request, hostId HostId, params UpdateHostParams)
+
+	// (GET /api/v1/hosts/{host_id}/agents)
+	ListHostAgents(w http.ResponseWriter, r *http.Request, hostId HostId)
+
+	// (POST /api/v1/hosts/{host_id}/disable)
+	DisableHost(w http.ResponseWriter, r *http.Request, hostId HostId, params DisableHostParams)
+
+	// (POST /api/v1/hosts/{host_id}/enable)
+	EnableHost(w http.ResponseWriter, r *http.Request, hostId HostId, params EnableHostParams)
+
+	// (GET /api/v1/hosts/{host_id}/enrollment-tokens)
+	ListEnrollmentTokens(w http.ResponseWriter, r *http.Request, hostId HostId)
+
+	// (POST /api/v1/hosts/{host_id}/enrollment-tokens)
+	CreateEnrollmentToken(w http.ResponseWriter, r *http.Request, hostId HostId, params CreateEnrollmentTokenParams)
+
 	// (GET /api/v1/version)
 	Version(w http.ResponseWriter, r *http.Request)
 
@@ -188,6 +541,123 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// EnrollAgent operation middleware
+func (siw *ServerInterfaceWrapper) EnrollAgent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnrollAgent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgent operation middleware
+func (siw *ServerInterfaceWrapper) GetAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agent_id" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agent_id", r.PathValue("agent_id"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgent(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeAgent operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agent_id" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agent_id", r.PathValue("agent_id"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RevokeAgentParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeAgent(w, r, agentId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Login operation middleware
 func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
@@ -326,6 +796,482 @@ func (siw *ServerInterfaceWrapper) DashboardSummary(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DashboardSummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeEnrollmentToken operation middleware
+func (siw *ServerInterfaceWrapper) RevokeEnrollmentToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "token_id" -------------
+	var tokenId TokenId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "token_id", r.PathValue("token_id"), &tokenId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RevokeEnrollmentTokenParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeEnrollmentToken(w, r, tokenId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListHosts operation middleware
+func (siw *ServerInterfaceWrapper) ListHosts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHosts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateHost operation middleware
+func (siw *ServerInterfaceWrapper) CreateHost(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateHostParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateHost(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHost operation middleware
+func (siw *ServerInterfaceWrapper) GetHost(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "host_id" -------------
+	var hostId HostId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "host_id", r.PathValue("host_id"), &hostId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHost(w, r, hostId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateHost operation middleware
+func (siw *ServerInterfaceWrapper) UpdateHost(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "host_id" -------------
+	var hostId HostId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "host_id", r.PathValue("host_id"), &hostId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateHostParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateHost(w, r, hostId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListHostAgents operation middleware
+func (siw *ServerInterfaceWrapper) ListHostAgents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "host_id" -------------
+	var hostId HostId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "host_id", r.PathValue("host_id"), &hostId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHostAgents(w, r, hostId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableHost operation middleware
+func (siw *ServerInterfaceWrapper) DisableHost(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "host_id" -------------
+	var hostId HostId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "host_id", r.PathValue("host_id"), &hostId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DisableHostParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableHost(w, r, hostId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EnableHost operation middleware
+func (siw *ServerInterfaceWrapper) EnableHost(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "host_id" -------------
+	var hostId HostId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "host_id", r.PathValue("host_id"), &hostId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params EnableHostParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnableHost(w, r, hostId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListEnrollmentTokens operation middleware
+func (siw *ServerInterfaceWrapper) ListEnrollmentTokens(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "host_id" -------------
+	var hostId HostId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "host_id", r.PathValue("host_id"), &hostId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEnrollmentTokens(w, r, hostId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateEnrollmentToken operation middleware
+func (siw *ServerInterfaceWrapper) CreateEnrollmentToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "host_id" -------------
+	var hostId HostId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "host_id", r.PathValue("host_id"), &hostId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "host_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateEnrollmentTokenParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateEnrollmentToken(w, r, hostId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -506,6 +1452,19 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/session", wrapper.Session)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/dashboard/summary", wrapper.DashboardSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/version", wrapper.Version)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/hosts", wrapper.ListHosts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/hosts", wrapper.CreateHost)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/hosts/{host_id}", wrapper.GetHost)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/hosts/{host_id}", wrapper.UpdateHost)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/hosts/{host_id}/disable", wrapper.DisableHost)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/hosts/{host_id}/enable", wrapper.EnableHost)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/hosts/{host_id}/agents", wrapper.ListHostAgents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/hosts/{host_id}/enrollment-tokens", wrapper.ListEnrollmentTokens)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/hosts/{host_id}/enrollment-tokens", wrapper.CreateEnrollmentToken)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/enrollment-tokens/{token_id}", wrapper.RevokeEnrollmentToken)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agent-enrollment", wrapper.EnrollAgent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/{agent_id}", wrapper.GetAgent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/{agent_id}/revoke", wrapper.RevokeAgent)
 
 	return m
 }

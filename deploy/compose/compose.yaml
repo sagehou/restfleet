@@ -53,11 +53,28 @@ services:
       RESTFLEET_HTTP_ADDRESS: ":8080"
       RESTFLEET_METRICS_ADDRESS: ":9090"
       RESTFLEET_SECURE_COOKIES: "false"
+      RESTFLEET_MASTER_KEY_FILE: /run/secrets/master-key
+      RESTFLEET_PUBLIC_URL: "${RESTFLEET_PUBLIC_URL:-https://localhost:8080}"
+      RESTFLEET_GRPC_ADDRESS: ":8443"
+      RESTFLEET_GRPC_ENDPOINT: "${RESTFLEET_GRPC_ENDPOINT:-localhost:8443}"
+      RESTFLEET_GRPC_SERVER_NAME: "${RESTFLEET_GRPC_SERVER_NAME:-localhost}"
+      RESTFLEET_GRPC_TLS_CERT_FILE: /run/secrets/grpc-tls-cert
+      RESTFLEET_GRPC_TLS_KEY_FILE: /run/secrets/grpc-tls-key
+      RESTFLEET_SERVER_CA_BUNDLE_FILE: /run/secrets/server-ca-bundle
     secrets:
       - source: app-database-url
         target: database-url
+      - source: master-key
+        target: master-key
+      - source: grpc-tls-cert
+        target: grpc-tls-cert
+      - source: grpc-tls-key
+        target: grpc-tls-key
+      - source: server-ca-bundle
+        target: server-ca-bundle
     ports:
       - "${RESTFLEET_HTTP_BIND:-127.0.0.1}:8080:8080"
+      - "${RESTFLEET_GRPC_BIND:-127.0.0.1}:8443:8443"
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
@@ -78,5 +95,13 @@ secrets:
     file: ${RESTFLEET_MIGRATOR_DATABASE_URL_FILE:?set RESTFLEET_MIGRATOR_DATABASE_URL_FILE}
   app-database-url:
     file: ${RESTFLEET_APP_DATABASE_URL_FILE:?set RESTFLEET_APP_DATABASE_URL_FILE}
+  master-key:
+    file: ${RESTFLEET_MASTER_KEY_FILE:?set RESTFLEET_MASTER_KEY_FILE}
+  grpc-tls-cert:
+    file: ${RESTFLEET_GRPC_TLS_CERT_FILE:?set RESTFLEET_GRPC_TLS_CERT_FILE}
+  grpc-tls-key:
+    file: ${RESTFLEET_GRPC_TLS_KEY_FILE:?set RESTFLEET_GRPC_TLS_KEY_FILE}
+  server-ca-bundle:
+    file: ${RESTFLEET_SERVER_CA_BUNDLE_FILE:?set RESTFLEET_SERVER_CA_BUNDLE_FILE}
 volumes:
   postgres-data:

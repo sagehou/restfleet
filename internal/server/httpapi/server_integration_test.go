@@ -91,7 +91,8 @@ func setupIntegration(
 	}
 	t.Cleanup(adminPool.Close)
 	_, err = adminPool.Exec(ctx, `
-		truncate table audit_events, sessions, bootstrap_state, users restart identity cascade;
+		truncate table server_pki, secrets, agent_certificates, enrollment_tokens,
+			agents, hosts, audit_events, sessions, bootstrap_state, users restart identity cascade;
 		insert into bootstrap_state (singleton, created_at) values (true, now());
 	`)
 	if err != nil {
@@ -109,6 +110,11 @@ func setupIntegration(
 		SaltLength:  8,
 		KeyLength:   16,
 	}
+	agentCA, agentCAPrivatePEM, err := security.NewAgentCA(*clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clear(agentCAPrivatePEM)
 	controlPlane, err := control.NewControlPlane(store, control.Settings{
 		BootstrapToken: bootstrapToken,
 		IdleTTL:        5 * time.Minute,
@@ -116,6 +122,13 @@ func setupIntegration(
 		PasswordParams: params,
 		ExpectedSchema: postgres.ExpectedSchemaVersion,
 		Clock:          func() time.Time { return *clock },
+		Enrollment: control.EnrollmentSettings{
+			Pepper: bytes.Repeat([]byte{7}, 32),
+			CA:     agentCA, PublicURL: "https://control.example",
+			GRPCEndpoint: "control.example:443", ServerName: "control.example",
+			ServerCABundlePEM: agentCA.CertificatePEM(),
+			HeartbeatInterval: 15 * time.Second,
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
