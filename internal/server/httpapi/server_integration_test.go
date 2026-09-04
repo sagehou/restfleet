@@ -91,7 +91,8 @@ func setupIntegration(
 	}
 	t.Cleanup(adminPool.Close)
 	_, err = adminPool.Exec(ctx, `
-		truncate table server_pki, secrets, agent_certificates, enrollment_tokens,
+		truncate table outbox_events, agent_inventories, agent_desired_states,
+			server_pki, secrets, agent_certificates, enrollment_tokens,
 			agents, hosts, audit_events, sessions, bootstrap_state, users restart identity cascade;
 		insert into bootstrap_state (singleton, created_at) values (true, now());
 	`)

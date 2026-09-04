@@ -307,20 +307,49 @@ func (s *Store) ConsumeEnrollmentToken(
 	if err != nil {
 		return domain.EnrollmentMaterial{}, err
 	}
+	if err := material.DesiredState.Validate(); err != nil {
+		return domain.EnrollmentMaterial{}, err
+	}
+	desiredJSON, err := material.DesiredState.CanonicalJSON()
+	if err != nil {
+		return domain.EnrollmentMaterial{}, err
+	}
 	agent := material.Agent
 	certificate := material.Certificate
 	_, err = tx.Exec(ctx, `
 		insert into agents (
 			id, host_id, install_id, public_key_fingerprint, certificate_serial,
 			certificate_not_after, status, version, protocol_version, os, arch,
-			hostname, created_at, updated_at
-		) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+			hostname, desired_revision, created_at, updated_at
+		) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
 	`, agent.ID, hostID, agent.InstallID, agent.PublicKeyFingerprint,
 		agent.CertificateSerial, agent.CertificateNotAfter, agent.Status,
 		agent.Version, agent.ProtocolVersion, agent.OS, agent.Arch,
-		agent.Hostname, agent.CreatedAt)
+		agent.Hostname, agent.DesiredRevision, agent.CreatedAt)
 	if err != nil {
 		return domain.EnrollmentMaterial{}, persistenceError(err)
+	}
+	_, err = tx.Exec(ctx, `
+		insert into agent_desired_states (
+			agent_id, revision, generated_at, config_hash, config_json, created_at
+		) values ($1, $2, $3, $4, $5, $3)
+	`, agent.ID, material.DesiredState.Revision, material.DesiredState.GeneratedAt,
+		material.DesiredState.ConfigHash, desiredJSON)
+	if err != nil {
+		return domain.EnrollmentMaterial{}, err
+	}
+	_, err = tx.Exec(ctx, `
+		insert into outbox_events (
+			id, event_type, aggregate_type, aggregate_id, payload,
+			created_at, available_at
+		) values (
+			$1, 'AGENT_DESIRED_STATE_CHANGED', 'AGENT', $2,
+			jsonb_build_object('revision', $3::bigint), $4, $4
+		)
+	`, material.OutboxID, agent.ID, material.DesiredState.Revision,
+		material.DesiredState.GeneratedAt)
+	if err != nil {
+		return domain.EnrollmentMaterial{}, err
 	}
 	_, err = tx.Exec(ctx, `
 		insert into agent_certificates (
@@ -415,7 +444,10 @@ const agentSelect = `
 	       agents.version, agents.protocol_version, agents.os, agents.arch,
 	       agents.hostname, agents.boot_id, agents.restic_version,
 	       agents.last_seen_at, agents.last_connected_at, agents.desired_revision,
-	       agents.accepted_revision, agents.created_at, agents.updated_at
+	       agents.accepted_revision, agents.uptime_seconds, agents.state_free_bytes,
+	       agents.clock_offset_ms, agents.heartbeat_error_code,
+	       agents.config_error_code, agents.config_error_field,
+	       agents.created_at, agents.updated_at
 	from agents
 `
 
@@ -427,6 +459,8 @@ func scanAgent(row rowScanner) (domain.Agent, error) {
 		&agent.Version, &agent.ProtocolVersion, &agent.OS, &agent.Arch,
 		&agent.Hostname, &agent.BootID, &agent.ResticVersion, &agent.LastSeenAt,
 		&agent.LastConnectedAt, &agent.DesiredRevision, &agent.AcceptedRevision,
+		&agent.UptimeSeconds, &agent.StateFreeBytes, &agent.ClockOffsetMS,
+		&agent.HeartbeatErrorCode, &agent.ConfigErrorCode, &agent.ConfigErrorField,
 		&agent.CreatedAt, &agent.UpdatedAt,
 	)
 	return agent, err
@@ -436,22 +470,26 @@ func (s *Store) MarkAgentConnected(
 	ctx context.Context,
 	id, installID uuid.UUID,
 	version, protocolVersion, hostname, bootID, resticVersion string,
+	acceptedRevision int64,
 	at time.Time,
-) error {
+) (domain.Agent, error) {
 	tag, err := s.pool.Exec(ctx, `
 		update agents
 		set version = $3, protocol_version = $4, hostname = $5, boot_id = $6,
-		    restic_version = $7, last_seen_at = $8, last_connected_at = $8,
-		    updated_at = $8
+		    restic_version = $7,
+		    accepted_revision = greatest(accepted_revision, $8),
+		    last_connected_at = $9, updated_at = $9
 		where id = $1 and install_id = $2 and status = 'ACTIVE'
-	`, id, installID, version, protocolVersion, hostname, bootID, resticVersion, at)
+		  and $8 >= 0 and $8 <= desired_revision
+	`, id, installID, version, protocolVersion, hostname, bootID, resticVersion,
+		acceptedRevision, at)
 	if err != nil {
-		return err
+		return domain.Agent{}, err
 	}
 	if tag.RowsAffected() != 1 {
-		return domain.ErrAgentRevoked
+		return domain.Agent{}, domain.ErrAgentRevoked
 	}
-	return nil
+	return s.Agent(ctx, id)
 }
 
 func (s *Store) RevokeAgent(

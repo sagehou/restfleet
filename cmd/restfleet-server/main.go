@@ -132,6 +132,7 @@ func run(logger *slog.Logger) error {
 			grpc.MaxSendMsgSize(1<<20),
 		)
 		agentService := agentgrpc.New(controlPlane, config.ServerCABundlePEM, 15*time.Second)
+		agentService.SetHeartbeatObserver(api.ObserveAgentHeartbeat)
 		controlPlane.SetAgentDisconnector(agentService.DisconnectAgent)
 		agentv1.RegisterAgentControlServiceServer(grpcServer, agentService)
 	}

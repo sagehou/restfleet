@@ -61,6 +61,9 @@ describe('App', () => {
         return response({
           collected_at: '2026-09-03T08:00:00Z',
           hosts: 0,
+          agents_online: 0,
+          agents_degraded: 0,
+          agents_offline: 0,
           plans: 0,
           repositories: 0,
           operations: 0,
@@ -71,7 +74,7 @@ describe('App', () => {
           version: '0.1.0-test',
           commit: 'abc123',
           built_at: '2026-09-03T08:00:00Z',
-          schema_version: 3,
+          schema_version: 4,
         })
       }
       if (path === '/api/v1/hosts') return response({ items: [] })
@@ -114,10 +117,10 @@ describe('App', () => {
       const path = String(input)
       if (path === '/api/v1/auth/session') return response(session)
       if (path === '/api/v1/dashboard/summary') {
-        return response({ collected_at: '2026-09-03T08:00:00Z', hosts: hosts.length, plans: 0, repositories: 0, operations: 0 })
+        return response({ collected_at: '2026-09-03T08:00:00Z', hosts: hosts.length, agents_online: 0, agents_degraded: 0, agents_offline: hosts.length, plans: 0, repositories: 0, operations: 0 })
       }
       if (path === '/api/v1/version') {
-        return response({ version: 'test', commit: 'abc', built_at: '2026-09-03T08:00:00Z', schema_version: 3 })
+        return response({ version: 'test', commit: 'abc', built_at: '2026-09-03T08:00:00Z', schema_version: 4 })
       }
       if (path === '/api/v1/hosts' && init?.method === 'POST') {
         hosts = [host]

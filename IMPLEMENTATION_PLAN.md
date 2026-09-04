@@ -106,6 +106,8 @@
 
 ## M3 — Heartbeat, Inventory and Desired State
 
+**Status: IN PROGRESS**
+
 ### Goal
 
 可靠展示 Agent health，并版本化下发空/基础配置。
@@ -127,7 +129,8 @@
 
 ### Tests/Exit
 
-- AGT-003/004/008–010；
+- AGT-003/004/009/010；
+- Agent envelope 重放/乱序防护（AGT-008 的 log chunk 语义随日志流里程碑完成）；
 - OBS-008/009；
 - Server restart reconciliation。
 

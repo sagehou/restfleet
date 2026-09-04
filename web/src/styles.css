@@ -417,18 +417,22 @@ tr:last-child td {
   font-weight: 800;
 }
 
-.status-active {
+.status-active,
+.status-online {
   color: #065f46;
   background: #d1fae5;
 }
 
+.status-offline,
+.status-unknown,
 .status-disabled,
 .status-revoked {
   color: #7a271a;
   background: #fee4e2;
 }
 
-.status-pending {
+.status-pending,
+.status-degraded {
   color: #854d0e;
   background: #fef3c7;
 }

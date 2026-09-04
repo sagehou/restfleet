@@ -236,6 +236,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hosts/{host_id}/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getHostInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hosts/{host_id}/enrollment-tokens": {
         parameters: {
             query?: never;
@@ -361,6 +379,12 @@ export interface components {
             /** Format: int64 */
             hosts: number;
             /** Format: int64 */
+            agents_online: number;
+            /** Format: int64 */
+            agents_degraded: number;
+            /** Format: int64 */
+            agents_offline: number;
+            /** Format: int64 */
             plans: number;
             /** Format: int64 */
             repositories: number;
@@ -431,6 +455,8 @@ export interface components {
             certificate_not_after: string;
             /** @enum {string} */
             status: "ACTIVE" | "REVOKED";
+            /** @enum {string} */
+            health: "ONLINE" | "DEGRADED" | "OFFLINE" | "REVOKED";
             version: string;
             protocol_version: string;
             os: string;
@@ -446,10 +472,40 @@ export interface components {
             desired_revision: number;
             /** Format: int64 */
             accepted_revision: number;
+            /** Format: int64 */
+            uptime_seconds: number;
+            /** Format: int64 */
+            state_free_bytes: number;
+            /** Format: int64 */
+            clock_offset_ms: number;
+            heartbeat_error_code: string;
+            config_error_code: string;
+            config_error_field: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        AgentInventory: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            agent_id: string;
+            /** Format: date-time */
+            captured_at: string;
+            kernel: string;
+            os_release: string;
+            /** @enum {string} */
+            cpu_arch: "amd64" | "arm64";
+            agent_version: string;
+            restic_version: string;
+            containerized: boolean;
+            available_bytes: {
+                [key: string]: number;
+            };
+            /** Format: int64 */
+            clock_offset_ms: number;
+            capabilities: string[];
         };
         AgentList: {
             items: components["schemas"]["Agent"][];
@@ -986,6 +1042,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getHostInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest inventory reported by an Agent associated with the Host. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInventory"];
                 };
             };
             401: components["responses"]["Problem"];

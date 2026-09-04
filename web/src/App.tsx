@@ -8,6 +8,7 @@ type Version = components['schemas']['Version']
 type Host = components['schemas']['Host']
 type HostList = components['schemas']['HostList']
 type Agent = components['schemas']['Agent']
+type AgentInventory = components['schemas']['AgentInventory']
 type AgentList = components['schemas']['AgentList']
 type EnrollmentTokenCreated = components['schemas']['EnrollmentTokenCreated']
 type Problem = components['schemas']['Problem']
@@ -409,6 +410,9 @@ function Overview({
       </header>
       <dl className="metric-grid">
         <Metric label="Hosts" value={summary.hosts} />
+        <Metric label="Agents online" value={summary.agents_online} />
+        <Metric label="Agents degraded" value={summary.agents_degraded} />
+        <Metric label="Agents offline" value={summary.agents_offline} />
         <Metric label="Plans" value={summary.plans} />
         <Metric label="Repositories" value={summary.repositories} />
         <Metric label="Operations" value={summary.operations} />
@@ -443,8 +447,25 @@ function HostsView({
   const [oneTime, setOneTime] = useState<EnrollmentTokenCreated | null>(null)
   const [step, setStep] = useState<'host' | 'token' | 'secret' | 'wait'>('host')
   const [agents, setAgents] = useState<Agent[]>([])
+  const [healthByHost, setHealthByHost] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
   const selected = hosts.find((host) => host.id === selectedID) ?? null
+
+  useEffect(() => {
+    let active = true
+    // ponytail: M3 reuses the existing per-Host endpoint until fleet pagination adds a joined summary.
+    void Promise.all(hosts.map(async (host) => {
+      const result = await requestJSON<AgentList>(`/api/v1/hosts/${host.id}/agents`)
+      return [host.id, result.items[0]?.health ?? 'UNKNOWN'] as const
+    })).then((entries) => {
+      if (active) setHealthByHost(Object.fromEntries(entries))
+    }).catch(() => {
+      if (active) setHealthByHost({})
+    })
+    return () => {
+      active = false
+    }
+  }, [hosts])
 
   function closeWizard() {
     setOneTime(null)
@@ -542,7 +563,7 @@ function HostsView({
               {hosts.map((host) => (
                 <tr key={host.id}>
                   <td><button className="table-link" onClick={() => setSelectedID(host.id)}>{host.display_name}</button></td>
-                  <td><StatusBadge status={host.status} /></td>
+                  <td><StatusBadge status={healthByHost[host.id] ?? 'UNKNOWN'} /></td>
                   <td>{host.timezone}</td>
                   <td>{Object.entries(host.labels).map(([key, value]) => `${key}=${value}`).join(', ') || '—'}</td>
                 </tr>
@@ -621,17 +642,26 @@ function HostsView({
 
 function HostDetail({ host, back, reload }: { host: Host; back: () => void; reload: () => Promise<void> }) {
   const [agents, setAgents] = useState<Agent[]>([])
+  const [inventory, setInventory] = useState<AgentInventory | null>(null)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
     let active = true
-    void requestJSON<AgentList>(`/api/v1/hosts/${host.id}/agents`)
-      .then((result) => {
-        if (active) setAgents(result.items)
-      })
+    const inventoryRequest = requestJSON<AgentInventory>(`/api/v1/hosts/${host.id}/inventory`)
       .catch((error: unknown) => {
-        if (active) setMessage(errorMessage(error))
+        if (error instanceof ApiError && error.status === 404) return null
+        throw error
       })
+    void Promise.all([
+      requestJSON<AgentList>(`/api/v1/hosts/${host.id}/agents`),
+      inventoryRequest,
+    ]).then(([agentList, latestInventory]) => {
+      if (!active) return
+      setAgents(agentList.items)
+      setInventory(latestInventory)
+    }).catch((error: unknown) => {
+      if (active) setMessage(errorMessage(error))
+    })
     return () => {
       active = false
     }
@@ -674,22 +704,61 @@ function HostDetail({ host, back, reload }: { host: Host; back: () => void; relo
       <h2 className="section-title">Agent</h2>
       {agents.length === 0 ? <p className="muted">尚无 Agent 接入。</p> : agents.map((agent) => (
         <dl className="detail-list" key={agent.id}>
-          <div><dt>状态</dt><dd><StatusBadge status={agent.status} /></dd></div>
+          <div><dt>运行健康</dt><dd><StatusBadge status={agent.health} /></dd></div>
+          <div><dt>身份状态</dt><dd><StatusBadge status={agent.status} /></dd></div>
+          <div><dt>配置版本</dt><dd>{agent.accepted_revision} / {agent.desired_revision}{agent.accepted_revision === agent.desired_revision ? '（已同步）' : '（等待同步）'}</dd></div>
+          <div><dt>最后心跳</dt><dd>{agent.last_seen_at ? new Date(agent.last_seen_at).toLocaleString() : '尚未收到'}</dd></div>
+          <div><dt>运行时长</dt><dd>{formatDuration(agent.uptime_seconds)}</dd></div>
+          <div><dt>状态盘可用</dt><dd>{formatBytes(agent.state_free_bytes)}</dd></div>
+          <div><dt>时钟偏差</dt><dd>{agent.clock_offset_ms} ms</dd></div>
+          <div><dt>诊断代码</dt><dd>{agent.heartbeat_error_code || agent.config_error_code || '—'}{agent.config_error_field ? ` · ${agent.config_error_field}` : ''}</dd></div>
           <div><dt>Fingerprint</dt><dd><code>{agent.public_key_fingerprint}</code></dd></div>
           <div><dt>Hostname</dt><dd>{agent.hostname}</dd></div>
           <div><dt>平台</dt><dd>{agent.os}/{agent.arch}</dd></div>
           <div><dt>证书到期</dt><dd>{new Date(agent.certificate_not_after).toLocaleString()}</dd></div>
         </dl>
       ))}
+      <h2 className="section-title">Inventory</h2>
+      {!inventory ? <p className="muted">尚未收到系统清单。</p> : (
+        <dl className="detail-list">
+          <div><dt>采集时间</dt><dd>{new Date(inventory.captured_at).toLocaleString()}</dd></div>
+          <div><dt>系统</dt><dd>{inventory.os_release}</dd></div>
+          <div><dt>Kernel</dt><dd>{inventory.kernel}</dd></div>
+          <div><dt>架构</dt><dd>{inventory.cpu_arch}</dd></div>
+          <div><dt>Agent</dt><dd>{inventory.agent_version}</dd></div>
+          <div><dt>Restic</dt><dd>{inventory.restic_version || '未检测'}</dd></div>
+          <div><dt>运行环境</dt><dd>{inventory.containerized ? '容器' : '原生 Linux'}</dd></div>
+          <div><dt>能力</dt><dd>{inventory.capabilities.join(', ') || '—'}</dd></div>
+        </dl>
+      )}
     </section>
   )
 }
 
 function StatusBadge({ status }: { status: string }) {
   const labels: Record<string, string> = {
-    PENDING: '等待接入', ACTIVE: '已连接', DISABLED: '已禁用', REVOKED: '已撤销',
+    PENDING: '等待接入', ACTIVE: '身份有效', DISABLED: '已禁用', REVOKED: '已撤销',
+    ONLINE: '在线', DEGRADED: '异常', OFFLINE: '离线', UNKNOWN: '未接入',
   }
   return <span className={`status-badge status-${status.toLowerCase()}`}>{labels[status] ?? status}</span>
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`
+  const units = ['KiB', 'MiB', 'GiB', 'TiB']
+  let amount = value
+  let unit = -1
+  do {
+    amount /= 1024
+    unit++
+  } while (amount >= 1024 && unit < units.length - 1)
+  return `${amount.toFixed(1)} ${units[unit]}`
+}
+
+function formatDuration(seconds: number): string {
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  return days > 0 ? `${days} 天 ${hours} 小时` : `${hours} 小时`
 }
 
 function stepLabel(step: 'host' | 'token' | 'secret' | 'wait') {

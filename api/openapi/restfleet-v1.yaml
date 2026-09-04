@@ -339,6 +339,22 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/hosts/{host_id}/inventory:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    get:
+      operationId: getHostInventory
+      responses:
+        "200":
+          description: Latest inventory reported by an Agent associated with the Host.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentInventory"
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/hosts/{host_id}/enrollment-tokens:
     parameters:
       - $ref: "#/components/parameters/HostId"
@@ -583,12 +599,24 @@ components:
     DashboardSummary:
       type: object
       additionalProperties: false
-      required: [collected_at, hosts, plans, repositories, operations]
+      required: [collected_at, hosts, agents_online, agents_degraded, agents_offline, plans, repositories, operations]
       properties:
         collected_at:
           type: string
           format: date-time
         hosts:
+          type: integer
+          format: int64
+          minimum: 0
+        agents_online:
+          type: integer
+          format: int64
+          minimum: 0
+        agents_degraded:
+          type: integer
+          format: int64
+          minimum: 0
+        agents_offline:
           type: integer
           format: int64
           minimum: 0
@@ -681,7 +709,7 @@ components:
     Agent:
       type: object
       additionalProperties: false
-      required: [id, host_id, install_id, public_key_fingerprint, certificate_serial, certificate_not_after, status, version, protocol_version, os, arch, hostname, desired_revision, accepted_revision, created_at, updated_at]
+      required: [id, host_id, install_id, public_key_fingerprint, certificate_serial, certificate_not_after, status, health, version, protocol_version, os, arch, hostname, desired_revision, accepted_revision, uptime_seconds, state_free_bytes, clock_offset_ms, heartbeat_error_code, config_error_code, config_error_field, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         host_id: { type: string, format: uuid }
@@ -690,6 +718,7 @@ components:
         certificate_serial: { type: string }
         certificate_not_after: { type: string, format: date-time }
         status: { type: string, enum: [ACTIVE, REVOKED] }
+        health: { type: string, enum: [ONLINE, DEGRADED, OFFLINE, REVOKED] }
         version: { type: string }
         protocol_version: { type: string }
         os: { type: string }
@@ -701,8 +730,35 @@ components:
         last_connected_at: { type: string, format: date-time }
         desired_revision: { type: integer, format: int64 }
         accepted_revision: { type: integer, format: int64 }
+        uptime_seconds: { type: integer, format: int64, minimum: 0 }
+        state_free_bytes: { type: integer, format: int64, minimum: 0 }
+        clock_offset_ms: { type: integer, format: int64 }
+        heartbeat_error_code: { type: string }
+        config_error_code: { type: string }
+        config_error_field: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    AgentInventory:
+      type: object
+      additionalProperties: false
+      required: [id, agent_id, captured_at, kernel, os_release, cpu_arch, agent_version, restic_version, containerized, available_bytes, clock_offset_ms, capabilities]
+      properties:
+        id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        captured_at: { type: string, format: date-time }
+        kernel: { type: string }
+        os_release: { type: string }
+        cpu_arch: { type: string, enum: [amd64, arm64] }
+        agent_version: { type: string }
+        restic_version: { type: string }
+        containerized: { type: boolean }
+        available_bytes:
+          type: object
+          additionalProperties: { type: integer, format: int64, minimum: 0 }
+        clock_offset_ms: { type: integer, format: int64 }
+        capabilities:
+          type: array
+          items: { type: string }
     AgentList:
       type: object
       additionalProperties: false
