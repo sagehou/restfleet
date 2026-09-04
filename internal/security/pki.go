@@ -132,6 +132,10 @@ func (c *AgentCA) IssueAgentCertificate(csrPEM []byte, agentID uuid.UUID, now ti
 	if err != nil {
 		return IssuedAgentCertificate{}, err
 	}
+	certificate, err := x509.ParseCertificate(der)
+	if err != nil {
+		return IssuedAgentCertificate{}, err
+	}
 	spki, err := x509.MarshalPKIXPublicKey(request.PublicKey)
 	if err != nil {
 		return IssuedAgentCertificate{}, err
@@ -141,7 +145,7 @@ func (c *AgentCA) IssueAgentCertificate(csrPEM []byte, agentID uuid.UUID, now ti
 		CertificatePEM:       pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
 		SerialNumber:         strings.ToUpper(serial.Text(16)),
 		PublicKeyFingerprint: hex.EncodeToString(fingerprint[:]),
-		NotBefore:            notBefore, NotAfter: notAfter,
+		NotBefore:            certificate.NotBefore, NotAfter: certificate.NotAfter,
 	}, nil
 }
 

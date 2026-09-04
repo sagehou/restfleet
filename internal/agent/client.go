@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
+	"github.com/sagehou/restfleet/internal/security"
 )
 
 const (
@@ -144,6 +145,9 @@ func Enroll(ctx context.Context, state *State, config EnrollConfig) (Identity, e
 		return Identity{}, errors.New("invalid Agent enrollment response")
 	}
 	identity := Identity(enrolled)
+	if err := validateIdentityMaterial(state, identity); err != nil {
+		return Identity{}, err
+	}
 	if err := SaveIdentity(state, identity); err != nil {
 		return Identity{}, err
 	}
@@ -310,7 +314,26 @@ func saveRotation(state *State, identity Identity, response *agentv1.ServerToAge
 	identity.CertificatePEM = rotated.GetCertificatePem()
 	identity.CABundlePEM = rotated.GetCaBundlePem()
 	identity.NotAfter = rotated.GetNotAfter().AsTime()
+	if err := validateIdentityMaterial(state, identity); err != nil {
+		return err
+	}
 	return SaveIdentity(state, identity)
+}
+
+func validateIdentityMaterial(state *State, identity Identity) error {
+	certificate, _, err := TLSIdentity(state, identity)
+	if err != nil || len(certificate.Certificate) == 0 {
+		return errors.New("invalid Agent identity material")
+	}
+	leaf, err := x509.ParseCertificate(certificate.Certificate[0])
+	if err != nil {
+		return errors.New("invalid Agent identity material")
+	}
+	agentID, err := security.AgentIDFromCertificate(leaf)
+	if err != nil || agentID != identity.AgentID || !leaf.NotAfter.Equal(identity.NotAfter) {
+		return errors.New("invalid Agent identity material")
+	}
+	return nil
 }
 
 func rootsFromFile(path string) (*x509.CertPool, error) {

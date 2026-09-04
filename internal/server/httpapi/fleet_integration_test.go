@@ -169,6 +169,37 @@ func TestEnrollmentTokenAndCertificateLifecycle(t *testing.T) {
 	if err != nil || certificateAgentID != enrolled.AgentId {
 		t.Fatalf("certificate identity = %v, %v", certificateAgentID, err)
 	}
+	oldSerial := strings.ToUpper(certificate.SerialNumber.Text(16))
+	rotatedAt := now.Add(time.Hour)
+	rotatedCertificateID := uuid.Must(uuid.NewV7())
+	rotatedCertificate := domain.AgentCertificate{
+		ID: rotatedCertificateID, AgentID: enrolled.AgentId,
+		SerialNumber: "AABBCCDDEEFF", PublicKeyFingerprint: "rotated-fingerprint",
+		NotBefore: rotatedAt, NotAfter: rotatedAt.Add(security.AgentCertificateValidity),
+		IssuedAt: rotatedAt,
+	}
+	err = store.RotateAgentCertificate(
+		context.Background(), enrolled.AgentId, oldSerial, rotatedCertificate,
+		rotatedAt, rotatedAt.Add(24*time.Hour),
+		domain.AuditEvent{
+			OccurredAt: rotatedAt, ActorType: domain.ActorAgent, ActorID: enrolled.AgentId,
+			Action: "AGENT_CERTIFICATE_ROTATE", ResourceType: "AGENT_CERTIFICATE",
+			ResourceID: rotatedCertificateID, RequestID: uuid.Must(uuid.NewV7()),
+			Result: domain.AuditSuccess, ReasonCode: "CERTIFICATE_ROTATED",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AgentByCertificate(context.Background(), enrolled.AgentId, oldSerial, rotatedAt.Add(23*time.Hour)); err != nil {
+		t.Fatalf("old certificate was rejected during overlap: %v", err)
+	}
+	if _, err := store.AgentByCertificate(context.Background(), enrolled.AgentId, oldSerial, rotatedAt.Add(24*time.Hour)); !errors.Is(err, domain.ErrAgentRevoked) {
+		t.Fatalf("old certificate survived overlap: %v", err)
+	}
+	if _, err := store.AgentByCertificate(context.Background(), enrolled.AgentId, rotatedCertificate.SerialNumber, rotatedAt.Add(25*time.Hour)); err != nil {
+		t.Fatalf("rotated certificate was rejected: %v", err)
+	}
 
 	duplicate := browser.request(t, http.MethodPost, "/api/v1/agent-enrollment",
 		enrollRequest(token.Token, csr, uuid.Must(uuid.NewV7())), nil)

@@ -69,7 +69,7 @@
 
 ## M2 — Host, Enrollment and mTLS
 
-**Status: IN PROGRESS**
+**Status: COMPLETE**
 
 ### Goal
 
