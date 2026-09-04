@@ -106,7 +106,7 @@ func enrollRequest(token, csr string, installID uuid.UUID) AgentEnrollmentReques
 	return AgentEnrollmentRequest{
 		Token: token, CsrPem: csr, InstallId: installID,
 		AgentVersion: "0.2.0-test", ProtocolVersion: "1.0",
-		Hostname: "agent-test", Os: Linux, Arch: Amd64,
+		Hostname: "agent-test", Os: Linux, Arch: AgentEnrollmentRequestArchAmd64,
 		Capabilities: []string{"certificate_rotation_v1"},
 	}
 }
