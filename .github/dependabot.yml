@@ -12,10 +12,22 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    # Coordinate toolchain majors explicitly; security updates are not ignored.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
   - package-ecosystem: docker
     directory: /deploy
     schedule:
