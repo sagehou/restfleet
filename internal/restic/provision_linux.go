@@ -79,7 +79,7 @@ func (p *Provisioner) Provision(ctx context.Context, request ProvisionRequest,
 	if request.GatewayID.Version() != 7 || request.GatewayID.Variant() != uuid.RFC4122 ||
 		request.RepositoryID.Version() != 7 || request.RepositoryID.Variant() != uuid.RFC4122 ||
 		len(request.Password) < 32 || len(request.Password) > 1024 ||
-		bytes.IndexAny(request.Password, "\x00\r\n") >= 0 ||
+		bytes.ContainsAny(request.Password, "\x00\r\n") ||
 		(request.ExpectedID != "" && !repositoryIDPattern.MatchString(request.ExpectedID)) {
 		return RepositoryInfo{}, ErrInvalidProvision
 	}
