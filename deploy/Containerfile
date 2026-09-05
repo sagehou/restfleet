@@ -2,6 +2,10 @@
 ARG GO_IMAGE=golang:1.27.1-alpine3.23
 ARG NODE_IMAGE=node:24.20.0-alpine3.23
 ARG ALPINE_IMAGE=alpine:3.23
+ARG COMMAND=restfleet-server
+ARG RCLONE_IMAGE=rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
+
+FROM ${RCLONE_IMAGE} AS rclone-binary
 
 FROM ${GO_IMAGE} AS migration-build
 WORKDIR /src/tools
@@ -46,10 +50,19 @@ RUN test -n "${COMMAND}" && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARC
     -ldflags="-s -w -X github.com/sagehou/restfleet/internal/buildinfo.Version=${VERSION} -X github.com/sagehou/restfleet/internal/buildinfo.Commit=${COMMIT} -X github.com/sagehou/restfleet/internal/buildinfo.Date=${BUILD_DATE}" \
     -o /out/restfleet "./cmd/${COMMAND}"
 
-FROM scratch
+FROM scratch AS runtime-base
 COPY --from=go-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=go-build /out/restfleet /usr/local/bin/restfleet
 COPY --from=web-build /src/web/dist /srv/restfleet/web
 ENV RESTFLEET_WEB_DIR=/srv/restfleet/web
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/restfleet"]
+
+FROM runtime-base AS runtime-restfleet-agent
+
+FROM runtime-base AS runtime-restfleet-gateway
+COPY --from=rclone-binary /usr/local/bin/rclone /usr/local/bin/rclone
+
+FROM runtime-restfleet-gateway AS runtime-restfleet-server
+
+FROM runtime-${COMMAND}

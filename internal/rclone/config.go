@@ -174,9 +174,28 @@ func (c *Config) Bytes() []byte {
 	return []byte(out.String())
 }
 
+// sameExceptToken is stricter than administrator replacement: a child process
+// may refresh OAuth tokens but must not change OAuth client identity or keys.
+func (c *Config) sameExceptToken(other *Config) bool {
+	if !c.SameTarget(other) {
+		return false
+	}
+	for name, fields := range c.sections {
+		if fields["type"] == "onedrive" &&
+			(fields["client_id"] != other.sections[name]["client_id"] ||
+				fields["client_secret"] != other.sections[name]["client_secret"]) {
+			return false
+		}
+	}
+	return true
+}
+
 // SameTarget prevents a token replacement from relocating existing repositories
 // or silently changing the crypt key and making historical objects unreadable.
 func (c *Config) SameTarget(other *Config) bool {
+	if c == nil || other == nil {
+		return false
+	}
 	if c.remote != other.remote || len(c.sections) != len(other.sections) {
 		return false
 	}
