@@ -205,6 +205,10 @@ func TestProvisionChild(t *testing.T) {
 		u.RawQuery != "" || u.Fragment != "" || !strings.HasSuffix(u.Path, "/rest.sock:/") {
 		fail()
 	}
+	socketInfo, err := os.Lstat(strings.TrimSuffix(u.Path, ":/"))
+	if err != nil || socketInfo.Mode()&os.ModeSocket == 0 || socketInfo.Mode().Perm() != 0600 {
+		fail()
+	}
 	verb := strings.Join(args[3:], " ")
 	if verb != "cat config" && verb != "init --repository-version 2" && verb != "snapshots" {
 		fail()
@@ -237,6 +241,8 @@ func TestProvisionChild(t *testing.T) {
 			_, _ = fmt.Fprint(os.Stdout, "provider-secret")
 		} else if mode == "missing-field" {
 			_, _ = fmt.Fprint(os.Stdout, `{"version":2}`)
+		} else if mode == "missing-version" {
+			_, _ = fmt.Fprintf(os.Stdout, `{"id":%q}`, fixtureID)
 		} else if mode == "overflow" {
 			_, _ = fmt.Fprint(os.Stdout, strings.Repeat("x", maxCommandOutput+1))
 		} else {
@@ -313,7 +319,7 @@ func TestProvisionRejectsFailuresWithoutSuccessMetadata(t *testing.T) {
 	}{
 		{"exit-1", ErrProcessFailed}, {"exit-3", ErrProcessFailed}, {"exit-11", ErrRepositoryLocked},
 		{"exit-12", ErrWrongPassword}, {"exit-91", ErrProcessFailed},
-		{"malformed", ErrInvalidOutput}, {"missing-field", ErrInvalidOutput}, {"overflow", ErrInvalidOutput},
+		{"malformed", ErrInvalidOutput}, {"missing-field", ErrInvalidOutput}, {"missing-version", ErrInvalidOutput}, {"overflow", ErrInvalidOutput},
 		{"format-1", ErrRepositoryMatch}, {"mismatch", ErrRepositoryMatch},
 		{"init-malformed", ErrInvalidOutput}, {"init-failed", ErrProcessFailed},
 		{"snapshots-null", ErrInvalidOutput}, {"snapshots-malformed", ErrInvalidOutput},
@@ -491,5 +497,25 @@ func TestInitializedJSONContract(t *testing.T) {
 	raw, _ := json.Marshal(map[string]string{"message_type": "initialized", "id": fixtureID})
 	if id, err := initializedID(raw); err != nil || id != fixtureID {
 		t.Fatalf("id=%s err=%v", id, err)
+	}
+}
+
+func TestProvisionResumesAfterAmbiguousInitialization(t *testing.T) {
+	for _, mode := range []string{"init-failed", "init-malformed"} {
+		t.Run(mode, func(t *testing.T) {
+			p, state, _ := setupProvisioner(t, mode, "backend")
+			request := requestFixture()
+			if info, err := p.Provision(context.Background(), request, noRefresh); err == nil || info != (RepositoryInfo{}) {
+				t.Fatal("ambiguous creation reported success")
+			}
+			info, err := p.Provision(context.Background(), request, noRefresh)
+			if err != nil || info.ID != fixtureID {
+				t.Fatalf("could not resume already-created repository: %v", err)
+			}
+			calls, _ := os.ReadFile(filepath.Join(state, "calls"))
+			if string(calls) != "cat config\ninit --repository-version 2\ncat config\nsnapshots\n" {
+				t.Fatalf("retry reinitialized repository: %s", calls)
+			}
+		})
 	}
 }
