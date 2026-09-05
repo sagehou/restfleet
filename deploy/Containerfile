@@ -7,7 +7,7 @@ ARG RCLONE_IMAGE=rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0
 
 FROM ${RCLONE_IMAGE} AS rclone-binary
 
-FROM ${GO_IMAGE} AS migration-build
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS migration-build
 WORKDIR /src/tools
 COPY tools/go.mod tools/go.sum ./
 RUN go mod download github.com/pressly/goose/v3
@@ -28,14 +28,14 @@ USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/migrate-entrypoint"]
 CMD ["up"]
 
-FROM ${NODE_IMAGE} AS web-build
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS web-build
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM ${GO_IMAGE} AS go-build
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS go-build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

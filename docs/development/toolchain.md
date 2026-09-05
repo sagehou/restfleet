@@ -15,4 +15,6 @@
 
 Go module 为 github.com/sagehou/restfleet，Web 使用 npm。Go、npm、GitHub Actions 与 Docker 依赖由 Dependabot 每周检查；升级不得绕过规范和验收测试。
 
+镜像中的 Go/Goose 与 Web 编译阶段使用 BuildKit 的 `BUILDPLATFORM`；Go 仍以 `CGO_ENABLED=0 GOOS=TARGETOS GOARCH=TARGETARCH` 生成目标架构程序。运行层和 rclone binary 保持目标架构。这样无需在 QEMU 中执行编译器，amd64/arm64 镜像仍分别由 CI 构建验证。
+
 M4 中心 Server/Gateway 镜像包含官方 rclone 1.75.1，固定 multi-arch digest `sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5`，同时覆盖 linux/amd64 与 linux/arm64。CI 从同一镜像提取 binary 做离线契约测试，不需要 OneDrive secret。Agent 镜像不包含 rclone。Restic 在 Repository provisioning/执行接入时加入，并固定版本与 checksum。
