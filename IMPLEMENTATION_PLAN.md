@@ -138,7 +138,7 @@
 
 **Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)
 
-分批交付：第一批凭据导入/metadata/替换/禁用已合并（#16）。第二批补齐中心 tmpfs runtime、运行中 token watcher、安全子进程与固定版本 rclone 的离线契约测试；尚未接入 HTTP Test Operation 或数据库 refresh CAS。异步任务/状态 UI、Gateway、仓库初始化和轮换仍待完成。
+分批交付：第一批凭据导入/metadata/替换/禁用已合并（#16）；第二批中心 tmpfs/runtime/token watcher 与固定版本 rclone 在 #17。第三批接入持久化异步 Test Operation、租约恢复/幂等、token 加密 CAS 与测试状态 UI。Gateway、仓库初始化、凭据轮换和真实 OneDrive refresh 人工验收仍待完成。
 
 ### Goal
 

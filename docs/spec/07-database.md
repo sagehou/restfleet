@@ -290,6 +290,8 @@ transition_operation(id, expected_statuses, new_status, metadata)
 - `(created_at desc, id desc)` 用于 cursor；
 - source/idempotency unique partial indexes。
 
+M4 迁移 00006 首先开放 CREDENTIAL_TEST Operation：通过 storage_credential_id 与 secret_revision 绑定被测试版本。尚不存在的 Repository/Plan 资源列及其他操作类型随对应里程碑迁移加入。Operation/events/jobs/idempotency 的事务、租约和恢复语义见 [ADR-0009](../adr/0009-credential-test-jobs.md)。
+
 ### 5.8 jobs
 
 ```text

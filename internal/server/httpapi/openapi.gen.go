@@ -174,6 +174,123 @@ func (e HostStatus) Valid() bool {
 	}
 }
 
+// Defines values for OperationErrorCode.
+const (
+	CONFIGUNSAFE       OperationErrorCode = "CONFIG_UNSAFE"
+	CONNECTIONFAILED   OperationErrorCode = "CONNECTION_FAILED"
+	CREDENTIALCHANGED  OperationErrorCode = "CREDENTIAL_CHANGED"
+	CREDENTIALDISABLED OperationErrorCode = "CREDENTIAL_DISABLED"
+	Empty              OperationErrorCode = ""
+	REFRESHFAILED      OperationErrorCode = "REFRESH_FAILED"
+	SECRETUNAVAILABLE  OperationErrorCode = "SECRET_UNAVAILABLE"
+	TESTTIMEDOUT       OperationErrorCode = "TEST_TIMED_OUT"
+	WORKERLOST         OperationErrorCode = "WORKER_LOST"
+)
+
+// Valid indicates whether the value is a known member of the OperationErrorCode enum.
+func (e OperationErrorCode) Valid() bool {
+	switch e {
+	case CONFIGUNSAFE:
+		return true
+	case CONNECTIONFAILED:
+		return true
+	case CREDENTIALCHANGED:
+		return true
+	case CREDENTIALDISABLED:
+		return true
+	case Empty:
+		return true
+	case REFRESHFAILED:
+		return true
+	case SECRETUNAVAILABLE:
+		return true
+	case TESTTIMEDOUT:
+		return true
+	case WORKERLOST:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OperationSource.
+const (
+	USER OperationSource = "USER"
+)
+
+// Valid indicates whether the value is a known member of the OperationSource enum.
+func (e OperationSource) Valid() bool {
+	switch e {
+	case USER:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OperationStatus.
+const (
+	ACKNOWLEDGED          OperationStatus = "ACKNOWLEDGED"
+	CANCELED              OperationStatus = "CANCELED"
+	CANCELREQUESTED       OperationStatus = "CANCEL_REQUESTED"
+	DISPATCHED            OperationStatus = "DISPATCHED"
+	FAILED                OperationStatus = "FAILED"
+	LOST                  OperationStatus = "LOST"
+	QUEUED                OperationStatus = "QUEUED"
+	REJECTED              OperationStatus = "REJECTED"
+	RUNNING               OperationStatus = "RUNNING"
+	SUCCEEDED             OperationStatus = "SUCCEEDED"
+	SUCCEEDEDWITHWARNINGS OperationStatus = "SUCCEEDED_WITH_WARNINGS"
+	TIMEDOUT              OperationStatus = "TIMED_OUT"
+)
+
+// Valid indicates whether the value is a known member of the OperationStatus enum.
+func (e OperationStatus) Valid() bool {
+	switch e {
+	case ACKNOWLEDGED:
+		return true
+	case CANCELED:
+		return true
+	case CANCELREQUESTED:
+		return true
+	case DISPATCHED:
+		return true
+	case FAILED:
+		return true
+	case LOST:
+		return true
+	case QUEUED:
+		return true
+	case REJECTED:
+		return true
+	case RUNNING:
+		return true
+	case SUCCEEDED:
+		return true
+	case SUCCEEDEDWITHWARNINGS:
+		return true
+	case TIMEDOUT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OperationType.
+const (
+	CREDENTIALTEST OperationType = "CREDENTIAL_TEST"
+)
+
+// Valid indicates whether the value is a known member of the OperationType enum.
+func (e OperationType) Valid() bool {
+	switch e {
+	case CREDENTIALTEST:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StorageCredentialProvider.
 const (
 	RCLONEONEDRIVE StorageCredentialProvider = "RCLONE_ONEDRIVE"
@@ -454,6 +571,36 @@ type LoginRequest struct {
 	Username string `json:"username"`
 }
 
+// Operation defines model for Operation.
+type Operation struct {
+	AcknowledgedAt      *time.Time         `json:"acknowledged_at,omitempty"`
+	Attempt             int                `json:"attempt"`
+	CreatedAt           time.Time          `json:"created_at"`
+	DispatchedAt        *time.Time         `json:"dispatched_at,omitempty"`
+	ErrorCode           OperationErrorCode `json:"error_code"`
+	FinishedAt          *time.Time         `json:"finished_at,omitempty"`
+	Id                  openapi_types.UUID `json:"id"`
+	RequestedByUserId   openapi_types.UUID `json:"requested_by_user_id"`
+	SecretRevision      int64              `json:"secret_revision"`
+	Source              OperationSource    `json:"source"`
+	StartedAt           *time.Time         `json:"started_at,omitempty"`
+	Status              OperationStatus    `json:"status"`
+	StorageCredentialId openapi_types.UUID `json:"storage_credential_id"`
+	Type                OperationType      `json:"type"`
+}
+
+// OperationErrorCode defines model for Operation.ErrorCode.
+type OperationErrorCode string
+
+// OperationSource defines model for Operation.Source.
+type OperationSource string
+
+// OperationStatus defines model for Operation.Status.
+type OperationStatus string
+
+// OperationType defines model for Operation.Type.
+type OperationType string
+
 // Problem defines model for Problem.
 type Problem struct {
 	Code      string             `json:"code"`
@@ -475,15 +622,19 @@ type Session struct {
 
 // StorageCredential defines model for StorageCredential.
 type StorageCredential struct {
-	CreatedAt      time.Time                 `json:"created_at"`
-	Id             openapi_types.UUID        `json:"id"`
-	Name           string                    `json:"name"`
-	Provider       StorageCredentialProvider `json:"provider"`
-	RemoteName     string                    `json:"remote_name"`
-	Revision       int64                     `json:"revision"`
-	SecretRevision int64                     `json:"secret_revision"`
-	Status         StorageCredentialStatus   `json:"status"`
-	UpdatedAt      time.Time                 `json:"updated_at"`
+	CreatedAt           time.Time                 `json:"created_at"`
+	Id                  openapi_types.UUID        `json:"id"`
+	LastRefreshedAt     *time.Time                `json:"last_refreshed_at,omitempty"`
+	LastTestOperationId *openapi_types.UUID       `json:"last_test_operation_id,omitempty"`
+	LastTestResult      *string                   `json:"last_test_result,omitempty"`
+	LastTestedAt        *time.Time                `json:"last_tested_at,omitempty"`
+	Name                string                    `json:"name"`
+	Provider            StorageCredentialProvider `json:"provider"`
+	RemoteName          string                    `json:"remote_name"`
+	Revision            int64                     `json:"revision"`
+	SecretRevision      int64                     `json:"secret_revision"`
+	Status              StorageCredentialStatus   `json:"status"`
+	UpdatedAt           time.Time                 `json:"updated_at"`
 }
 
 // StorageCredentialProvider defines model for StorageCredential.Provider.
@@ -622,6 +773,12 @@ type ReplaceStorageCredentialParams struct {
 	IfMatch    IfMatch   `json:"If-Match"`
 }
 
+// TestStorageCredentialParams defines parameters for TestStorageCredential.
+type TestStorageCredentialParams struct {
+	XCSRFToken     CsrfToken `json:"X-CSRF-Token"`
+	IdempotencyKey string    `json:"Idempotency-Key"`
+}
+
 // EnrollAgentJSONRequestBody defines body for EnrollAgent for application/json ContentType.
 type EnrollAgentJSONRequestBody = AgentEnrollmentRequest
 
@@ -712,6 +869,9 @@ type ServerInterface interface {
 	// (GET /api/v1/hosts/{host_id}/inventory)
 	GetHostInventory(w http.ResponseWriter, r *http.Request, hostId HostId)
 
+	// (GET /api/v1/operations/{operation_id})
+	GetOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID)
+
 	// (GET /api/v1/storage-credentials)
 	ListStorageCredentials(w http.ResponseWriter, r *http.Request, params ListStorageCredentialsParams)
 
@@ -726,6 +886,9 @@ type ServerInterface interface {
 
 	// (POST /api/v1/storage-credentials/{credential_id}/replace-secret)
 	ReplaceStorageCredential(w http.ResponseWriter, r *http.Request, credentialId openapi_types.UUID, params ReplaceStorageCredentialParams)
+
+	// (POST /api/v1/storage-credentials/{credential_id}/test)
+	TestStorageCredential(w http.ResponseWriter, r *http.Request, credentialId openapi_types.UUID, params TestStorageCredentialParams)
 
 	// (GET /api/v1/version)
 	Version(w http.ResponseWriter, r *http.Request)
@@ -1511,6 +1674,32 @@ func (siw *ServerInterfaceWrapper) GetHostInventory(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetOperation operation middleware
+func (siw *ServerInterfaceWrapper) GetOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "operation_id" -------------
+	var operationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "operation_id", r.PathValue("operation_id"), &operationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOperation(w, r, operationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListStorageCredentials operation middleware
 func (siw *ServerInterfaceWrapper) ListStorageCredentials(w http.ResponseWriter, r *http.Request) {
 
@@ -1782,6 +1971,83 @@ func (siw *ServerInterfaceWrapper) ReplaceStorageCredential(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// TestStorageCredential operation middleware
+func (siw *ServerInterfaceWrapper) TestStorageCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "credential_id" -------------
+	var credentialId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "credential_id", r.PathValue("credential_id"), &credentialId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "credential_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params TestStorageCredentialParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestStorageCredential(w, r, credentialId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Version operation middleware
 func (siw *ServerInterfaceWrapper) Version(w http.ResponseWriter, r *http.Request) {
 
@@ -1972,6 +2238,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}/replace-secret", wrapper.ReplaceStorageCredential)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}/disable", wrapper.DisableStorageCredential)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}/test", wrapper.TestStorageCredential)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/operations/{operation_id}", wrapper.GetOperation)
 
 	return m
 }

@@ -74,7 +74,7 @@ describe('App', () => {
           version: '0.1.0-test',
           commit: 'abc123',
           built_at: '2026-09-03T08:00:00Z',
-          schema_version: 5,
+          schema_version: 6,
         })
       }
       if (path === '/api/v1/hosts') return response({ items: [] })
@@ -120,7 +120,7 @@ describe('App', () => {
         return response({ collected_at: '2026-09-03T08:00:00Z', hosts: hosts.length, agents_online: 0, agents_degraded: 0, agents_offline: hosts.length, plans: 0, repositories: 0, operations: 0 })
       }
       if (path === '/api/v1/version') {
-        return response({ version: 'test', commit: 'abc', built_at: '2026-09-03T08:00:00Z', schema_version: 5 })
+        return response({ version: 'test', commit: 'abc', built_at: '2026-09-03T08:00:00Z', schema_version: 6 })
       }
       if (path === '/api/v1/hosts' && init?.method === 'POST') {
         hosts = [host]

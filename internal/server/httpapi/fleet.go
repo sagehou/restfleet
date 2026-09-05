@@ -472,6 +472,10 @@ func (a *API) fleetProblem(w http.ResponseWriter, r *http.Request, err error) {
 		a.problem(w, r, http.StatusForbidden, "ROLE_DENIED", "Request denied", "Administrator access is required.", nil)
 	case errors.Is(err, domain.ErrStorageUnavailable):
 		a.problem(w, r, http.StatusServiceUnavailable, "STORAGE_UNAVAILABLE", "Storage unavailable", "Storage credential management is not available.", nil)
+	case errors.Is(err, domain.ErrCredentialTestBusy):
+		a.problem(w, r, http.StatusConflict, "CREDENTIAL_TEST_BUSY", "Conflict", "A credential test is already active.", nil)
+	case errors.Is(err, domain.ErrIdempotencyReused):
+		a.problem(w, r, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "Conflict", "The idempotency key was used for another request.", nil)
 	case errors.Is(err, domain.ErrCredentialDisabled):
 		a.problem(w, r, http.StatusConflict, "CREDENTIAL_DISABLED", "Credential disabled", "Disabled credentials cannot be replaced.", nil)
 	case errors.Is(err, domain.ErrStorageTargetChanged):

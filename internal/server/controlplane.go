@@ -70,18 +70,25 @@ type Store interface {
 	StorageCredential(context.Context, uuid.UUID) (domain.StorageCredential, error)
 	StorageCredentialSecret(context.Context, uuid.UUID) (domain.SecretEnvelope, error)
 	SaveStorageCredential(context.Context, domain.StorageCredential, int64, *domain.SecretEnvelope, domain.AuditEvent) (domain.StorageCredential, error)
+	Operation(context.Context, uuid.UUID) (domain.Operation, error)
+	EnqueueCredentialTest(context.Context, domain.Operation, []byte, []byte, []byte, domain.AuditEvent) (domain.Operation, error)
+	ClaimCredentialJob(context.Context, uuid.UUID) (domain.CredentialJob, error)
+	RenewCredentialJob(context.Context, uuid.UUID, uuid.UUID) error
+	RefreshCredentialJob(context.Context, uuid.UUID, uuid.UUID, int64, domain.SecretEnvelope) (domain.StorageCredential, error)
+	CompleteCredentialJob(context.Context, uuid.UUID, uuid.UUID, string) error
 }
 
 // Settings controls security policy. Production defaults are applied to zero values.
 type Settings struct {
-	BootstrapToken string
-	IdleTTL        time.Duration
-	AbsoluteTTL    time.Duration
-	PasswordParams security.Argon2Params
-	ExpectedSchema int
-	Clock          func() time.Time
-	Enrollment     EnrollmentSettings
-	MasterKey      []byte
+	BootstrapToken    string
+	IdleTTL           time.Duration
+	AbsoluteTTL       time.Duration
+	PasswordParams    security.Argon2Params
+	ExpectedSchema    int
+	Clock             func() time.Time
+	Enrollment        EnrollmentSettings
+	MasterKey         []byte
+	RunCredentialTest CredentialTestRunner
 }
 
 // RequestMeta contains only non-secret request correlation data.
@@ -118,6 +125,7 @@ type ControlPlane struct {
 	enrollment         EnrollmentSettings
 	disconnectAgent    func(uuid.UUID)
 	masterKey          []byte
+	runCredentialTest  CredentialTestRunner
 }
 
 func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
@@ -134,7 +142,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		settings.PasswordParams = security.DefaultArgon2Params
 	}
 	if settings.ExpectedSchema == 0 {
-		settings.ExpectedSchema = 5
+		settings.ExpectedSchema = 6
 	}
 	if settings.Enrollment.HeartbeatInterval == 0 {
 		settings.Enrollment.HeartbeatInterval = 15 * time.Second
@@ -160,6 +168,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		clock:              settings.Clock,
 		enrollment:         settings.Enrollment,
 		masterKey:          append([]byte(nil), settings.MasterKey...),
+		runCredentialTest:  settings.RunCredentialTest,
 	}, nil
 }
 

@@ -149,23 +149,33 @@ func storageAAD(credential domain.StorageCredential, secretID uuid.UUID) []byte 
 	return []byte(fmt.Sprintf("restfleet:storage-rclone:v1:%s:%d:%s:master:v1", credential.ID, credential.SecretRevision, secretID))
 }
 
-func (c *ControlPlane) saveStorageConfig(ctx context.Context, credential domain.StorageCredential, revision int64, config *rclone.Config, actor domain.User, meta RequestMeta, action string) (domain.StorageCredential, error) {
+func (c *ControlPlane) sealStorageConfig(credential domain.StorageCredential, config *rclone.Config) (domain.SecretEnvelope, error) {
 	secretID, err := uuid.NewV7()
 	if err != nil {
-		return domain.StorageCredential{}, err
+		return domain.SecretEnvelope{}, err
 	}
 	plaintext := config.Bytes()
 	defer clear(plaintext)
 	sealed, err := security.SealEnvelope(c.masterKey, plaintext, storageAAD(credential, secretID))
 	if err != nil {
-		return domain.StorageCredential{}, err
+		return domain.SecretEnvelope{}, err
 	}
 	envelope := domain.SecretEnvelope{
 		ID: secretID, Kind: "RCLONE_CONFIG", Algorithm: security.EnvelopeAlgorithm, KeyID: "master:v1",
 		Ciphertext: sealed.Ciphertext, Nonce: sealed.Nonce, WrappedDataKey: sealed.WrappedDataKey,
 		WrapNonce: sealed.WrapNonce, AAD: sealed.AAD, CreatedAt: credential.UpdatedAt,
 	}
-	credential.SecretRef = secretID
+	return envelope, nil
+}
+
+func (c *ControlPlane) saveStorageConfig(ctx context.Context, credential domain.StorageCredential, revision int64, config *rclone.Config, actor domain.User, meta RequestMeta, action string) (domain.StorageCredential, error) {
+	envelope, err := c.sealStorageConfig(credential, config)
+	if err != nil {
+		return domain.StorageCredential{}, err
+	}
+	credential.SecretRef = envelope.ID
+	credential.LastTestedAt = nil
+	credential.LastTestResult = ""
 	audit, err := c.userAudit(action, "STORAGE_CREDENTIAL", credential.ID, actor.ID, meta, "SECRET_CHANGED")
 	if err != nil {
 		return domain.StorageCredential{}, err

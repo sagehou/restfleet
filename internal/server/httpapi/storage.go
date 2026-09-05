@@ -15,6 +15,8 @@ func storageCredentialResponse(c domain.StorageCredential) StorageCredential {
 		RemoteName: c.RemoteName, Status: StorageCredentialStatus(c.Status),
 		SecretRevision: c.SecretRevision, Revision: c.Revision,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		LastTestOperationId: c.LastTestOperationID, LastTestedAt: c.LastTestedAt,
+		LastTestResult: &c.LastTestResult, LastRefreshedAt: c.LastRefreshedAt,
 	}
 }
 

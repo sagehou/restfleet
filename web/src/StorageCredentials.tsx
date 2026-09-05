@@ -4,6 +4,7 @@ import { ApiError, csrfToken, errorMessage, requestJSON } from './api/client'
 
 type Credential = components['schemas']['StorageCredential']
 type CredentialList = components['schemas']['StorageCredentialList']
+type Operation = components['schemas']['Operation']
 type Props = { canManage: boolean; onUnauthorized: () => void }
 
 const statusLabels: Record<Credential['status'], string> = {
@@ -21,6 +22,11 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
   const [message, setMessage] = useState('')
   const [notice, setNotice] = useState('')
   const [confirmDisable, setConfirmDisable] = useState(false)
+  const [testOperation, setTestOperation] = useState<Operation | null>(null)
+  const [testRefresh, setTestRefresh] = useState(0)
+  const testOperationId = selected?.last_test_operation_id
+  const testActive = Boolean(testOperationId && (!testOperation || testOperation.id !== testOperationId || !testOperation.finished_at))
+  const testKey = useRef<{ credentialId: string; key: string } | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
 
   const handleError = useCallback((error: unknown) => {
@@ -52,6 +58,44 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
       window.removeEventListener('pagehide', clearForm)
     }
   }, [load])
+
+  useEffect(() => {
+    if (!testOperationId) return
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const poll = () => requestJSON<Operation>(`/api/v1/operations/${testOperationId}`, { signal: controller.signal })
+      .then((operation) => {
+        if (controller.signal.aborted) return
+        setTestOperation(operation)
+        if (!operation.finished_at) { timer = setTimeout(() => { void poll() }, 1000); return }
+        void requestJSON<Credential>(`${endpoint}/${operation.storage_credential_id}`, { signal: controller.signal })
+          .then((credential) => {
+            if (!controller.signal.aborted) setSelected((current) => current?.id === credential.id ? credential : current)
+          }).catch((error: unknown) => { if (!controller.signal.aborted) handleError(error) })
+        void load(undefined, controller.signal)
+      })
+      .catch((error: unknown) => { if (!controller.signal.aborted) handleError(error) })
+    void poll()
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [testOperationId, testRefresh, handleError, load])
+
+  async function testConnection() {
+    if (!selected || busy || testActive) return
+    setBusy(true)
+    setMessage('')
+    setNotice('')
+    try {
+      if (testKey.current?.credentialId !== selected.id) testKey.current = { credentialId: selected.id, key: crypto.randomUUID() }
+      const operation = await requestJSON<Operation>(`${endpoint}/${selected.id}/test`, {
+        method: 'POST', headers: { 'X-CSRF-Token': csrfToken(), 'Idempotency-Key': testKey.current.key },
+      })
+      testKey.current = null
+      setTestOperation(operation)
+      setSelected((current) => current?.id === operation.storage_credential_id
+        ? { ...current, last_test_operation_id: operation.id } : current)
+    } catch (error) { handleError(error) }
+    finally { setBusy(false) }
+  }
 
   function reload(cursor?: string) {
     setLoading(true)
@@ -124,7 +168,7 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
           {canManage && <button disabled={busy} onClick={() => { setSelected(null); setFormMode('create'); setMessage(''); setNotice('') }}>导入凭据</button>}
         </div>
       </div>
-      <p className="muted">导入 OneDrive 与 Crypt 的配置后，由中心加密保存。当前提供凭据管理；云端连接测试和仓库创建将在后续版本开放。</p>
+      <p className="muted">配置由中心加密保存。连接测试只读取 Crypt 根目录，不创建仓库，也不证明云端写权限。</p>
       {message && <p role="alert" className="error-message">{message}</p>}
       {notice && <p role="status">{notice}</p>}
       {loading && items.length === 0 && <p role="status">正在读取凭据…</p>}
@@ -144,14 +188,23 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
           <div><dt>Crypt remote</dt><dd>{selected.remote_name}</dd></div>
           <div><dt>凭据版本 / 记录版本</dt><dd>{selected.secret_revision} / {selected.revision}</dd></div>
           <div><dt>最近更新</dt><dd>{new Date(selected.updated_at).toLocaleString()}</dd></div>
+          {selected.last_tested_at && <div><dt>最近测试</dt><dd>{new Date(selected.last_tested_at).toLocaleString()} · {selected.last_test_result === 'SUCCEEDED' ? '读取成功' : '读取失败'}</dd></div>}
+          {selected.last_refreshed_at && <div><dt>最近 token 回写</dt><dd>{new Date(selected.last_refreshed_at).toLocaleString()}</dd></div>}
         </dl>
         <div className="actions">
           <button disabled={busy} onClick={() => void openDetail(selected.id)}>刷新详情</button>
           {canManage && selected.status !== 'DISABLED' && <>
+            <button disabled={busy || testActive} onClick={() => void testConnection()}>{testActive ? '测试进行中…' : '测试连接'}</button>
             <button disabled={busy} onClick={() => { setFormMode('replace'); setConfirmDisable(false); setNotice('') }}>替换凭据</button>
             <button disabled={busy} onClick={() => { setConfirmDisable(true); setFormMode(null) }}>禁用凭据</button>
           </>}
         </div>
+        {testOperationId && <div role="status" aria-label="连接测试状态">
+          <p>操作 {testOperationId}：{!testOperation || testOperation.id !== testOperationId ? '正在读取状态' : testOperation.finished_at
+            ? testOperation.status === 'SUCCEEDED' ? '读取成功' : `测试未成功（${testOperation.error_code}）`
+            : testOperation.status === 'QUEUED' ? '等待中心 worker' : '正在测试'}</p>
+          <button onClick={() => setTestRefresh((value) => value + 1)}>刷新测试状态</button>
+        </div>}
         {confirmDisable && <div role="group" aria-label="确认禁用凭据">
           <p>禁用“{selected.name}”后将停止使用该凭据。此操作不会删除云端数据。</p>
           <button disabled={busy} onClick={() => void disable()}>确认禁用</button>

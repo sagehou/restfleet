@@ -174,9 +174,9 @@ func (c *Config) Bytes() []byte {
 	return []byte(out.String())
 }
 
-// sameExceptToken is stricter than administrator replacement: a child process
+// SameExceptToken is stricter than administrator replacement: a child process
 // may refresh OAuth tokens but must not change OAuth client identity or keys.
-func (c *Config) sameExceptToken(other *Config) bool {
+func (c *Config) SameExceptToken(other *Config) bool {
 	if !c.SameTarget(other) {
 		return false
 	}

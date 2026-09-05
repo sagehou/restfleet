@@ -412,10 +412,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/storage-credentials/{credential_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Queues a read-only crypt-root test. No request body. Repeated keys return the original Operation. */
+        post: operations["testStorageCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Operation: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "CREDENTIAL_TEST";
+            /** @enum {string} */
+            status: "QUEUED" | "DISPATCHED" | "ACKNOWLEDGED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCEL_REQUESTED" | "CANCELED" | "TIMED_OUT" | "LOST" | "REJECTED";
+            /** @enum {string} */
+            source: "USER";
+            /** Format: uuid */
+            storage_credential_id: string;
+            /** Format: int64 */
+            secret_revision: number;
+            /** Format: uuid */
+            requested_by_user_id: string;
+            attempt: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            dispatched_at?: string;
+            /** Format: date-time */
+            acknowledged_at?: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+            /** @enum {string} */
+            error_code: "" | "CONNECTION_FAILED" | "TEST_TIMED_OUT" | "CONFIG_UNSAFE" | "REFRESH_FAILED" | "CREDENTIAL_CHANGED" | "CREDENTIAL_DISABLED" | "SECRET_UNAVAILABLE" | "WORKER_LOST";
+        };
         StorageCredential: {
             /** Format: uuid */
             id: string;
@@ -433,6 +499,13 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /** Format: uuid */
+            last_test_operation_id?: string;
+            /** Format: date-time */
+            last_tested_at?: string;
+            last_test_result?: string;
+            /** Format: date-time */
+            last_refreshed_at?: string;
         };
         StorageCredentialList: {
             items: components["schemas"]["StorageCredential"][];
@@ -1524,6 +1597,68 @@ export interface operations {
             409: components["responses"]["Problem"];
             412: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    testStorageCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable Operation; poll the Location URL for progress. */
+            202: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operation metadata only. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };

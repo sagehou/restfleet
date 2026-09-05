@@ -15,7 +15,7 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
-const ExpectedSchemaVersion = 5
+const ExpectedSchemaVersion = 6
 
 // Store is the PostgreSQL adapter for the M1 control plane.
 type Store struct {
