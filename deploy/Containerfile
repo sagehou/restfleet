@@ -5,6 +5,10 @@ ARG ALPINE_IMAGE=alpine:3.23
 ARG COMMAND=restfleet-server
 ARG RCLONE_IMAGE=rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
 
+ARG RESTIC_IMAGE=restic/restic:0.19.1@sha256:136600b6ff6843d61d355f7f71f460a166429f35de6fd11b568fece3c9a4d510
+
+FROM ${RESTIC_IMAGE} AS restic-binary
+
 FROM ${RCLONE_IMAGE} AS rclone-binary
 
 FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS migration-build
@@ -51,6 +55,7 @@ RUN test -n "${COMMAND}" && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARC
     -o /out/restfleet "./cmd/${COMMAND}"
 
 FROM scratch AS runtime-base
+COPY --from=restic-binary /usr/bin/restic /usr/local/bin/restic
 COPY --from=go-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=go-build /out/restfleet /usr/local/bin/restfleet
 COPY --from=web-build /src/web/dist /srv/restfleet/web

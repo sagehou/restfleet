@@ -317,6 +317,10 @@ Server 创建 Repository 时：
 
 任一步失败都保留可恢复 provisioning state，不能把半初始化 Repo 标为 READY。
 
+中心初始化适配器 MUST 先执行 `cat config`：只有明确的缺失退出码 10 且任务没有已记录 Restic ID 时才执行 `init --json --repository-version 2`；认证失败、锁冲突、网络错误或未知退出码 MUST NOT 触发 init。初始化输出的完整 ID MUST 与再次读取的 config 匹配；format MUST 为 2，snapshots MUST 是空数组。本阶段已有快照的目标 MUST 拒绝继续 provisioning，不自动接管已有仓库。
+
+重试 MUST 复用已持久化的密码、UUID scope 和已知 ID；MUST NOT 删除远端对象或重新生成密码来绕过失败。适配器成功只表示中心初始化验证通过，不代表 Agent credential ACK 或 READY。
+
 ## 16. 容量语义
 
 Dashboard 分开显示：
