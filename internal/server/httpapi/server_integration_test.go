@@ -91,7 +91,8 @@ func setupIntegration(
 	}
 	t.Cleanup(adminPool.Close)
 	_, err = adminPool.Exec(ctx, `
-		truncate table storage_credential_revisions, storage_credentials,
+		truncate table idempotency_records, operation_events, jobs, operations,
+			storage_credential_revisions, storage_credentials,
 			outbox_events, agent_inventories, agent_desired_states,
 			server_pki, secrets, agent_certificates, enrollment_tokens,
 			agents, hosts, audit_events, sessions, bootstrap_state, users restart identity cascade;
@@ -118,13 +119,14 @@ func setupIntegration(
 	}
 	clear(agentCAPrivatePEM)
 	controlPlane, err := control.NewControlPlane(store, control.Settings{
-		BootstrapToken: bootstrapToken,
-		MasterKey:      bytes.Repeat([]byte{8}, 32),
-		IdleTTL:        5 * time.Minute,
-		AbsoluteTTL:    time.Hour,
-		PasswordParams: params,
-		ExpectedSchema: postgres.ExpectedSchemaVersion,
-		Clock:          func() time.Time { return *clock },
+		BootstrapToken:    bootstrapToken,
+		MasterKey:         bytes.Repeat([]byte{8}, 32),
+		RunCredentialTest: func(context.Context, []byte, string, func(context.Context, []byte) error) error { return nil },
+		IdleTTL:           5 * time.Minute,
+		AbsoluteTTL:       time.Hour,
+		PasswordParams:    params,
+		ExpectedSchema:    postgres.ExpectedSchemaVersion,
+		Clock:             func() time.Time { return *clock },
 		Enrollment: control.EnrollmentSettings{
 			Pepper: bytes.Repeat([]byte{7}, 32),
 			CA:     agentCA, PublicURL: "https://control.example",

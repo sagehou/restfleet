@@ -283,7 +283,7 @@ func (a *API) Version(w http.ResponseWriter, r *http.Request) {
 		Version:       a.build.Version,
 		Commit:        a.build.Commit,
 		BuiltAt:       a.build.Date,
-		SchemaVersion: 5,
+		SchemaVersion: 6,
 	})
 }
 
@@ -535,7 +535,13 @@ func routeLabel(path string) string {
 			return "/api/v1/hosts/{host_id}"
 		}
 	}
+	if strings.HasPrefix(path, "/api/v1/operations/") {
+		return "/api/v1/operations/{operation_id}"
+	}
 	if strings.HasPrefix(path, "/api/v1/storage-credentials/") {
+		if strings.HasSuffix(path, "/test") {
+			return "/api/v1/storage-credentials/{credential_id}/test"
+		}
 		if strings.HasSuffix(path, "/replace-secret") {
 			return "/api/v1/storage-credentials/{credential_id}/replace-secret"
 		}

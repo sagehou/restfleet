@@ -18,6 +18,7 @@ import (
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
 	"github.com/sagehou/restfleet/internal/buildinfo"
 	"github.com/sagehou/restfleet/internal/persistence/postgres"
+	"github.com/sagehou/restfleet/internal/rclone"
 	"github.com/sagehou/restfleet/internal/security"
 	control "github.com/sagehou/restfleet/internal/server"
 	"github.com/sagehou/restfleet/internal/server/agentgrpc"
@@ -62,10 +63,21 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 	}
+	var credentialRuntime *rclone.Runtime
+	var runCredentialTest control.CredentialTestRunner
+	if config.EnrollmentEnabled {
+		credentialRuntime, err = rclone.NewRuntime(config.CredentialRuntimeDir, config.RcloneBinary)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = credentialRuntime.Close() }()
+		runCredentialTest = credentialRuntime.Test
+	}
 	controlPlane, err := control.NewControlPlane(store, control.Settings{
-		BootstrapToken: config.BootstrapToken,
-		MasterKey:      config.MasterKey,
-		ExpectedSchema: postgres.ExpectedSchemaVersion,
+		RunCredentialTest: runCredentialTest,
+		BootstrapToken:    config.BootstrapToken,
+		MasterKey:         config.MasterKey,
+		ExpectedSchema:    postgres.ExpectedSchemaVersion,
 		Enrollment: control.EnrollmentSettings{
 			Pepper: security.DeriveEnrollmentPepper(config.MasterKey),
 			CA:     agentCA, PublicURL: config.PublicURL,
@@ -138,7 +150,21 @@ func run(logger *slog.Logger) error {
 		agentv1.RegisterAgentControlServiceServer(grpcServer, agentService)
 	}
 
-	serverErrors := make(chan error, 3)
+	serverErrors := make(chan error, 4)
+	workerDone := make(chan struct{})
+	if credentialRuntime != nil {
+		go func() {
+			defer close(workerDone)
+			if err := controlPlane.RunCredentialWorker(ctx, func() {
+				logger.Error("credential worker will retry", "component", "credential_worker", "event", "job_retry", "error_code", "CREDENTIAL_WORKER_RETRY")
+			}); err != nil {
+				serverErrors <- err
+			}
+		}()
+	} else {
+		close(workerDone)
+	}
+	defer func() { stop(); <-workerDone }()
 	go func() {
 		logger.Info("public listener started", "component", "server", "event", "listener_started", "address", config.HTTPAddress)
 		if config.EnrollmentEnabled {

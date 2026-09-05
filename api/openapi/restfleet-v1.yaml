@@ -606,6 +606,57 @@ paths:
         "422": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/storage-credentials/{credential_id}/test:
+    parameters:
+      - name: credential_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: testStorageCredential
+      description: Queues a read-only crypt-root test. No request body. Repeated keys return the original Operation.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "202":
+          description: Durable Operation; poll the Location URL for progress.
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Operation" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/operations/{operation_id}:
+    parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getOperation
+      responses:
+        "200":
+          description: Operation metadata only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Operation" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
 components:
   securitySchemes:
     sessionCookie:
@@ -659,6 +710,25 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
   schemas:
+    Operation:
+      type: object
+      additionalProperties: false
+      required: [id, type, status, source, storage_credential_id, secret_revision, requested_by_user_id, attempt, created_at, error_code]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [CREDENTIAL_TEST] }
+        status: { type: string, enum: [QUEUED, DISPATCHED, ACKNOWLEDGED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCEL_REQUESTED, CANCELED, TIMED_OUT, LOST, REJECTED] }
+        source: { type: string, enum: [USER] }
+        storage_credential_id: { type: string, format: uuid }
+        secret_revision: { type: integer, format: int64, minimum: 1 }
+        requested_by_user_id: { type: string, format: uuid }
+        attempt: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        dispatched_at: { type: string, format: date-time }
+        acknowledged_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        error_code: { type: string, enum: ["", CONNECTION_FAILED, TEST_TIMED_OUT, CONFIG_UNSAFE, REFRESH_FAILED, CREDENTIAL_CHANGED, CREDENTIAL_DISABLED, SECRET_UNAVAILABLE, WORKER_LOST] }
     StorageCredential:
       type: object
       additionalProperties: false
@@ -673,6 +743,10 @@ components:
         revision: { type: integer, format: int64, minimum: 1 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        last_test_operation_id: { type: string, format: uuid }
+        last_tested_at: { type: string, format: date-time }
+        last_test_result: { type: string }
+        last_refreshed_at: { type: string, format: date-time }
     StorageCredentialList:
       type: object
       additionalProperties: false

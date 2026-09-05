@@ -175,7 +175,7 @@ func (r *Runtime) Test(ctx context.Context, raw []byte, remote string, persist f
 		if err != nil {
 			return err
 		}
-		if !config.sameExceptToken(next) {
+		if !config.SameExceptToken(next) {
 			return ErrConfigChanged
 		}
 		encoded := next.Bytes()

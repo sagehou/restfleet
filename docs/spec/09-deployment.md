@@ -158,6 +158,12 @@ rclone OAuth token 更新：
 - watcher/gateway crash 触发 DEGRADED 告警；
 - shutdown 前尝试 final sync，但正确性不能只依赖 graceful shutdown。
 
+### 7.1 中心凭据测试 worker
+
+启用完整中心配置时，Server MUST 同时启动持久化 credential worker。RESTFLEET_CREDENTIAL_RUNTIME_DIR 默认 /run/restfleet/credentials；MUST 是预建的 0700 tmpfs，属于服务 UID。Compose 已挂载独立目录。RESTFLEET_RCLONE_BINARY 默认 /usr/local/bin/rclone，使用中心镜像固定版本。配置不安全时 MUST 启动失败，不降级为普通磁盘文件。
+
+测试通过 REST POST 入队，worker 经 DB 租约执行只读 rclone lsjson --stat。Server 停止时取消 worker，等待子进程清理后再关闭数据库；未完成任务由下一次启动重领。实际云端 token refresh 的人工验收仍须使用安全环境，MUST NOT 将真实配置作为 CI artifact 或测试日志上传。
+
 ## 8. Native Agent 安装
 
 目标目录：

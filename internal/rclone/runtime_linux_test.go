@@ -403,7 +403,7 @@ func TestRuntimeRefreshCannotChangeClientIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !base.SameTarget(next) || base.sameExceptToken(next) {
+	if !base.SameTarget(next) || base.SameExceptToken(next) {
 		t.Fatal("watcher must be stricter than administrator replacement")
 	}
 	if base.SameTarget(nil) || (*Config)(nil).SameTarget(base) {

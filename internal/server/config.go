@@ -10,33 +10,37 @@ import (
 )
 
 type RuntimeConfig struct {
-	Environment       string
-	DatabaseURL       string
-	BootstrapToken    string
-	HTTPAddress       string
-	MetricsAddress    string
-	WebDirectory      string
-	SecureCookies     bool
-	EnrollmentEnabled bool
-	MasterKey         []byte
-	PublicURL         string
-	GRPCAddress       string
-	GRPCEndpoint      string
-	GRPCServerName    string
-	GRPCTLSCertFile   string
-	GRPCTLSKeyFile    string
-	ServerCABundlePEM []byte
-	Warnings          []string
+	Environment          string
+	DatabaseURL          string
+	BootstrapToken       string
+	HTTPAddress          string
+	MetricsAddress       string
+	WebDirectory         string
+	SecureCookies        bool
+	EnrollmentEnabled    bool
+	MasterKey            []byte
+	PublicURL            string
+	GRPCAddress          string
+	GRPCEndpoint         string
+	GRPCServerName       string
+	GRPCTLSCertFile      string
+	GRPCTLSKeyFile       string
+	ServerCABundlePEM    []byte
+	Warnings             []string
+	CredentialRuntimeDir string
+	RcloneBinary         string
 }
 
 func LoadRuntimeConfig() (RuntimeConfig, error) {
 	config := RuntimeConfig{
-		Environment:    strings.ToLower(envOrDefault("RESTFLEET_ENV", "production")),
-		HTTPAddress:    envOrDefault("RESTFLEET_HTTP_ADDRESS", ":8080"),
-		MetricsAddress: envOrDefault("RESTFLEET_METRICS_ADDRESS", "127.0.0.1:9090"),
-		WebDirectory:   envOrDefault("RESTFLEET_WEB_DIR", "/srv/restfleet/web"),
-		GRPCAddress:    envOrDefault("RESTFLEET_GRPC_ADDRESS", ":8443"),
-		SecureCookies:  true,
+		Environment:          strings.ToLower(envOrDefault("RESTFLEET_ENV", "production")),
+		HTTPAddress:          envOrDefault("RESTFLEET_HTTP_ADDRESS", ":8080"),
+		MetricsAddress:       envOrDefault("RESTFLEET_METRICS_ADDRESS", "127.0.0.1:9090"),
+		WebDirectory:         envOrDefault("RESTFLEET_WEB_DIR", "/srv/restfleet/web"),
+		GRPCAddress:          envOrDefault("RESTFLEET_GRPC_ADDRESS", ":8443"),
+		SecureCookies:        true,
+		CredentialRuntimeDir: envOrDefault("RESTFLEET_CREDENTIAL_RUNTIME_DIR", "/run/restfleet/credentials"),
+		RcloneBinary:         envOrDefault("RESTFLEET_RCLONE_BINARY", "/usr/local/bin/rclone"),
 	}
 	if config.Environment != "production" && config.Environment != "development" && config.Environment != "test" {
 		return RuntimeConfig{}, errors.New("RESTFLEET_ENV must be production, development, or test")

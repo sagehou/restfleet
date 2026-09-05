@@ -10,12 +10,13 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
-const credentialColumns = "id, name, provider, remote_name, status, secret_ref, secret_revision, revision, created_at, updated_at"
+const credentialColumns = "id, name, provider, remote_name, status, secret_ref, secret_revision, revision, created_at, updated_at, last_test_operation_id, last_tested_at, last_test_result, last_refreshed_at"
 
 func scanCredential(row rowScanner) (domain.StorageCredential, error) {
 	var c domain.StorageCredential
 	err := row.Scan(&c.ID, &c.Name, &c.Provider, &c.RemoteName, &c.Status,
-		&c.SecretRef, &c.SecretRevision, &c.Revision, &c.CreatedAt, &c.UpdatedAt)
+		&c.SecretRef, &c.SecretRevision, &c.Revision, &c.CreatedAt, &c.UpdatedAt,
+		&c.LastTestOperationID, &c.LastTestedAt, &c.LastTestResult, &c.LastRefreshedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, domain.ErrNotFound
 	}
@@ -97,14 +98,16 @@ func (s *Store) SaveStorageCredential(
 	}
 	if expectedRevision == 0 {
 		_, err = tx.Exec(ctx, `
-			insert into storage_credentials (`+credentialColumns+`)
+			insert into storage_credentials (id,name,provider,remote_name,status,secret_ref,secret_revision,revision,created_at,updated_at)
 			values ($1,$2,$3,$4,$5,$6,$7,1,$8,$8)
 		`, c.ID, c.Name, c.Provider, c.RemoteName, c.Status, c.SecretRef, c.SecretRevision, c.CreatedAt)
 	} else {
 		_, err = tx.Exec(ctx, `
 			update storage_credentials set status=$2, secret_ref=$3, secret_revision=$4,
-			    revision=revision+1, updated_at=$5 where id=$1
-		`, c.ID, c.Status, c.SecretRef, c.SecretRevision, c.UpdatedAt)
+			    revision=revision+1, updated_at=$5,
+			    last_tested_at=case when $6 then null else last_tested_at end,
+			    last_test_result=case when $6 then '' else last_test_result end where id=$1
+		`, c.ID, c.Status, c.SecretRef, c.SecretRevision, c.UpdatedAt, secret != nil)
 	}
 	if err != nil {
 		return domain.StorageCredential{}, persistenceError(err)
