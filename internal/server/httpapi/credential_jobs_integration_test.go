@@ -488,6 +488,44 @@ func TestCredentialWorkerShutdownLeavesRecoverableLease(t *testing.T) {
 	}
 }
 
+func TestCredentialCompletionRechecksLeaseAfterAudit(t *testing.T) {
+	store, pool, _, b, _ := setupFleet(t)
+	c := createCredential(t, b, "Audit fence")
+	o := queueCredentialTest(t, b, c.Id, "audit-fence")
+	ctx := context.Background()
+	owner := uuid.Must(uuid.NewV7())
+	job, err := store.ClaimCredentialJob(ctx, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Deterministically simulate the lease expiring while the transaction is
+	// writing its audit, after the initial owner check and metadata updates.
+	_, err = pool.Exec(ctx, `create function expire_job_during_audit() returns trigger language plpgsql as $$
+		begin if NEW.action='STORAGE_CREDENTIAL_TEST_RESULT' then
+			update jobs set lease_expires_at=clock_timestamp()-interval '1 second'
+			where operation_id=NEW.request_id;
+		end if; return NEW; end $$;
+		create trigger expire_job_during_audit before insert on audit_events
+		for each row execute function expire_job_during_audit();`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, "drop trigger if exists expire_job_during_audit on audit_events; drop function if exists expire_job_during_audit()")
+	})
+	if err := store.CompleteCredentialJob(ctx, job.ID, owner, ""); !errors.Is(err, domain.ErrJobLeaseLost) {
+		t.Fatalf("late lease fence = %v", err)
+	}
+	got, err := store.Operation(ctx, o.Id)
+	if err != nil || got.Status != "RUNNING" || got.FinishedAt != nil {
+		t.Fatal("expired worker committed completion")
+	}
+	current, err := store.StorageCredential(ctx, c.Id)
+	if err != nil || current.Status != "UNTESTED" || current.LastTestedAt != nil {
+		t.Fatal("expired worker committed metadata")
+	}
+}
+
 func TestCredentialRuntimeToEncryptedDatabase(t *testing.T) {
 	store, _, _, b, _ := setupFleet(t)
 	c := createCredential(t, b, "Runtime integration")
