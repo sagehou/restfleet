@@ -171,6 +171,16 @@ create table secrets (
 
 普通 repository/API query 不 join/decrypt secrets。Secret access 通过独立 store interface，并生成 audit/security metric。
 
+### 5.3.1 storage_credentials / storage_credential_revisions（schema 5）
+
+M4 第一批 MUST 复用 migration 00003 的实际 secrets 字段（kind、algorithm、key_id、ciphertext、nonce、wrapped_data_key、wrap_nonce、aad、created_at），不得以逻辑 schema 示例另建不兼容的加密格式。
+
+storage_credentials 保存 id、name、provider、remote_name、status、secret_ref、secret_revision、revision、created_at、updated_at。名称大小写不敏感唯一，provider 仅 RCLONE_ONEDRIVE，状态使用领域模型枚举；尚未连接测试的记录为 UNTESTED。
+
+storage_credential_revisions 使用 (credential_id, revision) 主键，将版本映射到不可变的 secrets 记录。create/replace 的两表更新、密文 insert 与 AuditEvent MUST 同事务；运行时角色只能对密文历史 SELECT/INSERT。替换使用行锁与 revision CAS，失败事务不得残留孤立的秘密版本。
+
+测试/刷新状态字段、runtime dispatch 和 repository 外键在后续 M4 migration 增补。第一批不得伪造 last_tested_at 或 HEALTHY。
+
 ### 5.4 repositories
 
 ```sql

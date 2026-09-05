@@ -2,7 +2,7 @@
 
 RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面。它通过轻量 Agent 统一下发备份计划、采集运行状态、浏览快照、触发恢复并集中执行仓库维护，同时把 rclone 与云存储凭据严格留在中心节点。
 
-> 当前仓库按 specification-first 方式开发。M0 与 M1 Control Plane Skeleton and Auth 已完成；`main` 分支上的规范仍是 V1 实现的约束来源。
+> 当前 M0–M3 已完成，M4 正分批开发：首批提供中心存储凭据导入与管理。仓库初始化、Gateway 与备份执行仍待后续交付；`docs/spec/` 中的规范是 V1 实现约束。
 
 开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
 
@@ -28,7 +28,7 @@ make test
 make build cross-build
 ```
 
-M1 Server 需要已经迁移到 schema v2 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。开发 Compose 也拆分了 migrator/runtime 数据库身份，并且不向宿主机发布 PostgreSQL 或 metrics 端口。
+当前 Server 需要已经迁移到 schema v5 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。开发 Compose 也拆分了 migrator/runtime 数据库身份，并且不向宿主机发布 PostgreSQL 或 metrics 端口。
 
 首次启动：
 
@@ -55,6 +55,7 @@ Bootstrap token 仅在首次初始化时从本机 `secrets/bootstrap-token` 读�
 | [数据库](docs/spec/07-database.md) | PostgreSQL Schema、约束、索引与事务规则 |
 | [Web Console](docs/spec/08-web-console.md) | 页面、交互、危险操作与状态表达 |
 | [部署](docs/spec/09-deployment.md) | 中心、Native Agent、Docker Agent 与升级 |
+| [存储凭据](docs/storage-credentials.md) | M4 首批导入、替换、禁用与当前限制 |
 | [可观测性](docs/spec/10-observability.md) | Metrics、Logs、Health、Alert、Audit |
 | [V1 范围](docs/spec/11-v1-scope.md) | V1、V1.5、V2 的功能边界 |
 | [验收测试](docs/spec/12-acceptance-tests.md) | 可执行的功能、安全与故障验收条件 |

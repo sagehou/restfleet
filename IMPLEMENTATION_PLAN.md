@@ -106,7 +106,7 @@
 
 ## M3 — Heartbeat, Inventory and Desired State
 
-**Status: IN PROGRESS**
+**Status: COMPLETE**
 
 ### Goal
 
@@ -135,6 +135,10 @@
 - Server restart reconciliation。
 
 ## M4 — Storage Credential, Repository and Gateway
+
+**Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)
+
+分批交付：第一批实现受限凭据导入、metadata 查询、替换/禁用与安全验收；异步连接测试、tmpfs/token watcher、Gateway、仓库初始化和轮换仍待完成。
 
 ### Goal
 

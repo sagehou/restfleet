@@ -370,6 +370,14 @@ func (a *API) authorizeMutation(
 		a.problem(w, r, http.StatusForbidden, "CSRF_INVALID", "Request denied", "The CSRF token is missing or invalid.", nil)
 		return domain.AuthenticatedSession{}, false
 	}
+	if authenticated.User.Role != domain.RoleAdmin {
+		if err := a.control.RecordDenied(r.Context(), action, resourceType, "ROLE_DENIED", meta); err != nil {
+			a.internalProblem(w, r)
+			return domain.AuthenticatedSession{}, false
+		}
+		a.problem(w, r, http.StatusForbidden, "ROLE_DENIED", "Request denied", "Administrator access is required.", nil)
+		return domain.AuthenticatedSession{}, false
+	}
 	return authenticated, true
 }
 
@@ -460,6 +468,14 @@ func (a *API) fleetProblem(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.As(err, &validation):
 		fieldErrors := []FieldError{{Field: validation.Field, Code: validation.Code}}
 		a.problem(w, r, http.StatusUnprocessableEntity, "VALIDATION_FAILED", "Validation failed", "One or more fields are invalid.", &fieldErrors)
+	case errors.Is(err, control.ErrForbidden):
+		a.problem(w, r, http.StatusForbidden, "ROLE_DENIED", "Request denied", "Administrator access is required.", nil)
+	case errors.Is(err, domain.ErrStorageUnavailable):
+		a.problem(w, r, http.StatusServiceUnavailable, "STORAGE_UNAVAILABLE", "Storage unavailable", "Storage credential management is not available.", nil)
+	case errors.Is(err, domain.ErrCredentialDisabled):
+		a.problem(w, r, http.StatusConflict, "CREDENTIAL_DISABLED", "Credential disabled", "Disabled credentials cannot be replaced.", nil)
+	case errors.Is(err, domain.ErrStorageTargetChanged):
+		a.problem(w, r, http.StatusConflict, "STORAGE_TARGET_CHANGED", "Storage target changed", "Replacement must preserve the storage target and Crypt settings.", nil)
 	case errors.Is(err, domain.ErrNotFound):
 		a.problem(w, r, http.StatusNotFound, "NOT_FOUND", "Not found", "The requested resource was not found.", nil)
 	case errors.Is(err, domain.ErrAlreadyExists):
