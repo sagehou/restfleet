@@ -82,12 +82,12 @@ func (a *API) CreateStorageCredential(w http.ResponseWriter, r *http.Request, pa
 		return
 	}
 	var request StorageCredentialCreate
-	if err := decodeJSON(w, r, &request); err != nil {
+	if err := decodeJSON(w, r, &request); err != nil || request.RcloneConfig == nil {
 		a.invalidCredentialRequest(w, r)
 		return
 	}
-	c, err := a.control.CreateStorageCredential(r.Context(), request.Name, request.RemoteName, request.RcloneConfig, actor.User, requestMeta(r))
-	request.RcloneConfig = ""
+	c, err := a.control.CreateStorageCredential(r.Context(), request.Name, request.RemoteName, *request.RcloneConfig, actor.User, requestMeta(r))
+	request.RcloneConfig = nil
 	if err != nil {
 		a.fleetProblem(w, r, err)
 		return
@@ -107,12 +107,12 @@ func (a *API) ReplaceStorageCredential(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	var request StorageCredentialReplace
-	if err := decodeJSON(w, r, &request); err != nil {
+	if err := decodeJSON(w, r, &request); err != nil || request.RcloneConfig == nil {
 		a.invalidCredentialRequest(w, r)
 		return
 	}
-	c, err := a.control.ReplaceStorageCredential(r.Context(), id, revision, request.RcloneConfig, actor.User, requestMeta(r))
-	request.RcloneConfig = ""
+	c, err := a.control.ReplaceStorageCredential(r.Context(), id, revision, *request.RcloneConfig, actor.User, requestMeta(r))
+	request.RcloneConfig = nil
 	if err != nil {
 		a.fleetProblem(w, r, err)
 		return

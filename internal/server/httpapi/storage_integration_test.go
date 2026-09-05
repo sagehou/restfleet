@@ -18,13 +18,15 @@ import (
 	"github.com/sagehou/restfleet/internal/security"
 )
 
+func credentialConfig(value string) *string { return &value }
+
 func credentialFixture() string {
 	return "[cloud]\ntype = onedrive\ntoken = {\"access_token\":\"storage-access-canary\",\"token_type\":\"Bearer\",\"refresh_token\":\"storage-refresh-canary\",\"expiry\":\"2030-01-01T00:00:00Z\"}\ndrive_id = example-drive\ndrive_type = personal\n[encrypted]\ntype = crypt\nremote = cloud:backups\npassword = " + base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)) + "\n"
 }
 
 func createCredential(t *testing.T, b *testBrowser, name string) StorageCredential {
 	t.Helper()
-	r := b.request(t, http.MethodPost, "/api/v1/storage-credentials", StorageCredentialCreate{Name: name, RemoteName: "encrypted", RcloneConfig: credentialFixture()}, map[string]string{"X-CSRF-Token": b.cookies[csrfCookieName].Value})
+	r := b.request(t, http.MethodPost, "/api/v1/storage-credentials", StorageCredentialCreate{Name: name, RemoteName: "encrypted", RcloneConfig: credentialConfig(credentialFixture())}, map[string]string{"X-CSRF-Token": b.cookies[csrfCookieName].Value})
 	if r.Code != http.StatusCreated {
 		t.Fatalf("credential create = %d, want 201", r.Code)
 	}
@@ -87,13 +89,13 @@ func TestStorageCredentialLifecycleAndSecretBoundary(t *testing.T) {
 
 	endpoint := "/api/v1/storage-credentials/" + c.Id.String()
 	headers := map[string]string{"X-CSRF-Token": b.cookies[csrfCookieName].Value, "If-Match": "\"1\""}
-	r := b.request(t, http.MethodPost, endpoint+"/replace-secret", StorageCredentialReplace{RcloneConfig: strings.Replace(credentialFixture(), "cloud:backups", "cloud:other", 1)}, headers)
+	r := b.request(t, http.MethodPost, endpoint+"/replace-secret", StorageCredentialReplace{RcloneConfig: credentialConfig(strings.Replace(credentialFixture(), "cloud:backups", "cloud:other", 1))}, headers)
 	if r.Code != http.StatusConflict {
 		t.Fatalf("target change = %d", r.Code)
 	}
 	assertNoStorageSecret(t, r.Body.String())
 	next := strings.Replace(credentialFixture(), "storage-refresh-canary", "storage-new-canary", 1)
-	r = b.request(t, http.MethodPost, endpoint+"/replace-secret", StorageCredentialReplace{RcloneConfig: next}, headers)
+	r = b.request(t, http.MethodPost, endpoint+"/replace-secret", StorageCredentialReplace{RcloneConfig: &next}, headers)
 	if r.Code != http.StatusOK {
 		t.Fatalf("replace = %d", r.Code)
 	}
@@ -102,7 +104,7 @@ func TestStorageCredentialLifecycleAndSecretBoundary(t *testing.T) {
 	if c.Revision != 2 || c.SecretRevision != 2 || c.Status != StorageCredentialStatusUNTESTED {
 		t.Fatal("replacement revisions incorrect")
 	}
-	if b.request(t, http.MethodPost, endpoint+"/replace-secret", StorageCredentialReplace{RcloneConfig: next}, headers).Code != http.StatusPreconditionFailed {
+	if b.request(t, http.MethodPost, endpoint+"/replace-secret", StorageCredentialReplace{RcloneConfig: &next}, headers).Code != http.StatusPreconditionFailed {
 		t.Fatal("stale replacement was accepted")
 	}
 	if b.request(t, http.MethodPost, endpoint+"/disable", nil, headers).Code != http.StatusPreconditionFailed {
@@ -118,7 +120,7 @@ func TestStorageCredentialLifecycleAndSecretBoundary(t *testing.T) {
 		t.Fatal("disable changed secret version")
 	}
 	headers["If-Match"] = "\"3\""
-	if b.request(t, http.MethodPost, endpoint+"/replace-secret", StorageCredentialReplace{RcloneConfig: next}, headers).Code != http.StatusConflict {
+	if b.request(t, http.MethodPost, endpoint+"/replace-secret", StorageCredentialReplace{RcloneConfig: &next}, headers).Code != http.StatusConflict {
 		t.Fatal("disabled credential was reactivated")
 	}
 	for _, path := range []string{endpoint, "/api/v1/storage-credentials"} {
@@ -149,7 +151,7 @@ func TestStorageCredentialLifecycleAndSecretBoundary(t *testing.T) {
 func TestStorageCredentialAuthorizationAndValidation(t *testing.T) {
 	_, pool, handler, b, _ := setupFleet(t)
 	c := createCredential(t, b, "Access test")
-	create := StorageCredentialCreate{Name: "Other", RemoteName: "encrypted", RcloneConfig: credentialFixture()}
+	create := StorageCredentialCreate{Name: "Other", RemoteName: "encrypted", RcloneConfig: credentialConfig(credentialFixture())}
 	headers := map[string]string{"X-CSRF-Token": b.cookies[csrfCookieName].Value, "If-Match": "\"1\""}
 	if newTestBrowser(handler).request(t, http.MethodGet, "/api/v1/storage-credentials", nil, nil).Code != http.StatusUnauthorized {
 		t.Fatal("anonymous metadata access")
@@ -160,8 +162,19 @@ func TestStorageCredentialAuthorizationAndValidation(t *testing.T) {
 			t.Fatal("CSRF boundary bypassed")
 		}
 	}
+	for _, body := range []map[string]any{
+		{"name": "Missing", "remote_name": "encrypted"},
+		{"name": "Null", "remote_name": "encrypted", "rclone_config": nil},
+	} {
+		if b.request(t, http.MethodPost, "/api/v1/storage-credentials", body, headers).Code != http.StatusBadRequest {
+			t.Fatal("missing/null secret accepted")
+		}
+		if b.request(t, http.MethodPost, "/api/v1/storage-credentials/"+c.Id.String()+"/replace-secret", map[string]any{"rclone_config": nil}, headers).Code != http.StatusBadRequest {
+			t.Fatal("null replacement accepted")
+		}
+	}
 	invalid := create
-	invalid.RcloneConfig += "token_url = http://169.254.169.254/storage-access-canary\n"
+	invalid.RcloneConfig = credentialConfig(credentialFixture() + "token_url = http://169.254.169.254/storage-access-canary\n")
 	r := b.request(t, http.MethodPost, "/api/v1/storage-credentials", invalid, headers)
 	if r.Code != http.StatusUnprocessableEntity {
 		t.Fatal("unsafe import accepted")
@@ -180,7 +193,7 @@ func TestStorageCredentialAuthorizationAndValidation(t *testing.T) {
 		body any
 	}{
 		{"/api/v1/storage-credentials", create},
-		{"/api/v1/storage-credentials/" + c.Id.String() + "/replace-secret", StorageCredentialReplace{RcloneConfig: credentialFixture()}},
+		{"/api/v1/storage-credentials/" + c.Id.String() + "/replace-secret", StorageCredentialReplace{RcloneConfig: credentialConfig(credentialFixture())}},
 		{"/api/v1/storage-credentials/" + c.Id.String() + "/disable", nil},
 		{"/api/v1/hosts", HostCreate{DisplayName: "Denied", Timezone: "UTC"}},
 	} {
@@ -209,7 +222,7 @@ func TestStorageCredentialConcurrentReplacement(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			request := httptest.NewRequest(http.MethodPost, "/api/v1/storage-credentials/"+c.Id.String()+"/replace-secret", encodeBody(t, StorageCredentialReplace{RcloneConfig: credentialFixture()}))
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/storage-credentials/"+c.Id.String()+"/replace-secret", encodeBody(t, StorageCredentialReplace{RcloneConfig: credentialConfig(credentialFixture())}))
 			request.Header.Set("X-CSRF-Token", b.cookies[csrfCookieName].Value)
 			request.Header.Set("If-Match", "\"1\"")
 			for _, cookie := range b.cookies {
@@ -262,7 +275,7 @@ func TestStorageCredentialAuditFailureRollsBack(t *testing.T) {
 	if err := pool.QueryRow(ctx, "select count(*) from secrets").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	r := b.request(t, http.MethodPost, "/api/v1/storage-credentials", StorageCredentialCreate{Name: "Rollback", RemoteName: "encrypted", RcloneConfig: credentialFixture()}, map[string]string{"X-CSRF-Token": b.cookies[csrfCookieName].Value})
+	r := b.request(t, http.MethodPost, "/api/v1/storage-credentials", StorageCredentialCreate{Name: "Rollback", RemoteName: "encrypted", RcloneConfig: credentialConfig(credentialFixture())}, map[string]string{"X-CSRF-Token": b.cookies[csrfCookieName].Value})
 	if r.Code != http.StatusServiceUnavailable {
 		t.Fatalf("audit failure = %d", r.Code)
 	}
