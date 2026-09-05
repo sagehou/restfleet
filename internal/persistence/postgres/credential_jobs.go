@@ -139,7 +139,7 @@ func (s *Store) EnqueueCredentialTest(ctx context.Context, o domain.Operation, s
 		return o, err
 	}
 	_, err = tx.Exec(ctx, `insert into idempotency_records(scope_hash,key_hash,request_hash,status,resource_type,resource_id,created_at,expires_at)
-		values($1,$2,$3,202,'OPERATION',$4,$5,$5+interval '24 hours')
+		values($1,$2,$3,202,'OPERATION',$4,$5::timestamptz,$5::timestamptz+interval '24 hours')
 		on conflict(scope_hash,key_hash) do update set request_hash=excluded.request_hash,
 		resource_id=excluded.resource_id,created_at=excluded.created_at,expires_at=excluded.expires_at`, scope, key, request, o.ID, o.CreatedAt)
 	if err != nil {

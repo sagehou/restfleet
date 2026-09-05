@@ -387,8 +387,8 @@ func TestCredentialJobAuditRollback(t *testing.T) {
 			if stage == "enqueue" {
 				rejectCredentialAudit(t, pool, "STORAGE_CREDENTIAL_TEST")
 				r := b.request(t, http.MethodPost, "/api/v1/storage-credentials/"+c.Id.String()+"/test", nil, map[string]string{"X-CSRF-Token": b.cookies[csrfCookieName].Value, "Idempotency-Key": "audit"})
-				if r.Code != http.StatusInternalServerError {
-					t.Fatal("enqueue survived audit failure")
+				if r.Code != http.StatusServiceUnavailable {
+					t.Fatalf("audit unavailable enqueue = %d, want 503", r.Code)
 				}
 				assertNoStorageSecret(t, r.Body.String())
 				var count int
