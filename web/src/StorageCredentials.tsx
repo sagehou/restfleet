@@ -31,18 +31,16 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
       : errorMessage(error))
   }, [onUnauthorized])
 
-  const load = useCallback(async (cursor?: string, signal?: AbortSignal) => {
-    try {
-      const page = await requestJSON<CredentialList>(cursor ? `${endpoint}?cursor=${encodeURIComponent(cursor)}` : endpoint, { signal })
-      if (signal?.aborted) return
-      setItems((current) => cursor ? [...current, ...page.items] : page.items)
-      setNextCursor(page.next_cursor)
-    } catch (error) {
-      if (!signal?.aborted) handleError(error)
-    } finally {
-      if (!signal?.aborted) setLoading(false)
-    }
-  }, [handleError])
+  const load = useCallback((cursor?: string, signal?: AbortSignal) =>
+    requestJSON<CredentialList>(cursor ? `${endpoint}?cursor=${encodeURIComponent(cursor)}` : endpoint, { signal })
+      .then((page) => {
+        if (signal?.aborted) return
+        setItems((current) => cursor ? [...current, ...page.items] : page.items)
+        setNextCursor(page.next_cursor)
+      })
+      .catch((error: unknown) => { if (!signal?.aborted) handleError(error) })
+      .finally(() => { if (!signal?.aborted) setLoading(false) }),
+  [handleError])
 
   useEffect(() => {
     const controller = new AbortController()
