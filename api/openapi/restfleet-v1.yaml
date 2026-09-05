@@ -477,6 +477,135 @@ paths:
         "422": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/storage-credentials:
+    get:
+      operationId: listStorageCredentials
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: Metadata only. Secrets and ciphertext are never returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StorageCredentialList" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createStorageCredential
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StorageCredentialCreate" }
+      responses:
+        "201":
+          description: Imported and encrypted; UNTESTED does not indicate remote connectivity.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StorageCredential" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/storage-credentials/{credential_id}:
+    parameters:
+      - name: credential_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getStorageCredential
+      responses:
+        "200":
+          description: Credential metadata; ETag contains the resource revision.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StorageCredential" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/storage-credentials/{credential_id}/replace-secret:
+    parameters:
+      - name: credential_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: replaceStorageCredential
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StorageCredentialReplace" }
+      responses:
+        "200":
+          description: Credential metadata; ETag contains the new revision.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StorageCredential" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/storage-credentials/{credential_id}/disable:
+    parameters:
+      - name: credential_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: disableStorageCredential
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Credential metadata; ETag contains the new revision.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StorageCredential" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
 components:
   securitySchemes:
     sessionCookie:
@@ -530,6 +659,53 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
   schemas:
+    StorageCredential:
+      type: object
+      additionalProperties: false
+      required: [id, name, provider, remote_name, status, secret_revision, revision, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        provider: { type: string, enum: [RCLONE_ONEDRIVE] }
+        remote_name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9_-]{1,63}$" }
+        status: { type: string, enum: [UNTESTED, HEALTHY, DEGRADED, EXPIRED, DISABLED] }
+        secret_revision: { type: integer, format: int64, minimum: 1 }
+        revision: { type: integer, format: int64, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    StorageCredentialList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/StorageCredential" }
+        next_cursor: { type: string }
+    StorageCredentialCreate:
+      type: object
+      additionalProperties: false
+      required: [name, remote_name, rclone_config]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        remote_name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9_-]{1,63}$" }
+        rclone_config:
+          type: string
+          minLength: 1
+          maxLength: 262144
+          writeOnly: true
+          description: Restricted OneDrive + Crypt configuration, at most 256 KiB UTF-8.
+    StorageCredentialReplace:
+      type: object
+      additionalProperties: false
+      required: [rclone_config]
+      properties:
+        rclone_config:
+          type: string
+          minLength: 1
+          maxLength: 262144
+          writeOnly: true
+          description: Token/client credential replacement; storage target and Crypt settings must remain identical.
     BootstrapStatus:
       type: object
       additionalProperties: false

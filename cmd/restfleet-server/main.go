@@ -64,6 +64,7 @@ func run(logger *slog.Logger) error {
 	}
 	controlPlane, err := control.NewControlPlane(store, control.Settings{
 		BootstrapToken: config.BootstrapToken,
+		MasterKey:      config.MasterKey,
 		ExpectedSchema: postgres.ExpectedSchemaVersion,
 		Enrollment: control.EnrollmentSettings{
 			Pepper: security.DeriveEnrollmentPepper(config.MasterKey),

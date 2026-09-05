@@ -283,7 +283,7 @@ func (a *API) Version(w http.ResponseWriter, r *http.Request) {
 		Version:       a.build.Version,
 		Commit:        a.build.Commit,
 		BuiltAt:       a.build.Date,
-		SchemaVersion: 4,
+		SchemaVersion: 5,
 	})
 }
 
@@ -516,7 +516,7 @@ func routeLabel(path string) string {
 		"/api/v1/bootstrap/status", "/api/v1/bootstrap",
 		"/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
 		"/api/v1/dashboard/summary", "/api/v1/version",
-		"/api/v1/hosts", "/api/v1/agent-enrollment":
+		"/api/v1/hosts", "/api/v1/agent-enrollment", "/api/v1/storage-credentials":
 		return path
 	}
 	if strings.HasPrefix(path, "/api/v1/hosts/") {
@@ -534,6 +534,15 @@ func routeLabel(path string) string {
 		default:
 			return "/api/v1/hosts/{host_id}"
 		}
+	}
+	if strings.HasPrefix(path, "/api/v1/storage-credentials/") {
+		if strings.HasSuffix(path, "/replace-secret") {
+			return "/api/v1/storage-credentials/{credential_id}/replace-secret"
+		}
+		if strings.HasSuffix(path, "/disable") {
+			return "/api/v1/storage-credentials/{credential_id}/disable"
+		}
+		return "/api/v1/storage-credentials/{credential_id}"
 	}
 	if strings.HasPrefix(path, "/api/v1/enrollment-tokens/") {
 		return "/api/v1/enrollment-tokens/{token_id}"

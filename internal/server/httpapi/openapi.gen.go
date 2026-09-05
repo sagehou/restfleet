@@ -6,6 +6,7 @@
 package httpapi
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -167,6 +168,48 @@ func (e HostStatus) Valid() bool {
 	case HostStatusPENDING:
 		return true
 	case HostStatusREVOKED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StorageCredentialProvider.
+const (
+	RCLONEONEDRIVE StorageCredentialProvider = "RCLONE_ONEDRIVE"
+)
+
+// Valid indicates whether the value is a known member of the StorageCredentialProvider enum.
+func (e StorageCredentialProvider) Valid() bool {
+	switch e {
+	case RCLONEONEDRIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StorageCredentialStatus.
+const (
+	StorageCredentialStatusDEGRADED StorageCredentialStatus = "DEGRADED"
+	StorageCredentialStatusDISABLED StorageCredentialStatus = "DISABLED"
+	StorageCredentialStatusEXPIRED  StorageCredentialStatus = "EXPIRED"
+	StorageCredentialStatusHEALTHY  StorageCredentialStatus = "HEALTHY"
+	StorageCredentialStatusUNTESTED StorageCredentialStatus = "UNTESTED"
+)
+
+// Valid indicates whether the value is a known member of the StorageCredentialStatus enum.
+func (e StorageCredentialStatus) Valid() bool {
+	switch e {
+	case StorageCredentialStatusDEGRADED:
+		return true
+	case StorageCredentialStatusDISABLED:
+		return true
+	case StorageCredentialStatusEXPIRED:
+		return true
+	case StorageCredentialStatusHEALTHY:
+		return true
+	case StorageCredentialStatusUNTESTED:
 		return true
 	default:
 		return false
@@ -430,6 +473,46 @@ type Session struct {
 	User              User      `json:"user"`
 }
 
+// StorageCredential defines model for StorageCredential.
+type StorageCredential struct {
+	CreatedAt      time.Time                 `json:"created_at"`
+	Id             openapi_types.UUID        `json:"id"`
+	Name           string                    `json:"name"`
+	Provider       StorageCredentialProvider `json:"provider"`
+	RemoteName     string                    `json:"remote_name"`
+	Revision       int64                     `json:"revision"`
+	SecretRevision int64                     `json:"secret_revision"`
+	Status         StorageCredentialStatus   `json:"status"`
+	UpdatedAt      time.Time                 `json:"updated_at"`
+}
+
+// StorageCredentialProvider defines model for StorageCredential.Provider.
+type StorageCredentialProvider string
+
+// StorageCredentialStatus defines model for StorageCredential.Status.
+type StorageCredentialStatus string
+
+// StorageCredentialCreate defines model for StorageCredentialCreate.
+type StorageCredentialCreate struct {
+	Name string `json:"name"`
+
+	// RcloneConfig Restricted OneDrive + Crypt configuration, at most 256 KiB UTF-8.
+	RcloneConfig *string `json:"rclone_config,omitempty"`
+	RemoteName   string  `json:"remote_name"`
+}
+
+// StorageCredentialList defines model for StorageCredentialList.
+type StorageCredentialList struct {
+	Items      []StorageCredential `json:"items"`
+	NextCursor *string             `json:"next_cursor,omitempty"`
+}
+
+// StorageCredentialReplace defines model for StorageCredentialReplace.
+type StorageCredentialReplace struct {
+	// RcloneConfig Token/client credential replacement; storage target and Crypt settings must remain identical.
+	RcloneConfig *string `json:"rclone_config,omitempty"`
+}
+
 // User defines model for User.
 type User struct {
 	DisplayName string             `json:"display_name"`
@@ -516,6 +599,29 @@ type CreateEnrollmentTokenParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// ListStorageCredentialsParams defines parameters for ListStorageCredentials.
+type ListStorageCredentialsParams struct {
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// CreateStorageCredentialParams defines parameters for CreateStorageCredential.
+type CreateStorageCredentialParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// DisableStorageCredentialParams defines parameters for DisableStorageCredential.
+type DisableStorageCredentialParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
+// ReplaceStorageCredentialParams defines parameters for ReplaceStorageCredential.
+type ReplaceStorageCredentialParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
 // EnrollAgentJSONRequestBody defines body for EnrollAgent for application/json ContentType.
 type EnrollAgentJSONRequestBody = AgentEnrollmentRequest
 
@@ -536,6 +642,12 @@ type UpdateHostJSONRequestBody = HostPatch
 
 // CreateEnrollmentTokenJSONRequestBody defines body for CreateEnrollmentToken for application/json ContentType.
 type CreateEnrollmentTokenJSONRequestBody = EnrollmentTokenCreate
+
+// CreateStorageCredentialJSONRequestBody defines body for CreateStorageCredential for application/json ContentType.
+type CreateStorageCredentialJSONRequestBody = StorageCredentialCreate
+
+// ReplaceStorageCredentialJSONRequestBody defines body for ReplaceStorageCredential for application/json ContentType.
+type ReplaceStorageCredentialJSONRequestBody = StorageCredentialReplace
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -599,6 +711,21 @@ type ServerInterface interface {
 
 	// (GET /api/v1/hosts/{host_id}/inventory)
 	GetHostInventory(w http.ResponseWriter, r *http.Request, hostId HostId)
+
+	// (GET /api/v1/storage-credentials)
+	ListStorageCredentials(w http.ResponseWriter, r *http.Request, params ListStorageCredentialsParams)
+
+	// (POST /api/v1/storage-credentials)
+	CreateStorageCredential(w http.ResponseWriter, r *http.Request, params CreateStorageCredentialParams)
+
+	// (GET /api/v1/storage-credentials/{credential_id})
+	GetStorageCredential(w http.ResponseWriter, r *http.Request, credentialId openapi_types.UUID)
+
+	// (POST /api/v1/storage-credentials/{credential_id}/disable)
+	DisableStorageCredential(w http.ResponseWriter, r *http.Request, credentialId openapi_types.UUID, params DisableStorageCredentialParams)
+
+	// (POST /api/v1/storage-credentials/{credential_id}/replace-secret)
+	ReplaceStorageCredential(w http.ResponseWriter, r *http.Request, credentialId openapi_types.UUID, params ReplaceStorageCredentialParams)
 
 	// (GET /api/v1/version)
 	Version(w http.ResponseWriter, r *http.Request)
@@ -1384,6 +1511,277 @@ func (siw *ServerInterfaceWrapper) GetHostInventory(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListStorageCredentials operation middleware
+func (siw *ServerInterfaceWrapper) ListStorageCredentials(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListStorageCredentialsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListStorageCredentials(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateStorageCredential operation middleware
+func (siw *ServerInterfaceWrapper) CreateStorageCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateStorageCredentialParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateStorageCredential(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStorageCredential operation middleware
+func (siw *ServerInterfaceWrapper) GetStorageCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "credential_id" -------------
+	var credentialId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "credential_id", r.PathValue("credential_id"), &credentialId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "credential_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStorageCredential(w, r, credentialId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableStorageCredential operation middleware
+func (siw *ServerInterfaceWrapper) DisableStorageCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "credential_id" -------------
+	var credentialId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "credential_id", r.PathValue("credential_id"), &credentialId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "credential_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DisableStorageCredentialParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableStorageCredential(w, r, credentialId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReplaceStorageCredential operation middleware
+func (siw *ServerInterfaceWrapper) ReplaceStorageCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "credential_id" -------------
+	var credentialId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "credential_id", r.PathValue("credential_id"), &credentialId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "credential_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReplaceStorageCredentialParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReplaceStorageCredential(w, r, credentialId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Version operation middleware
 func (siw *ServerInterfaceWrapper) Version(w http.ResponseWriter, r *http.Request) {
 
@@ -1569,6 +1967,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agent-enrollment", wrapper.EnrollAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/{agent_id}", wrapper.GetAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/{agent_id}/revoke", wrapper.RevokeAgent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.ListStorageCredentials)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.CreateStorageCredential)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}/replace-secret", wrapper.ReplaceStorageCredential)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}/disable", wrapper.DisableStorageCredential)
 
 	return m
 }

@@ -1,5 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import type { components } from './api/schema'
+import { ApiError, csrfToken, errorMessage, requestJSON } from './api/client'
+import { StorageCredentials } from './StorageCredentials'
 
 type Session = components['schemas']['Session']
 type BootstrapStatus = components['schemas']['BootstrapStatus']
@@ -11,60 +13,9 @@ type Agent = components['schemas']['Agent']
 type AgentInventory = components['schemas']['AgentInventory']
 type AgentList = components['schemas']['AgentList']
 type EnrollmentTokenCreated = components['schemas']['EnrollmentTokenCreated']
-type Problem = components['schemas']['Problem']
 type Phase = 'loading' | 'bootstrap' | 'login' | 'authenticated' | 'error'
-type Page = 'overview' | 'hosts' | 'version'
+type Page = 'overview' | 'hosts' | 'credentials' | 'version'
 type DataState = 'idle' | 'loading' | 'ready' | 'error'
-
-class ApiError extends Error {
-  readonly status: number
-  readonly problem?: Problem
-
-  constructor(status: number, problem?: Problem) {
-    super(problem?.detail ?? '请求失败')
-    this.status = status
-    this.problem = problem
-  }
-}
-
-async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers)
-  headers.set('Accept', 'application/json')
-  if (init?.body) {
-    headers.set('Content-Type', 'application/json')
-  }
-  const response = await fetch(path, {
-    ...init,
-    headers,
-    credentials: 'same-origin',
-  })
-  if (!response.ok) {
-    let problem: Problem | undefined
-    try {
-      problem = (await response.json()) as Problem
-    } catch {
-      problem = undefined
-    }
-    throw new ApiError(response.status, problem)
-  }
-  return (await response.json()) as T
-}
-
-function csrfToken(): string {
-  const prefix = 'restfleet_csrf='
-  const value = document.cookie
-    .split(';')
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(prefix))
-  return value ? decodeURIComponent(value.slice(prefix.length)) : ''
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.problem?.request_id) {
-    return `${error.message}（请求 ID：${error.problem.request_id}）`
-  }
-  return error instanceof Error ? error.message : '请求失败，请稍后重试。'
-}
 
 const navigation = [
   'Overview',
@@ -88,6 +39,7 @@ export function App() {
   const [page, setPage] = useState<Page>('overview')
   const [message, setMessage] = useState('')
   const [retryKey, setRetryKey] = useState(0)
+  const storageSessionExpired = useCallback(() => { setSession(null); setPhase('login') }, [])
 
   const loadAuthenticatedData = useCallback(async () => {
     setDataState('loading')
@@ -296,6 +248,9 @@ export function App() {
           <button className={page === 'hosts' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('hosts')}>
             Hosts
           </button>
+          <button className={page === 'credentials' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('credentials')}>
+            存储凭据
+          </button>
           {navigation.slice(2).map((item) => (
             <button className="nav-item" disabled key={item} title="后续里程碑提供">
               {item}
@@ -319,6 +274,7 @@ export function App() {
         {page === 'hosts' && (
           <HostsView hosts={hosts} state={dataState} reload={loadAuthenticatedData} />
         )}
+        {page === 'credentials' && <StorageCredentials canManage={session?.user.role === 'ADMIN'} onUnauthorized={storageSessionExpired} />}
         {page === 'version' && (
           <VersionView version={version} state={dataState} />
         )}

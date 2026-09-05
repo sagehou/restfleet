@@ -18,7 +18,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -28,7 +29,8 @@ button {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid rgb(14 116 144 / 30%);
   outline-offset: 2px;
 }
@@ -103,7 +105,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   padding: 0.72rem 0.8rem;
   border: 1px solid #b8c5cc;
@@ -316,6 +319,45 @@ nav {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.section-heading,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.section-heading {
+  justify-content: space-between;
+}
+
+.actions button,
+.credential-detail button,
+.credential-form button {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid #9eb0ba;
+  border-radius: 0.5rem;
+  color: #173c4d;
+  background: #fff;
+  font-weight: 700;
+}
+
+.credential-detail,
+.credential-form {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid #d7e0e4;
+  border-radius: 0.8rem;
+  background: #fff;
+}
+
+.credential-form textarea {
+  min-height: 12rem;
+  resize: vertical;
+  font-family: ui-monospace, monospace;
 }
 
 .table-wrap {

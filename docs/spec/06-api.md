@@ -184,6 +184,14 @@ V1 `POST`/`replace-secret` 支持导入受限的 rclone config/OneDrive token bu
 
 `test`、`reauthenticate` 返回 Operation。OAuth redirect/callback 若进入 V1.1，使用短期 state、PKCE，并与发起 Session 绑定。
 
+### 7.1 M4 第一批已实现的凭据 API
+
+已实现 GET/POST collection、GET detail、POST replace-secret/disable；metadata list 支持 limit（1–200）与 opaque cursor，未知或重复 query 参数返回 400。导入与替换请求的 rclone_config 为 writeOnly，字段白名单与限制见 [ADR-0007](../adr/0007-storage-credential-import.md)。
+
+replace-secret/disable MUST 使用 If-Match；发生并发变更返回 412。替换 MUST 保持存储目标和 Crypt 设置，违反返回 409 STORAGE_TARGET_CHANGED；禁用后替换返回 409 CREDENTIAL_DISABLED。导入与替换仅返回 UNTESTED metadata，不证明远端可用。未配置 master key 时修改返回 503 STORAGE_UNAVAILABLE。
+
+异步 test/reauthenticate、metadata PATCH 与后续仓库 API 尚未交付；UI MUST NOT 将这些能力展示为可用。
+
 ## 8. Repositories
 
 ```http

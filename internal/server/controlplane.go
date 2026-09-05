@@ -66,6 +66,10 @@ type Store interface {
 	RotateAgentCertificate(context.Context, uuid.UUID, string, domain.AgentCertificate, time.Time, time.Time, domain.AuditEvent) error
 	AgentCA(context.Context) (domain.AgentCARecord, error)
 	InitializeAgentCA(context.Context, domain.AgentCARecord) (domain.AgentCARecord, error)
+	StorageCredentials(context.Context, uuid.UUID, int) ([]domain.StorageCredential, error)
+	StorageCredential(context.Context, uuid.UUID) (domain.StorageCredential, error)
+	StorageCredentialSecret(context.Context, uuid.UUID) (domain.SecretEnvelope, error)
+	SaveStorageCredential(context.Context, domain.StorageCredential, int64, *domain.SecretEnvelope, domain.AuditEvent) (domain.StorageCredential, error)
 }
 
 // Settings controls security policy. Production defaults are applied to zero values.
@@ -77,6 +81,7 @@ type Settings struct {
 	ExpectedSchema int
 	Clock          func() time.Time
 	Enrollment     EnrollmentSettings
+	MasterKey      []byte
 }
 
 // RequestMeta contains only non-secret request correlation data.
@@ -112,9 +117,13 @@ type ControlPlane struct {
 	clock              func() time.Time
 	enrollment         EnrollmentSettings
 	disconnectAgent    func(uuid.UUID)
+	masterKey          []byte
 }
 
 func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
+	if len(settings.MasterKey) != 0 && len(settings.MasterKey) != 32 {
+		return nil, domain.ErrStorageUnavailable
+	}
 	if settings.IdleTTL == 0 {
 		settings.IdleTTL = 30 * time.Minute
 	}
@@ -125,7 +134,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		settings.PasswordParams = security.DefaultArgon2Params
 	}
 	if settings.ExpectedSchema == 0 {
-		settings.ExpectedSchema = 4
+		settings.ExpectedSchema = 5
 	}
 	if settings.Enrollment.HeartbeatInterval == 0 {
 		settings.Enrollment.HeartbeatInterval = 15 * time.Second
@@ -150,6 +159,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		expectedSchema:     settings.ExpectedSchema,
 		clock:              settings.Clock,
 		enrollment:         settings.Enrollment,
+		masterKey:          append([]byte(nil), settings.MasterKey...),
 	}, nil
 }
 
