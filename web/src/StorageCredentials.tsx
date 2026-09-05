@@ -32,8 +32,6 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
   }, [onUnauthorized])
 
   const load = useCallback(async (cursor?: string, signal?: AbortSignal) => {
-    setLoading(true)
-    setMessage('')
     try {
       const page = await requestJSON<CredentialList>(cursor ? `${endpoint}?cursor=${encodeURIComponent(cursor)}` : endpoint, { signal })
       if (signal?.aborted) return
@@ -56,6 +54,12 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
       window.removeEventListener('pagehide', clearForm)
     }
   }, [load])
+
+  function reload(cursor?: string) {
+    setLoading(true)
+    setMessage('')
+    return load(cursor)
+  }
 
   async function openDetail(id: string) {
     setBusy(true)
@@ -91,7 +95,7 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
       setFormMode(null)
       setSelected(credential)
       setNotice('配置已加密保存，尚未验证云端连通性。')
-      await load()
+      await reload()
     } catch (error) { handleError(error) }
     finally { setBusy(false) }
   }
@@ -108,7 +112,7 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
       setSelected(credential)
       setConfirmDisable(false)
       setNotice('凭据已禁用。')
-      await load()
+      await reload()
     } catch (error) { handleError(error) }
     finally { setBusy(false) }
   }
@@ -118,7 +122,7 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
       <div className="section-heading">
         <div><p className="eyebrow">中心存储</p><h1 id="credentials-title">存储凭据</h1></div>
         <div className="actions">
-          <button disabled={busy || loading} onClick={() => void load()}>刷新列表</button>
+          <button disabled={busy || loading} onClick={() => void reload()}>刷新列表</button>
           {canManage && <button disabled={busy} onClick={() => { setSelected(null); setFormMode('create'); setMessage(''); setNotice('') }}>导入凭据</button>}
         </div>
       </div>
@@ -134,7 +138,7 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
           <td><button className="table-link" disabled={busy} onClick={() => void openDetail(item.id)}>查看 {item.name}</button></td>
         </tr>)}</tbody>
       </table></div>}
-      {nextCursor && <button disabled={loading || busy} onClick={() => void load(nextCursor)}>加载更多</button>}
+      {nextCursor && <button disabled={loading || busy} onClick={() => void reload(nextCursor)}>加载更多</button>}
       {selected && <section className="credential-detail" aria-label="凭据详情">
         <h2>{selected.name}</h2>
         <dl className="detail-list">
