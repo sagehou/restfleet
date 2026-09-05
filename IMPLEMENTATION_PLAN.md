@@ -138,7 +138,7 @@
 
 **Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)
 
-分批交付：第一批凭据导入/metadata/替换/禁用已合并（#16）；第二批中心 tmpfs/runtime/token watcher 与固定版本 rclone 在 #17。第三批接入持久化异步 Test Operation、租约恢复/幂等、token 加密 CAS 与测试状态 UI。Gateway、仓库初始化、凭据轮换和真实 OneDrive refresh 人工验收仍待完成。
+分批交付：凭据管理（#16）、中心 tmpfs/runtime/token watcher（#17）、持久化异步 Test Operation/租约/幂等/加密 CAS 与测试 UI（#18）均已合并。第四批推进中心 Restic 初始化适配器及固定二进制离线验证，尚未接入 Repository API/jobs/Agent ACK。Public Gateway、独立仓库端到端创建、凭据轮换、仓库 UI 和真实 OneDrive refresh 人工验收仍待完成。
 
 ### Goal
 

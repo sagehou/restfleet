@@ -410,3 +410,42 @@ func TestRuntimeRefreshCannotChangeClientIdentity(t *testing.T) {
 		t.Fatal("nil config accepted")
 	}
 }
+
+func TestRuntimeWithConfigRedactsCommandErrors(t *testing.T) {
+	root := tmpfsRoot(t)
+	binary := fakeRclone(t, "success")
+	r, err := NewRuntime(root, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+	called := false
+	err = r.WithConfig(context.Background(), []byte(testConfig()), "encrypted",
+		func(context.Context, []byte) error { return nil },
+		func(_ context.Context, filename, approvedBinary string) error {
+			called = true
+			if approvedBinary != binary {
+				t.Error("binary changed")
+			}
+			if _, err := readRuntimeConfig(filename, "encrypted"); err != nil {
+				t.Error("unsafe config")
+			}
+			return errors.New("canary-secret: subprocess detail")
+		})
+	if !called || !errors.Is(err, ErrCommandFailed) || strings.Contains(err.Error(), "canary") {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called = false
+	err = r.WithConfig(ctx, []byte(testConfig()), "encrypted",
+		func(context.Context, []byte) error { return nil },
+		func(context.Context, string, string) error { called = true; return nil })
+	if called || !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled callback executed")
+	}
+	if err := r.WithConfig(context.Background(), []byte(testConfig()), "encrypted",
+		func(context.Context, []byte) error { return nil }, nil); !errors.Is(err, ErrCommandFailed) {
+		t.Fatal("nil callback accepted")
+	}
+}

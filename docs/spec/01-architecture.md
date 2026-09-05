@@ -147,9 +147,9 @@ Server 下发时 MUST 分开传 endpoint、username 与 secret，不持久化带
 
 ### 6.1 管理访问
 
-V1 默认不暴露第二个公网 full-access REST gateway。Maintenance Worker 在中心内部通过 rclone backend/stdio 或仅内部网络的管理 listener 访问同一 remote。
+V1 默认不暴露第二个公网 full-access REST gateway。Maintenance Worker 在中心内部通过受限 Unix socket、rclone backend/stdio 或仅内部网络的管理 listener 访问同一 remote。中心初始化采用 ADR-0010 的私有 Unix socket：Server MUST 分别拥有并回收 Restic/rclone 进程；目录权限为 0700、socket 为 0600，MUST NOT 绑定 TCP 或映射到 Agent/反向代理。
 
-若使用管理 listener：
+若使用网络管理 listener：
 
 - 只能存在于不可路由的 internal network；
 - 必须使用独立身份与 TLS/mTLS；

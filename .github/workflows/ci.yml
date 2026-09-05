@@ -64,6 +64,12 @@ jobs:
           docker cp restfleet-rclone-conformance:/usr/local/bin/rclone "${RUNNER_TEMP}/rclone"
           docker rm restfleet-rclone-conformance
           "${RUNNER_TEMP}/rclone" version
+      - name: Extract pinned Restic for offline provisioning tests
+        run: |
+          docker create --name restfleet-restic-conformance restic/restic:0.19.1@sha256:136600b6ff6843d61d355f7f71f460a166429f35de6fd11b568fece3c9a4d510
+          docker cp restfleet-restic-conformance:/usr/bin/restic "${RUNNER_TEMP}/restic"
+          docker rm restfleet-restic-conformance
+          "${RUNNER_TEMP}/restic" version
       - run: make generate
       - run: git diff --exit-code
       - run: make lint
@@ -71,9 +77,11 @@ jobs:
       - run: make test
         env:
           RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
+          RESTFLEET_TEST_RESTIC_BINARY: ${{ runner.temp }}/restic
       - run: go test -race ./...
         env:
           RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
+          RESTFLEET_TEST_RESTIC_BINARY: ${{ runner.temp }}/restic
       - run: make build cross-build
       - uses: gitleaks/gitleaks-action@v3
         env:

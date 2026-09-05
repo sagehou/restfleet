@@ -23,6 +23,7 @@ var (
 	ErrRefreshPersist = errors.New("credential refresh could not be persisted")
 	ErrTestFailed     = errors.New("storage connection test failed")
 	ErrTestOutput     = errors.New("invalid storage connection test result")
+	ErrCommandFailed  = errors.New("credential runtime command failed")
 )
 
 const testTimeout = time.Minute
@@ -33,7 +34,7 @@ var runtimeName = regexp.MustCompile(`^test-[0-9]+$`)
 var errConfigReplacing = errors.New("credential config replacement in progress")
 
 // Runtime is a central-only owner of a private tmpfs directory. Close waits for
-// active tests; cancel their contexts before closing during server shutdown.
+// active commands; cancel their contexts before closing during server shutdown.
 type Runtime struct {
 	mu     sync.RWMutex
 	root   string
@@ -125,11 +126,30 @@ func (r *Runtime) Close() error {
 	return nil
 }
 
-// Test only stats the crypt root: it neither creates nor modifies repository
-// objects. persist MUST durably encrypt the new config using revision CAS and
-// honor ctx. It receives borrowed plaintext, cleared immediately on return.
-// Provider output, process errors and callback errors never cross this boundary.
-func (r *Runtime) Test(ctx context.Context, raw []byte, remote string, persist func(context.Context, []byte) error) (resultErr error) {
+// Test only stats the crypt root; it does not create repository objects.
+func (r *Runtime) Test(ctx context.Context, raw []byte, remote string, persist func(context.Context, []byte) error) error {
+	ctx, cancel := context.WithTimeout(ctx, testTimeout)
+	defer cancel()
+	var commandErr error
+	err := r.WithConfig(ctx, raw, remote, persist, func(ctx context.Context, filename, binary string) error {
+		commandErr = testCommand(ctx, filename, binary, remote)
+		return commandErr
+	})
+	if errors.Is(err, ErrCommandFailed) {
+		return commandErr
+	}
+	return err
+}
+
+// WithConfig lends a private config and the approved rclone binary to a central
+// command for at most five minutes. run MUST honor ctx and join its subprocesses
+// before returning. persist MUST encrypt using revision CAS and honor ctx; its
+// borrowed plaintext is cleared on return. Neither callback's raw errors escape.
+// No caller may retain the config path beyond this call.
+func (r *Runtime) WithConfig(ctx context.Context, raw []byte, remote string,
+	persist func(context.Context, []byte) error,
+	run func(context.Context, string, string) error,
+) (resultErr error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.lock == nil {
@@ -142,8 +162,11 @@ func (r *Runtime) Test(ctx context.Context, raw []byte, remote string, persist f
 	if err != nil {
 		return ErrInvalidConfig
 	}
-	ctx, cancel := context.WithTimeout(ctx, testTimeout)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
+	if run == nil {
+		return ErrCommandFailed
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -191,7 +214,41 @@ func (r *Runtime) Test(ctx context.Context, raw []byte, remote string, persist f
 		return nil
 	}
 
-	cmd := exec.CommandContext(ctx, r.binary, "lsjson", remote+":", "--stat",
+	finished := make(chan error, 1)
+	go func() { finished <- run(ctx, filename, r.binary) }()
+	ticker := time.NewTicker(watchInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			cancel()
+			<-finished
+			return ctx.Err()
+		case <-ticker.C:
+			if err := syncConfig(); err != nil {
+				cancel()
+				<-finished
+				return err
+			}
+		case err := <-finished:
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			// Persist a refresh even when the central command subsequently fails.
+			if syncErr := syncConfig(); syncErr != nil {
+				return syncErr
+			}
+			if err != nil {
+				return ErrCommandFailed
+			}
+			return nil
+		}
+	}
+}
+
+func testCommand(ctx context.Context, filename, binary, remote string) error {
+	dir := filepath.Dir(filename)
+	cmd := exec.CommandContext(ctx, binary, "lsjson", remote+":", "--stat",
 		"--config", filename, "--retries", "1", "--low-level-retries", "1",
 		"--contimeout", "10s", "--timeout", "30s")
 	cmd.Dir = dir
@@ -214,43 +271,22 @@ func (r *Runtime) Test(ctx context.Context, raw []byte, remote string, persist f
 		return ErrTestFailed
 	}
 	defer func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }()
-	finished := make(chan error, 1)
-	go func() { finished <- cmd.Wait() }()
-	ticker := time.NewTicker(watchInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			cancel()
-			<-finished
-			return ctx.Err()
-		case <-ticker.C:
-			if err := syncConfig(); err != nil {
-				cancel()
-				<-finished
-				return err
-			}
-		case err := <-finished:
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			// Persist a refresh even when the read-only test subsequently fails.
-			if syncErr := syncConfig(); syncErr != nil {
-				return syncErr
-			}
-			if err != nil {
-				return ErrTestFailed
-			}
-			if output.overflow {
-				return ErrTestOutput
-			}
-			var result struct{ IsDir *bool }
-			if json.Unmarshal(output.data, &result) != nil || result.IsDir == nil || !*result.IsDir {
-				return ErrTestOutput
-			}
-			return nil
-		}
+
+	err := cmd.Wait()
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
+	if err != nil {
+		return ErrTestFailed
+	}
+	if output.overflow {
+		return ErrTestOutput
+	}
+	var result struct{ IsDir *bool }
+	if json.Unmarshal(output.data, &result) != nil || result.IsDir == nil || !*result.IsDir {
+		return ErrTestOutput
+	}
+	return nil
 }
 
 // rclone first renames the old config to a backup, then moves the new file
