@@ -28,7 +28,7 @@ jobs:
     env:
       DATABASE_URL: postgres://restfleet:test-only-not-a-secret@localhost:5432/restfleet?sslmode=disable
       RESTFLEET_TEST_DATABASE_URL: postgres://restfleet:test-only-not-a-secret@localhost:5432/restfleet?sslmode=disable
-      RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
+
     steps:
       - uses: actions/checkout@v7
         with:
@@ -69,7 +69,11 @@ jobs:
       - run: make lint
       - run: make migrate
       - run: make test
+        env:
+          RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
       - run: go test -race ./...
+        env:
+          RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
       - run: make build cross-build
       - uses: gitleaks/gitleaks-action@v3
         env:
