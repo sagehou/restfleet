@@ -13,6 +13,7 @@ type Agent = components['schemas']['Agent']
 type AgentInventory = components['schemas']['AgentInventory']
 type AgentList = components['schemas']['AgentList']
 type EnrollmentTokenCreated = components['schemas']['EnrollmentTokenCreated']
+type Problem = components['schemas']['Problem']
 type Phase = 'loading' | 'bootstrap' | 'login' | 'authenticated' | 'error'
 type Page = 'overview' | 'hosts' | 'credentials' | 'version'
 type DataState = 'idle' | 'loading' | 'ready' | 'error'
