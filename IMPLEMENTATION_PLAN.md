@@ -138,7 +138,7 @@
 
 **Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)
 
-分批交付：第一批实现受限凭据导入、metadata 查询、替换/禁用与安全验收；异步连接测试、tmpfs/token watcher、Gateway、仓库初始化和轮换仍待完成。
+分批交付：第一批凭据导入/metadata/替换/禁用已合并（#16）。第二批补齐中心 tmpfs runtime、运行中 token watcher、安全子进程与固定版本 rclone 的离线契约测试；尚未接入 HTTP Test Operation 或数据库 refresh CAS。异步任务/状态 UI、Gateway、仓库初始化和轮换仍待完成。
 
 ### Goal
 

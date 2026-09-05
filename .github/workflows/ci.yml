@@ -28,6 +28,7 @@ jobs:
     env:
       DATABASE_URL: postgres://restfleet:test-only-not-a-secret@localhost:5432/restfleet?sslmode=disable
       RESTFLEET_TEST_DATABASE_URL: postgres://restfleet:test-only-not-a-secret@localhost:5432/restfleet?sslmode=disable
+
     steps:
       - uses: actions/checkout@v7
         with:
@@ -57,12 +58,22 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
+      - name: Extract pinned central rclone for offline conformance tests
+        run: |
+          docker create --name restfleet-rclone-conformance rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
+          docker cp restfleet-rclone-conformance:/usr/local/bin/rclone "${RUNNER_TEMP}/rclone"
+          docker rm restfleet-rclone-conformance
+          "${RUNNER_TEMP}/rclone" version
       - run: make generate
       - run: git diff --exit-code
       - run: make lint
       - run: make migrate
       - run: make test
+        env:
+          RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
       - run: go test -race ./...
+        env:
+          RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
       - run: make build cross-build
       - uses: gitleaks/gitleaks-action@v3
         env:

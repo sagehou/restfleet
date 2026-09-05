@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"io"
 	"math/big"
 	"net"
 	"sync"
@@ -197,15 +198,25 @@ func TestMTLSHelloAndRevocationGate(t *testing.T) {
 	store.revoked = true
 	store.mu.Unlock()
 
-	rejected, err := client.Connect(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rejected.Send(testHello(t, store.agent.InstallID)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := rejected.Recv(); status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("new stream with revoked Agent = %v", err)
+	for _, waitForRejection := range []bool{false, true} {
+		rejected, err := client.Connect(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waitForRejection {
+			// Force the server-first ordering without sleeps. Header is only a
+			// synchronization point; Recv below must still prove the final status.
+			_, _ = rejected.Header()
+		}
+		// gRPC Send may return EOF when the server rejects before Hello is sent;
+		// only Recv exposes the authoritative RPC status. Neither EOF nor a
+		// successful send is evidence that revoked credentials were accepted.
+		if err := rejected.Send(testHello(t, store.agent.InstallID)); err != nil && !errors.Is(err, io.EOF) {
+			t.Fatal(err)
+		}
+		if _, err := rejected.Recv(); status.Code(err) != codes.PermissionDenied {
+			t.Fatalf("new stream with revoked Agent = %v", err)
+		}
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
