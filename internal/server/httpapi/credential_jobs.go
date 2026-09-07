@@ -10,7 +10,7 @@ import (
 
 func operationResponse(o domain.Operation) Operation {
 	return Operation{Id: o.ID, Type: OperationType(o.Type), Status: OperationStatus(o.Status), Source: OperationSource(o.Source),
-		StorageCredentialId: o.StorageCredentialID, SecretRevision: o.SecretRevision, RequestedByUserId: o.RequestedByUserID,
+		RepositoryId: o.RepositoryID, StorageCredentialId: o.StorageCredentialID, SecretRevision: o.SecretRevision, RequestedByUserId: o.RequestedByUserID,
 		Attempt: o.Attempt, CreatedAt: o.CreatedAt, DispatchedAt: o.DispatchedAt, AcknowledgedAt: o.AcknowledgedAt,
 		StartedAt: o.StartedAt, FinishedAt: o.FinishedAt, ErrorCode: OperationErrorCode(o.ErrorCode)}
 }

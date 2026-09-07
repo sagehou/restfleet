@@ -9,13 +9,13 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
-const repositoryColumns = "id,host_id,storage_credential_id,name,status,backend_path,gateway_username,gateway_secret_ref,restic_secret_ref,gateway_secret_revision,restic_secret_revision,revision,format_version,created_at,updated_at"
+const repositoryColumns = "id,host_id,storage_credential_id,name,status,backend_path,gateway_username,gateway_secret_ref,restic_secret_ref,gateway_secret_revision,restic_secret_revision,revision,format_version,created_at,updated_at,coalesce(restic_id,''),initialized_at,last_initialize_operation_id"
 
 func scanRepository(row rowScanner) (domain.Repository, error) {
 	var r domain.Repository
 	err := row.Scan(&r.ID, &r.HostID, &r.StorageCredentialID, &r.Name, &r.Status, &r.BackendPath,
 		&r.GatewayID, &r.GatewaySecretRef, &r.ResticSecretRef, &r.GatewaySecretRevision, &r.ResticSecretRevision,
-		&r.Revision, &r.FormatVersion, &r.CreatedAt, &r.UpdatedAt)
+		&r.Revision, &r.FormatVersion, &r.CreatedAt, &r.UpdatedAt, &r.ResticID, &r.InitializedAt, &r.LastInitializeOperationID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return r, domain.ErrNotFound
 	}
@@ -116,4 +116,19 @@ func (s *Store) CreateRepository(ctx context.Context, r domain.Repository, gatew
 		return domain.Repository{}, err
 	}
 	return r, tx.Commit(ctx)
+}
+
+// RepositoryResticSecret is a central worker-only read, after the job's secret
+// access audit and leases commit. It cannot fetch gateway or provider secrets.
+func (s *Store) RepositoryResticSecret(ctx context.Context, id uuid.UUID) (domain.SecretEnvelope, error) {
+	var e domain.SecretEnvelope
+	err := s.pool.QueryRow(ctx, `select s.id,s.kind,s.algorithm,s.key_id,s.ciphertext,s.nonce,s.wrapped_data_key,s.wrap_nonce,s.aad,s.created_at
+		from repositories r join repository_credential_revisions v on v.repository_id=r.id and v.kind='RESTIC_KEY'
+		and v.revision=r.restic_secret_revision and v.secret_ref=r.restic_secret_ref
+		join secrets s on s.id=v.secret_ref where r.id=$1`, id).
+		Scan(&e.ID, &e.Kind, &e.Algorithm, &e.KeyID, &e.Ciphertext, &e.Nonce, &e.WrappedDataKey, &e.WrapNonce, &e.AAD, &e.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return e, domain.ErrNotFound
+	}
+	return e, err
 }

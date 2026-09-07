@@ -703,6 +703,37 @@ paths:
         "422": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/repositories/{repository_id}/initialize:
+    parameters:
+      - name: repository_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: initializeRepository
+      description: Queues central repository initialization. No body or query. Success is not READY or Agent ACK.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "202":
+          description: Durable Operation; poll the Location URL for progress.
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Operation" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/operations/{operation_id}:
     parameters:
       - name: operation_id
@@ -787,6 +818,8 @@ components:
         storage_credential_id: { type: string, format: uuid }
         status: { type: string, enum: [PROVISIONING, READY, DEGRADED, LOCKED, DISABLED, ERROR] }
         format_version: { type: integer, minimum: 2, maximum: 2, description: Absent until verified by the central initialization worker. }
+        initialized_at: { type: string, format: date-time }
+        last_initialize_operation_id: { type: string, format: uuid }
         gateway_secret_revision: { type: integer, format: int64, minimum: 1 }
         restic_secret_revision: { type: integer, format: int64, minimum: 1 }
         revision: { type: integer, format: int64, minimum: 1 }
@@ -816,7 +849,8 @@ components:
       required: [id, type, status, source, storage_credential_id, secret_revision, requested_by_user_id, attempt, created_at, error_code]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [CREDENTIAL_TEST] }
+        repository_id: { type: string, format: uuid }
+        type: { type: string, enum: [CREDENTIAL_TEST, REPOSITORY_INITIALIZE] }
         status: { type: string, enum: [QUEUED, DISPATCHED, ACKNOWLEDGED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCEL_REQUESTED, CANCELED, TIMED_OUT, LOST, REJECTED] }
         source: { type: string, enum: [USER] }
         storage_credential_id: { type: string, format: uuid }
@@ -828,7 +862,7 @@ components:
         acknowledged_at: { type: string, format: date-time }
         started_at: { type: string, format: date-time }
         finished_at: { type: string, format: date-time }
-        error_code: { type: string, enum: ["", CONNECTION_FAILED, TEST_TIMED_OUT, CONFIG_UNSAFE, REFRESH_FAILED, CREDENTIAL_CHANGED, CREDENTIAL_DISABLED, SECRET_UNAVAILABLE, WORKER_LOST] }
+        error_code: { type: string, enum: ["", CONNECTION_FAILED, TEST_TIMED_OUT, CONFIG_UNSAFE, REFRESH_FAILED, CREDENTIAL_CHANGED, CREDENTIAL_DISABLED, SECRET_UNAVAILABLE, WORKER_LOST, INITIALIZE_FAILED, INITIALIZE_TIMED_OUT, REPOSITORY_LOCKED, REPOSITORY_MISMATCH, REPOSITORY_NOT_EMPTY, PASSWORD_REJECTED, REPOSITORY_UNAVAILABLE] }
     StorageCredential:
       type: object
       additionalProperties: false

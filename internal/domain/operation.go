@@ -19,6 +19,7 @@ type Operation struct {
 	ID                                                  uuid.UUID
 	Type, Status, Source                                string
 	StorageCredentialID                                 uuid.UUID
+	RepositoryID                                        *uuid.UUID
 	SecretRevision                                      int64
 	RequestedByUserID                                   uuid.UUID
 	Attempt                                             int
@@ -63,10 +64,12 @@ func ValidateOperationTransition(from, to string) error {
 
 // CredentialJob contains only lease and metadata, never materialized secrets.
 type CredentialJob struct {
-	ID, Owner      uuid.UUID
-	Operation      Operation
-	Credential     StorageCredential
-	LeaseExpiresAt time.Time
+	ID, Owner           uuid.UUID
+	Operation           Operation
+	Credential          StorageCredential
+	Repository          *Repository
+	RepositoryAvailable bool
+	LeaseExpiresAt      time.Time
 }
 
 // CredentialTestOutcome codes are a closed vocabulary; subprocess/database

@@ -29,6 +29,7 @@ type RuntimeConfig struct {
 	Warnings             []string
 	CredentialRuntimeDir string
 	RcloneBinary         string
+	ResticBinary         string
 }
 
 func LoadRuntimeConfig() (RuntimeConfig, error) {
@@ -41,6 +42,7 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 		SecureCookies:        true,
 		CredentialRuntimeDir: envOrDefault("RESTFLEET_CREDENTIAL_RUNTIME_DIR", "/run/restfleet/credentials"),
 		RcloneBinary:         envOrDefault("RESTFLEET_RCLONE_BINARY", "/usr/local/bin/rclone"),
+		ResticBinary:         envOrDefault("RESTFLEET_RESTIC_BINARY", "/usr/local/bin/restic"),
 	}
 	if config.Environment != "production" && config.Environment != "development" && config.Environment != "test" {
 		return RuntimeConfig{}, errors.New("RESTFLEET_ENV must be production, development, or test")

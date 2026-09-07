@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sagehou/restfleet/internal/persistence/postgres"
+	"github.com/sagehou/restfleet/internal/restic"
 	"github.com/sagehou/restfleet/internal/security"
 	control "github.com/sagehou/restfleet/internal/server"
 )
@@ -122,11 +123,14 @@ func setupIntegration(
 		BootstrapToken:    bootstrapToken,
 		MasterKey:         bytes.Repeat([]byte{8}, 32),
 		RunCredentialTest: func(context.Context, []byte, string, func(context.Context, []byte) error) error { return nil },
-		IdleTTL:           5 * time.Minute,
-		AbsoluteTTL:       time.Hour,
-		PasswordParams:    params,
-		ExpectedSchema:    postgres.ExpectedSchemaVersion,
-		Clock:             func() time.Time { return *clock },
+		InitializeRepository: func(context.Context, restic.ProvisionRequest, func(context.Context, []byte) error) (restic.RepositoryInfo, error) {
+			return restic.RepositoryInfo{}, errors.New("test initializer must be explicitly supplied")
+		},
+		IdleTTL:        5 * time.Minute,
+		AbsoluteTTL:    time.Hour,
+		PasswordParams: params,
+		ExpectedSchema: postgres.ExpectedSchemaVersion,
+		Clock:          func() time.Time { return *clock },
 		Enrollment: control.EnrollmentSettings{
 			Pepper: bytes.Repeat([]byte{7}, 32),
 			CA:     agentCA, PublicURL: "https://control.example",

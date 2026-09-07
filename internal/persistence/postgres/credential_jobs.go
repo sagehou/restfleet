@@ -14,11 +14,11 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
-const operationColumns = "id,type,status,source,storage_credential_id,secret_revision,requested_by_user_id,attempt,created_at,dispatched_at,acknowledged_at,started_at,finished_at,error_code"
+const operationColumns = "id,type,status,source,storage_credential_id,secret_revision,requested_by_user_id,attempt,created_at,dispatched_at,acknowledged_at,started_at,finished_at,error_code,repository_id"
 
 func scanOperation(row rowScanner) (domain.Operation, error) {
 	var o domain.Operation
-	err := row.Scan(&o.ID, &o.Type, &o.Status, &o.Source, &o.StorageCredentialID, &o.SecretRevision, &o.RequestedByUserID, &o.Attempt, &o.CreatedAt, &o.DispatchedAt, &o.AcknowledgedAt, &o.StartedAt, &o.FinishedAt, &o.ErrorCode)
+	err := row.Scan(&o.ID, &o.Type, &o.Status, &o.Source, &o.StorageCredentialID, &o.SecretRevision, &o.RequestedByUserID, &o.Attempt, &o.CreatedAt, &o.DispatchedAt, &o.AcknowledgedAt, &o.StartedAt, &o.FinishedAt, &o.ErrorCode, &o.RepositoryID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return o, domain.ErrNotFound
 	}
@@ -74,7 +74,7 @@ func transitionOperation(ctx context.Context, tx pgx.Tx, o *domain.Operation, to
 	return recordOperationEvent(ctx, tx, *o, from, now)
 }
 
-func (s *Store) EnqueueCredentialTest(ctx context.Context, o domain.Operation, scope, key, request []byte, audit domain.AuditEvent) (domain.Operation, error) {
+func (s *Store) EnqueueStorageOperation(ctx context.Context, o domain.Operation, scope, key, request []byte, audit domain.AuditEvent) (domain.Operation, error) {
 	if len(scope) != 32 || len(key) != 32 || len(request) != 32 {
 		return domain.Operation{}, domain.ErrIdempotencyReused
 	}
@@ -104,6 +104,20 @@ func (s *Store) EnqueueCredentialTest(ctx context.Context, o domain.Operation, s
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return o, err
 	}
+	if o.RepositoryID != nil {
+		repo, err := lockProvisionRepository(ctx, tx, *o.RepositoryID)
+		if err != nil {
+			return o, err
+		}
+		o.StorageCredentialID = repo.StorageCredentialID
+		var busy bool
+		if err = tx.QueryRow(ctx, "select exists(select 1 from repository_leases where repository_id=$1 and expires_at>clock_timestamp())", repo.ID).Scan(&busy); err != nil {
+			return o, err
+		}
+		if busy {
+			return o, domain.ErrRepositoryBusy
+		}
+	}
 	c, err := scanCredential(tx.QueryRow(ctx, "select "+credentialColumns+" from storage_credentials where id=$1 for update", o.StorageCredentialID))
 	if err != nil {
 		return o, err
@@ -116,6 +130,9 @@ func (s *Store) EnqueueCredentialTest(ctx context.Context, o domain.Operation, s
 		return o, err
 	}
 	if active {
+		if o.RepositoryID != nil {
+			return o, domain.ErrRepositoryBusy
+		}
 		return o, domain.ErrCredentialTestBusy
 	}
 	// The database clock is authoritative for availability and leases.
@@ -123,9 +140,12 @@ func (s *Store) EnqueueCredentialTest(ctx context.Context, o domain.Operation, s
 		return o, err
 	}
 	o.Type, o.Status, o.Source, o.Attempt = "CREDENTIAL_TEST", "QUEUED", "USER", 1
+	if o.RepositoryID != nil {
+		o.Type = "REPOSITORY_INITIALIZE"
+	}
 	o.SecretRevision = c.SecretRevision
-	_, err = tx.Exec(ctx, `insert into operations(id,type,status,source,storage_credential_id,secret_revision,requested_by_user_id,attempt,created_at)
-		values($1,$2,$3,$4,$5,$6,$7,1,$8)`, o.ID, o.Type, o.Status, o.Source, c.ID, o.SecretRevision, o.RequestedByUserID, o.CreatedAt)
+	_, err = tx.Exec(ctx, `insert into operations(id,type,status,source,storage_credential_id,secret_revision,requested_by_user_id,attempt,created_at,repository_id)
+		values($1,$2,$3,$4,$5,$6,$7,1,$8,$9)`, o.ID, o.Type, o.Status, o.Source, c.ID, o.SecretRevision, o.RequestedByUserID, o.CreatedAt, o.RepositoryID)
 	if err != nil {
 		return o, err
 	}
@@ -134,7 +154,7 @@ func (s *Store) EnqueueCredentialTest(ctx context.Context, o domain.Operation, s
 		return o, err
 	}
 	_, err = tx.Exec(ctx, `insert into jobs(id,operation_id,queue,status,available_at,created_at,updated_at)
-		values($1,$2,'CREDENTIAL_TEST','READY',$3,$3,$3)`, jobID, o.ID, o.CreatedAt)
+		values($1,$2,$4,'READY',$3,$3,$3)`, jobID, o.ID, o.CreatedAt, o.Type)
 	if err != nil {
 		return o, err
 	}
@@ -145,7 +165,11 @@ func (s *Store) EnqueueCredentialTest(ctx context.Context, o domain.Operation, s
 	if err != nil {
 		return o, err
 	}
-	_, err = tx.Exec(ctx, "update storage_credentials set last_test_operation_id=$2,revision=revision+1,updated_at=$3 where id=$1", c.ID, o.ID, o.CreatedAt)
+	if o.RepositoryID == nil {
+		_, err = tx.Exec(ctx, "update storage_credentials set last_test_operation_id=$2,revision=revision+1,updated_at=$3 where id=$1", c.ID, o.ID, o.CreatedAt)
+	} else {
+		_, err = tx.Exec(ctx, "update repositories set last_initialize_operation_id=$2,revision=revision+1,updated_at=$3 where id=$1", *o.RepositoryID, o.ID, o.CreatedAt)
+	}
 	if err != nil {
 		return o, err
 	}
@@ -171,7 +195,7 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	var operationID uuid.UUID
 	var attempt, maxAttempts int
 	err = tx.QueryRow(ctx, `select id,operation_id,attempt,max_attempts from jobs
-		where queue='CREDENTIAL_TEST' and ((status='READY' and available_at<=clock_timestamp())
+		where queue in ('CREDENTIAL_TEST','REPOSITORY_INITIALIZE') and ((status='READY' and available_at<=clock_timestamp())
 		or (status='LEASED' and lease_expires_at<=clock_timestamp()))
 		order by available_at,id for update skip locked limit 1`).Scan(&job.ID, &operationID, &attempt, &maxAttempts)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -183,6 +207,16 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	job.Operation, err = scanOperation(tx.QueryRow(ctx, "select "+operationColumns+" from operations where id=$1 for update", operationID))
 	if err != nil {
 		return job, err
+	}
+	if job.Operation.RepositoryID != nil {
+		r, repoErr := lockProvisionRepository(ctx, tx, *job.Operation.RepositoryID)
+		if repoErr != nil && !errors.Is(repoErr, domain.ErrHostUnavailable) && !errors.Is(repoErr, domain.ErrRepositoryUnavailable) {
+			return job, repoErr
+		}
+		job.Repository, job.RepositoryAvailable = &r, repoErr == nil
+		if r.StorageCredentialID != job.Operation.StorageCredentialID {
+			return job, domain.ErrOperationTransition
+		}
 	}
 	job.Credential, err = scanCredential(tx.QueryRow(ctx, "select "+credentialColumns+" from storage_credentials where id=$1 for update", job.Operation.StorageCredentialID))
 	if err != nil {
@@ -203,6 +237,11 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 		return domain.CredentialJob{}, domain.ErrNotFound
 	}
 	job.Owner = owner
+	if job.Repository != nil {
+		if err = acquireProvisionLease(ctx, tx, job, now); err != nil {
+			return job, err
+		}
+	}
 	job.Operation.Attempt = attempt + 1
 	job.LeaseExpiresAt = now.Add(30 * time.Second)
 	_, err = tx.Exec(ctx, `update jobs set status='LEASED',lease_owner=$2,lease_expires_at=$3,attempt=attempt+1,updated_at=$4 where id=$1`, job.ID, owner, job.LeaseExpiresAt, now)
@@ -229,6 +268,19 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	if err = appendAudit(ctx, tx, audit); err != nil {
 		return job, err
 	}
+	if job.Repository != nil {
+		repoAudit, err := credentialJobAudit(job.Operation, "REPOSITORY_SECRET_ACCESS", "INITIALIZE_RUNTIME", now)
+		if err != nil {
+			return job, err
+		}
+		repoAudit.ResourceType, repoAudit.ResourceID = "REPOSITORY", job.Repository.ID
+		if err = appendAudit(ctx, tx, repoAudit); err != nil {
+			return job, err
+		}
+		if err = ensureProvisionLease(ctx, tx, job); err != nil {
+			return job, err
+		}
+	}
 	if err = ensureCredentialLease(ctx, tx, job.ID, owner); err != nil {
 		return job, err
 	}
@@ -251,20 +303,53 @@ func lockCredentialJob(ctx context.Context, tx pgx.Tx, id, owner uuid.UUID) (dom
 	if err != nil {
 		return job, err
 	}
+	if job.Operation.RepositoryID != nil {
+		r, repoErr := lockProvisionRepository(ctx, tx, *job.Operation.RepositoryID)
+		if repoErr != nil && !errors.Is(repoErr, domain.ErrHostUnavailable) && !errors.Is(repoErr, domain.ErrRepositoryUnavailable) {
+			return job, repoErr
+		}
+		job.Repository, job.RepositoryAvailable = &r, repoErr == nil
+		if r.StorageCredentialID != job.Operation.StorageCredentialID {
+			return job, domain.ErrOperationTransition
+		}
+	}
 	job.Credential, err = scanCredential(tx.QueryRow(ctx, "select "+credentialColumns+" from storage_credentials where id=$1 for update", job.Operation.StorageCredentialID))
+	if err == nil {
+		err = ensureProvisionLease(ctx, tx, job)
+	}
 	return job, err
 }
 
 func (s *Store) RenewCredentialJob(ctx context.Context, id, owner uuid.UUID) error {
-	tag, err := s.pool.Exec(ctx, `update jobs set lease_expires_at=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
-		where id=$1 and status='LEASED' and lease_owner=$2 and lease_expires_at>clock_timestamp()`, id, owner)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() != 1 {
+	defer func() { _ = tx.Rollback(ctx) }()
+	var operationID uuid.UUID
+	err = tx.QueryRow(ctx, `update jobs set lease_expires_at=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
+		where id=$1 and status='LEASED' and lease_owner=$2 and lease_expires_at>clock_timestamp() returning operation_id`, id, owner).Scan(&operationID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ErrJobLeaseLost
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	var repoID *uuid.UUID
+	if err = tx.QueryRow(ctx, "select repository_id from operations where id=$1", operationID).Scan(&repoID); err != nil {
+		return err
+	}
+	if repoID != nil {
+		tag, err := tx.Exec(ctx, `update repository_leases set expires_at=clock_timestamp()+interval '30 seconds'
+			where repository_id=$1 and operation_id=$2 and owner=$3 and kind='MAINTENANCE' and expires_at>clock_timestamp()`, *repoID, operationID, owner)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return domain.ErrJobLeaseLost
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func credentialUnchanged(job domain.CredentialJob) bool {
@@ -281,7 +366,7 @@ func (s *Store) RefreshCredentialJob(ctx context.Context, id, owner uuid.UUID, e
 	if err != nil {
 		return job.Credential, err
 	}
-	if !credentialUnchanged(job) || job.Operation.SecretRevision != expected {
+	if !credentialUnchanged(job) || job.Operation.SecretRevision != expected || (job.Repository != nil && !job.RepositoryAvailable) {
 		return job.Credential, domain.ErrRevisionConflict
 	}
 	var now time.Time
@@ -313,6 +398,9 @@ func (s *Store) RefreshCredentialJob(ctx context.Context, id, owner uuid.UUID, e
 		return c, err
 	}
 	if err = appendAudit(ctx, tx, audit); err != nil {
+		return c, err
+	}
+	if err = ensureProvisionLease(ctx, tx, job); err != nil {
 		return c, err
 	}
 	// Recheck time after writes: an expired owner must not commit even if it
@@ -375,6 +463,9 @@ func (s *Store) CompleteCredentialJob(ctx context.Context, id, owner uuid.UUID, 
 }
 
 func finishCredentialJob(ctx context.Context, tx pgx.Tx, job *domain.CredentialJob, to string, now time.Time) error {
+	if job.Repository != nil {
+		return finishRepositoryJob(ctx, tx, job, to, now, "", 0)
+	}
 	if err := transitionOperation(ctx, tx, &job.Operation, to, now); err != nil {
 		return err
 	}
@@ -399,6 +490,10 @@ func finishCredentialJob(ctx context.Context, tx pgx.Tx, job *domain.CredentialJ
 	if err = appendAudit(ctx, tx, audit); err != nil {
 		return err
 	}
+	return finishJobRow(ctx, tx, job, to, now)
+}
+
+func finishJobRow(ctx context.Context, tx pgx.Tx, job *domain.CredentialJob, to string, now time.Time) error {
 	// Completion keeps the lease fence in the final UPDATE, after audit writes.
 	status := "DONE"
 	if to != "SUCCEEDED" {

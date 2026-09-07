@@ -176,15 +176,22 @@ func (e HostStatus) Valid() bool {
 
 // Defines values for OperationErrorCode.
 const (
-	CONFIGUNSAFE       OperationErrorCode = "CONFIG_UNSAFE"
-	CONNECTIONFAILED   OperationErrorCode = "CONNECTION_FAILED"
-	CREDENTIALCHANGED  OperationErrorCode = "CREDENTIAL_CHANGED"
-	CREDENTIALDISABLED OperationErrorCode = "CREDENTIAL_DISABLED"
-	Empty              OperationErrorCode = ""
-	REFRESHFAILED      OperationErrorCode = "REFRESH_FAILED"
-	SECRETUNAVAILABLE  OperationErrorCode = "SECRET_UNAVAILABLE"
-	TESTTIMEDOUT       OperationErrorCode = "TEST_TIMED_OUT"
-	WORKERLOST         OperationErrorCode = "WORKER_LOST"
+	CONFIGUNSAFE          OperationErrorCode = "CONFIG_UNSAFE"
+	CONNECTIONFAILED      OperationErrorCode = "CONNECTION_FAILED"
+	CREDENTIALCHANGED     OperationErrorCode = "CREDENTIAL_CHANGED"
+	CREDENTIALDISABLED    OperationErrorCode = "CREDENTIAL_DISABLED"
+	Empty                 OperationErrorCode = ""
+	INITIALIZEFAILED      OperationErrorCode = "INITIALIZE_FAILED"
+	INITIALIZETIMEDOUT    OperationErrorCode = "INITIALIZE_TIMED_OUT"
+	PASSWORDREJECTED      OperationErrorCode = "PASSWORD_REJECTED"
+	REFRESHFAILED         OperationErrorCode = "REFRESH_FAILED"
+	REPOSITORYLOCKED      OperationErrorCode = "REPOSITORY_LOCKED"
+	REPOSITORYMISMATCH    OperationErrorCode = "REPOSITORY_MISMATCH"
+	REPOSITORYNOTEMPTY    OperationErrorCode = "REPOSITORY_NOT_EMPTY"
+	REPOSITORYUNAVAILABLE OperationErrorCode = "REPOSITORY_UNAVAILABLE"
+	SECRETUNAVAILABLE     OperationErrorCode = "SECRET_UNAVAILABLE"
+	TESTTIMEDOUT          OperationErrorCode = "TEST_TIMED_OUT"
+	WORKERLOST            OperationErrorCode = "WORKER_LOST"
 )
 
 // Valid indicates whether the value is a known member of the OperationErrorCode enum.
@@ -200,7 +207,21 @@ func (e OperationErrorCode) Valid() bool {
 		return true
 	case Empty:
 		return true
+	case INITIALIZEFAILED:
+		return true
+	case INITIALIZETIMEDOUT:
+		return true
+	case PASSWORDREJECTED:
+		return true
 	case REFRESHFAILED:
+		return true
+	case REPOSITORYLOCKED:
+		return true
+	case REPOSITORYMISMATCH:
+		return true
+	case REPOSITORYNOTEMPTY:
+		return true
+	case REPOSITORYUNAVAILABLE:
 		return true
 	case SECRETUNAVAILABLE:
 		return true
@@ -278,13 +299,16 @@ func (e OperationStatus) Valid() bool {
 
 // Defines values for OperationType.
 const (
-	CREDENTIALTEST OperationType = "CREDENTIAL_TEST"
+	CREDENTIALTEST       OperationType = "CREDENTIAL_TEST"
+	REPOSITORYINITIALIZE OperationType = "REPOSITORY_INITIALIZE"
 )
 
 // Valid indicates whether the value is a known member of the OperationType enum.
 func (e OperationType) Valid() bool {
 	switch e {
 	case CREDENTIALTEST:
+		return true
+	case REPOSITORYINITIALIZE:
 		return true
 	default:
 		return false
@@ -609,20 +633,21 @@ type LoginRequest struct {
 
 // Operation defines model for Operation.
 type Operation struct {
-	AcknowledgedAt      *time.Time         `json:"acknowledged_at,omitempty"`
-	Attempt             int                `json:"attempt"`
-	CreatedAt           time.Time          `json:"created_at"`
-	DispatchedAt        *time.Time         `json:"dispatched_at,omitempty"`
-	ErrorCode           OperationErrorCode `json:"error_code"`
-	FinishedAt          *time.Time         `json:"finished_at,omitempty"`
-	Id                  openapi_types.UUID `json:"id"`
-	RequestedByUserId   openapi_types.UUID `json:"requested_by_user_id"`
-	SecretRevision      int64              `json:"secret_revision"`
-	Source              OperationSource    `json:"source"`
-	StartedAt           *time.Time         `json:"started_at,omitempty"`
-	Status              OperationStatus    `json:"status"`
-	StorageCredentialId openapi_types.UUID `json:"storage_credential_id"`
-	Type                OperationType      `json:"type"`
+	AcknowledgedAt      *time.Time          `json:"acknowledged_at,omitempty"`
+	Attempt             int                 `json:"attempt"`
+	CreatedAt           time.Time           `json:"created_at"`
+	DispatchedAt        *time.Time          `json:"dispatched_at,omitempty"`
+	ErrorCode           OperationErrorCode  `json:"error_code"`
+	FinishedAt          *time.Time          `json:"finished_at,omitempty"`
+	Id                  openapi_types.UUID  `json:"id"`
+	RepositoryId        *openapi_types.UUID `json:"repository_id,omitempty"`
+	RequestedByUserId   openapi_types.UUID  `json:"requested_by_user_id"`
+	SecretRevision      int64               `json:"secret_revision"`
+	Source              OperationSource     `json:"source"`
+	StartedAt           *time.Time          `json:"started_at,omitempty"`
+	Status              OperationStatus     `json:"status"`
+	StorageCredentialId openapi_types.UUID  `json:"storage_credential_id"`
+	Type                OperationType       `json:"type"`
 }
 
 // OperationErrorCode defines model for Operation.ErrorCode.
@@ -654,16 +679,18 @@ type Repository struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// FormatVersion Absent until verified by the central initialization worker.
-	FormatVersion         *int               `json:"format_version,omitempty"`
-	GatewaySecretRevision int64              `json:"gateway_secret_revision"`
-	HostId                openapi_types.UUID `json:"host_id"`
-	Id                    openapi_types.UUID `json:"id"`
-	Name                  string             `json:"name"`
-	ResticSecretRevision  int64              `json:"restic_secret_revision"`
-	Revision              int64              `json:"revision"`
-	Status                RepositoryStatus   `json:"status"`
-	StorageCredentialId   openapi_types.UUID `json:"storage_credential_id"`
-	UpdatedAt             time.Time          `json:"updated_at"`
+	FormatVersion             *int                `json:"format_version,omitempty"`
+	GatewaySecretRevision     int64               `json:"gateway_secret_revision"`
+	HostId                    openapi_types.UUID  `json:"host_id"`
+	Id                        openapi_types.UUID  `json:"id"`
+	InitializedAt             *time.Time          `json:"initialized_at,omitempty"`
+	LastInitializeOperationId *openapi_types.UUID `json:"last_initialize_operation_id,omitempty"`
+	Name                      string              `json:"name"`
+	ResticSecretRevision      int64               `json:"restic_secret_revision"`
+	Revision                  int64               `json:"revision"`
+	Status                    RepositoryStatus    `json:"status"`
+	StorageCredentialId       openapi_types.UUID  `json:"storage_credential_id"`
+	UpdatedAt                 time.Time           `json:"updated_at"`
 }
 
 // RepositoryStatus defines model for Repository.Status.
@@ -833,6 +860,12 @@ type CreateRepositoryParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// InitializeRepositoryParams defines parameters for InitializeRepository.
+type InitializeRepositoryParams struct {
+	XCSRFToken     CsrfToken `json:"X-CSRF-Token"`
+	IdempotencyKey string    `json:"Idempotency-Key"`
+}
+
 // ListStorageCredentialsParams defines parameters for ListStorageCredentials.
 type ListStorageCredentialsParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
@@ -966,6 +999,9 @@ type ServerInterface interface {
 
 	// (GET /api/v1/repositories/{repo_id})
 	GetRepository(w http.ResponseWriter, r *http.Request, repoId openapi_types.UUID)
+
+	// (POST /api/v1/repositories/{repository_id}/initialize)
+	InitializeRepository(w http.ResponseWriter, r *http.Request, repositoryId openapi_types.UUID, params InitializeRepositoryParams)
 
 	// (GET /api/v1/storage-credentials)
 	ListStorageCredentials(w http.ResponseWriter, r *http.Request, params ListStorageCredentialsParams)
@@ -1912,6 +1948,83 @@ func (siw *ServerInterfaceWrapper) GetRepository(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// InitializeRepository operation middleware
+func (siw *ServerInterfaceWrapper) InitializeRepository(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "repository_id" -------------
+	var repositoryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "repository_id", r.PathValue("repository_id"), &repositoryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repository_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params InitializeRepositoryParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InitializeRepository(w, r, repositoryId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListStorageCredentials operation middleware
 func (siw *ServerInterfaceWrapper) ListStorageCredentials(w http.ResponseWriter, r *http.Request) {
 
@@ -2454,6 +2567,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}/replace-secret", wrapper.ReplaceStorageCredential)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}/disable", wrapper.DisableStorageCredential)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}/test", wrapper.TestStorageCredential)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/repositories/{repository_id}/initialize", wrapper.InitializeRepository)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/operations/{operation_id}", wrapper.GetOperation)
 
 	return m

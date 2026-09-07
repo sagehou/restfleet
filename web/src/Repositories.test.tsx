@@ -49,7 +49,7 @@ it('creates only metadata with CSRF and never implies that provisioning is ready
   expect(within(detail).getByText('待完成初始化')).toBeInTheDocument()
   expect(within(detail).getByText('尚未验证')).toBeInTheDocument()
   expect(screen.getByRole('status')).toHaveTextContent('新仓库暂不可备份')
-  expect(screen.queryByRole('button', { name: '初始化' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '初始化仓库' })).toBeEnabled()
   const posted = fetch.mock.calls.find(([, init]) => init?.method === 'POST')?.[1]
   expect(JSON.parse(String(posted?.body))).toEqual({ name: 'Archive', host_id: host.id, storage_credential_id: credential.id })
   expect(new Headers(posted?.headers).get('X-CSRF-Token')).toBe('repository-csrf')
@@ -62,6 +62,7 @@ it('lets Viewers read details without creation controls or fetching credentials'
   fireEvent.click(await screen.findByRole('button', { name: '查看 Archive' }))
   await screen.findByRole('heading', { name: 'Archive' })
   expect(screen.queryByRole('button', { name: '创建仓库' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '初始化仓库' })).not.toBeInTheDocument()
   expect(fetch.mock.calls.some(([path]) => String(path).includes('storage-credentials'))).toBe(false)
 })
 
@@ -111,4 +112,50 @@ it('shows a failed list request as an error, not an empty repository list', asyn
   render(<Repositories hosts={[host]} canManage onUnauthorized={onUnauthorized} />)
   expect(await screen.findByRole('alert')).toHaveTextContent('repo-request')
   expect(screen.queryByText(/还没有仓库/)).not.toBeInTheDocument()
+})
+
+it('reuses the initialization key after an ambiguous failure and keeps verified repositories PROVISIONING', async () => {
+  const op = { id: '0198f1da-2c57-7d3b-9c92-6e2f05293648', repository_id: repository.id, storage_credential_id: credential.id,
+    type: 'REPOSITORY_INITIALIZE', status: 'SUCCEEDED', finished_at: repository.created_at, error_code: '' }
+  let attempts = 0
+  const keys: (string | null)[] = []
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const path = String(input)
+    if (init?.method === 'POST') {
+      keys.push(new Headers(init.headers).get('Idempotency-Key'))
+      expect(new Headers(init.headers).get('X-CSRF-Token')).toBe('initialize-csrf')
+      expect(init.body).toBeUndefined()
+      if (++attempts === 1) throw new TypeError('network interrupted')
+      return respond(op, 202)
+    }
+    if (path.startsWith('/api/v1/operations/')) return respond(op)
+    if (path === endpoint) return respond({ items: [repository] })
+    return respond(attempts > 1 ? { ...repository, initialized_at: repository.created_at, format_version: 2, last_initialize_operation_id: op.id } : repository)
+  })
+  vi.stubGlobal('fetch', fetch)
+  document.cookie = 'restfleet_csrf=initialize-csrf'
+  render(<Repositories hosts={[host]} canManage onUnauthorized={onUnauthorized} />)
+  fireEvent.click(await screen.findByRole('button', { name: '查看 Archive' }))
+  fireEvent.click(await screen.findByRole('button', { name: '初始化仓库' }))
+  await screen.findByRole('alert')
+  fireEvent.click(screen.getByRole('button', { name: '初始化仓库' }))
+  await screen.findByText('中心初始化已验证，等待 Gateway 和 Agent 确认', { exact: false })
+  await waitFor(() => expect(screen.queryByRole('button', { name: '初始化仓库' })).not.toBeInTheDocument())
+  expect(keys).toHaveLength(2)
+  expect(keys[0]).toBeTruthy()
+  expect(keys[0]).toBe(keys[1])
+  expect(within(screen.getByRole('article', { name: '仓库详情' })).getByText('待完成初始化')).toBeInTheDocument()
+})
+
+it('restores the latest failed initialization operation when opening a repository', async () => {
+  const op = { id: 'last-operation', repository_id: repository.id, status: 'FAILED', finished_at: repository.created_at, error_code: 'REPOSITORY_LOCKED' }
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+    const path = String(input)
+    if (path.startsWith('/api/v1/operations/')) return respond(op)
+    return respond(path === endpoint ? { items: [repository] } : { ...repository, last_initialize_operation_id: op.id })
+  }))
+  render(<Repositories hosts={[host]} canManage onUnauthorized={onUnauthorized} />)
+  fireEvent.click(await screen.findByRole('button', { name: '查看 Archive' }))
+  expect(await screen.findByRole('status', { name: '初始化任务状态' })).toHaveTextContent('REPOSITORY_LOCKED')
+  expect(screen.getByRole('button', { name: '初始化仓库' })).toBeEnabled()
 })
