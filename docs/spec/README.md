@@ -35,7 +35,7 @@ Restic 备份需要读取仓库元数据和索引，因此 `append-only` 不是�
 
 1. 攻陷一台 Host 不能读取其他 Host 的仓库；
 2. 攻陷一台 Host 不能删除或覆盖其历史备份；
-3. 攻陷一台 Host 不能取得 rclone、OneDrive 或中心维护凭据。
+3. 攻陷一台 Host 不能取得 rclone、云后端或中心维护凭据。
 
 ## 文档关系
 

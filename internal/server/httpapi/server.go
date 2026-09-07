@@ -288,7 +288,7 @@ func (a *API) Version(w http.ResponseWriter, r *http.Request) {
 		Version:       a.build.Version,
 		Commit:        a.build.Commit,
 		BuiltAt:       a.build.Date,
-		SchemaVersion: 7,
+		SchemaVersion: 8,
 	})
 }
 

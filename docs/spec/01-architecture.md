@@ -5,7 +5,7 @@
 RestFleet 将系统拆成三个逻辑平面：
 
 1. **Control Plane**：身份、配置、任务、状态、UI、审计；
-2. **Data Plane**：Agent 的 Restic 流量经 append-only Repository Gateway 到 rclone/OneDrive；
+2. **Data Plane**：Agent 的 Restic 流量经 append-only Repository Gateway 到 rclone 多后端；
 3. **Maintenance Plane**：中心使用完整权限执行快照查询、下载、Retention 和维护。
 
 三个平面可以部署在同一中心节点，但凭据、监听面与代码模块必须保持隔离。
@@ -22,7 +22,7 @@ flowchart TB
     CP --> MW["Maintenance Worker"]
     MW --> RC["rclone adapter"]
     GW --> RC
-    RC --> OD["OneDrive + Crypt"]
+    RC --> OD["OneDrive / Google Drive / WebDAV + Crypt"]
 ```
 
 Control channel 只承载小型控制消息、状态和日志。备份文件内容只能走 Data Plane。单文件下载由 Maintenance Worker 从仓库读取并作为用户请求流出，不经过 Agent channel。
@@ -209,7 +209,7 @@ V1 不使用 Redis。Job Dispatcher 使用 `jobs` 表、`FOR UPDATE SKIP LOCKED`
 - 不执行无法审计的维护操作；
 - gateway 可独立继续接受备份流量。
 
-### OneDrive/rclone 故障
+### 云后端/rclone 故障
 
 - gateway 失败不改变已接受 Plan；
 - Agent 按指数退避重试，并受 retry deadline 限制；
@@ -236,9 +236,9 @@ V1 不使用 Redis。Job Dispatcher 使用 `jobs` 表、`FOR UPDATE SKIP LOCKED`
 
 ## 12. 扩展边界
 
-下列接口需要保留适配层，但 V1 不实现额外后端：
+下列边界保持可测试，不为每个云服务引入独立驱动框架：
 
-- `StorageBackend`：V1 只有 rclone/OneDrive；
+- `StorageBackend`：V1 使用 rclone，显式支持 OneDrive、Google Drive、HTTPS WebDAV + Crypt；配置、网络策略及兼容边界见 ADR-0012；
 - `RepositoryGateway`：V1 只有 rclone serve restic；
 - `NotificationSender`：Gotify、Webhook；
 - `SecretStore`：V1 本地 master key + PostgreSQL envelope encryption；未来可接 Vault/KMS；

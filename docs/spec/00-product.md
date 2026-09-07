@@ -14,7 +14,7 @@ V1 面向管理少量到数十台 VPS 的单个管理员或小型运维团队：
 
 - 多数服务由 Docker Compose 部署；
 - 主机分散在不同云厂商、NAT 或防火墙之后；
-- 希望统一配置备份而不在每台 VPS 存放 OneDrive/rclone 凭据；
+- 希望统一配置备份而不在每台 VPS 存放 云后端/rclone 凭据；
 - 需要快速回答“哪台机器没有按时备份”；
 - 需要集中浏览、下载与恢复历史快照；
 - 需要将勒索或单机入侵后的备份删除风险降至最低。
@@ -52,7 +52,7 @@ V1 可以只实现 Administrator，但授权中间件必须以显式权限检查
 
 1. 启动中心 Docker Compose；
 2. 使用一次性 bootstrap secret 创建首个管理员；
-3. 导入或创建 OneDrive rclone credential；
+3. 导入 OneDrive、Google Drive 或 HTTPS WebDAV 的 rclone credential；
 4. Test Connection；
 5. 创建默认 Repository policy 与通知渠道。
 
@@ -81,7 +81,7 @@ V1 可以只实现 Administrator，但授权中间件必须以显式权限检查
 |---|---|
 | Host | 被备份的 VPS 身份与健康状态 |
 | Agent | Host 上与中心通信、调度并执行 Restic 的软件实例 |
-| StorageCredential | 中心持有的 rclone/OneDrive/Crypt secret 集合 |
+| StorageCredential | 中心持有的 rclone/provider/Crypt secret 集合 |
 | Repository | 一个 Restic 仓库及其网关、密码、维护策略和容量状态 |
 | BackupTemplate | 可复用的路径、排除、周期、Retention 与 Hook 模板 |
 | Plan | Template + Host + Repository 的实际绑定和 override |

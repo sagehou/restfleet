@@ -10,6 +10,12 @@ type Props = { canManage: boolean; onUnauthorized: () => void }
 const statusLabels: Record<Credential['status'], string> = {
   UNTESTED: '未测试', HEALTHY: '可用', DEGRADED: '访问异常', EXPIRED: '已过期', DISABLED: '已禁用',
 }
+const providerLabels: Record<Credential['provider'], string> = {
+  RCLONE_ONEDRIVE: 'OneDrive + Crypt',
+  RCLONE_GDRIVE: 'Google Drive + Crypt',
+  RCLONE_WEBDAV: 'WebDAV + Crypt',
+}
+
 const endpoint = '/api/v1/storage-credentials'
 
 export function StorageCredentials({ canManage, onUnauthorized }: Props) {
@@ -172,11 +178,11 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
       {message && <p role="alert" className="error-message">{message}</p>}
       {notice && <p role="status">{notice}</p>}
       {loading && items.length === 0 && <p role="status">正在读取凭据…</p>}
-      {!loading && !message && items.length === 0 && <p className="muted">还没有存储凭据。先在可信设备通过 rclone 完成 OneDrive 授权和 Crypt 配置，再导入所需的两个 remote。</p>}
+      {!loading && !message && items.length === 0 && <p className="muted">还没有存储凭据。先在可信设备通过 rclone 配置 OneDrive、Google Drive 或 HTTPS WebDAV，再添加 Crypt；仅导入所需的两个 remote。</p>}
       {items.length > 0 && <div className="table-wrap"><table>
         <thead><tr><th>名称</th><th>存储服务</th><th>状态</th><th>凭据版本</th><th>操作</th></tr></thead>
         <tbody>{items.map((item) => <tr key={item.id}>
-          <td>{item.name}</td><td>OneDrive + Crypt</td><td>{statusLabels[item.status]}</td><td>{item.secret_revision}</td>
+          <td>{item.name}</td><td>{providerLabels[item.provider]}</td><td>{statusLabels[item.status]}</td><td>{item.secret_revision}</td>
           <td><button className="table-link" disabled={busy} onClick={() => void openDetail(item.id)}>查看 {item.name}</button></td>
         </tr>)}</tbody>
       </table></div>}
@@ -184,11 +190,13 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
       {selected && <section className="credential-detail" aria-label="凭据详情">
         <h2>{selected.name}</h2>
         <dl className="detail-list">
+          <div><dt>存储服务</dt><dd>{providerLabels[selected.provider]}</dd></div>
           <div><dt>状态</dt><dd>{statusLabels[selected.status]}</dd></div>
           <div><dt>Crypt remote</dt><dd>{selected.remote_name}</dd></div>
           <div><dt>凭据版本 / 记录版本</dt><dd>{selected.secret_revision} / {selected.revision}</dd></div>
           <div><dt>最近更新</dt><dd>{new Date(selected.updated_at).toLocaleString()}</dd></div>
           {selected.last_tested_at && <div><dt>最近测试</dt><dd>{new Date(selected.last_tested_at).toLocaleString()} · {selected.last_test_result === 'SUCCEEDED' ? '读取成功' : '读取失败'}</dd></div>}
+          {selected.provider === 'RCLONE_WEBDAV' && <div><dt>凭据刷新</dt><dd>静态 WebDAV 凭据不自动刷新，失效后请替换密码或 Bearer token。</dd></div>}
           {selected.last_refreshed_at && <div><dt>最近 token 回写</dt><dd>{new Date(selected.last_refreshed_at).toLocaleString()}</dd></div>}
         </dl>
         <div className="actions">
@@ -218,7 +226,7 @@ export function StorageCredentials({ canManage, onUnauthorized }: Props) {
           <label>Crypt remote 名称<input name="remote_name" pattern="[A-Za-z][A-Za-z0-9_-]{1,63}" maxLength={64} placeholder="encrypted" required /></label>
         </>}
         <label>rclone 配置<textarea name="rclone_config" maxLength={262144} rows={10} required autoComplete="off" spellCheck={false} autoCapitalize="off" /></label>
-        <p className="muted">仅粘贴 OneDrive 与 Crypt 两个配置段，最多 256 KiB。支持默认全球 Microsoft 端点及标准文件名/目录加密。替换时保留 drive、路径和 Crypt 密码，只更新 token 或 OAuth client 凭据。</p>
+        <p className="muted">仅粘贴一个 OneDrive / Google Drive / HTTPS WebDAV 后端与一个 Crypt 配置段，最多 256 KiB；后端自动识别。Google Drive 需自有 OAuth client 与固定目录/Shared Drive ID；WebDAV 仅公网 HTTPS，可用 Basic 或静态 Bearer。替换时保留后端、目录、URL、用户与 Crypt 密码，只更新同一身份的认证秘密。</p>
         <p className="muted">提交或离开页面时会清空秘密输入；请自行保管原始配置。</p>
         <div className="actions">
           <button type="submit" disabled={busy}>{busy ? '保存中…' : '加密保存'}</button>

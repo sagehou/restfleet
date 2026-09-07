@@ -836,7 +836,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         name: { type: string, minLength: 1, maxLength: 128 }
-        provider: { type: string, enum: [RCLONE_ONEDRIVE] }
+        provider: { type: string, enum: [RCLONE_ONEDRIVE, RCLONE_GDRIVE, RCLONE_WEBDAV] }
         remote_name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9_-]{1,63}$" }
         status: { type: string, enum: [UNTESTED, HEALTHY, DEGRADED, EXPIRED, DISABLED] }
         secret_revision: { type: integer, format: int64, minimum: 1 }
@@ -868,7 +868,7 @@ components:
           minLength: 1
           maxLength: 262144
           writeOnly: true
-          description: Restricted OneDrive + Crypt configuration, at most 256 KiB UTF-8.
+          description: Restricted OneDrive, Google Drive or HTTPS WebDAV + Crypt configuration, at most 256 KiB UTF-8. Provider is inferred; endpoint and secret values are never returned.
     StorageCredentialReplace:
       type: object
       additionalProperties: false

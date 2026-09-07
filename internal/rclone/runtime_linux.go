@@ -6,13 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 )
 
 var (
@@ -36,16 +40,18 @@ var errConfigReplacing = errors.New("credential config replacement in progress")
 // Runtime is a central-only owner of a private tmpfs directory. Close waits for
 // active commands; cancel their contexts before closing during server shutdown.
 type Runtime struct {
-	mu     sync.RWMutex
-	root   string
-	binary string
-	lock   *os.File
+	mu           sync.RWMutex
+	root         string
+	binary       string
+	lock         *os.File
+	lookupWebDAV func(context.Context, string) ([]netip.Addr, error)
+	dialWebDAV   func(context.Context, string) (net.Conn, error)
 }
 
 // NewRuntime requires an existing, canonical 0700 tmpfs directory owned by this
 // service user. The exclusive lock fences cleanup from any other live runtime.
 func NewRuntime(root, binary string) (*Runtime, error) {
-	if !filepath.IsAbs(root) || filepath.Clean(root) != root || root == "/" ||
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root || root == "/" || strings.IndexFunc(root, unicode.IsControl) >= 0 ||
 		!filepath.IsAbs(binary) || filepath.Clean(binary) != binary {
 		return nil, ErrUnsafeRuntime
 	}
@@ -180,6 +186,11 @@ func (r *Runtime) WithConfig(ctx context.Context, raw []byte, remote string,
 			resultErr = ErrUnsafeRuntime
 		}
 	}()
+	socket, closeRelay, err := r.webDAVRelay(ctx, config, dir)
+	if err != nil {
+		return err
+	}
+	defer closeRelay()
 	filename := filepath.Join(dir, "rclone.conf")
 	current := config.Bytes()
 	defer func() { clear(current) }()
@@ -187,14 +198,16 @@ func (r *Runtime) WithConfig(ctx context.Context, raw []byte, remote string,
 	if err != nil {
 		return ErrUnsafeRuntime
 	}
-	_, writeErr := file.Write(current)
+	materialized := config.runtimeBytes(socket)
+	_, writeErr := file.Write(materialized)
+	clear(materialized)
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {
 		return ErrUnsafeRuntime
 	}
 
 	syncConfig := func() error {
-		next, err := readUpdatedConfig(ctx, filename, remote)
+		next, err := readUpdatedConfig(ctx, filename, remote, socket)
 		if err != nil {
 			return err
 		}
@@ -291,13 +304,13 @@ func testCommand(ctx context.Context, filename, binary, remote string) error {
 
 // rclone first renames the old config to a backup, then moves the new file
 // into place. Tolerate only that short ENOENT gap; every unsafe inode fails closed.
-func readUpdatedConfig(ctx context.Context, filename, remote string) (*Config, error) {
+func readUpdatedConfig(ctx context.Context, filename, remote, socket string) (*Config, error) {
 	deadline := time.NewTimer(time.Second)
 	defer deadline.Stop()
 	retry := time.NewTicker(10 * time.Millisecond)
 	defer retry.Stop()
 	for {
-		config, err := readRuntimeConfig(filename, remote)
+		config, err := readRuntimeConfig(filename, remote, socket)
 		if !errors.Is(err, errConfigReplacing) {
 			return config, err
 		}
@@ -313,7 +326,7 @@ func readUpdatedConfig(ctx context.Context, filename, remote string) (*Config, e
 
 // O_NONBLOCK avoids hanging on a substituted FIFO. Check the opened inode,
 // not just its pathname, and reject symlinks, hard links and permissive modes.
-func readRuntimeConfig(filename, remote string) (*Config, error) {
+func readRuntimeConfig(filename, remote, socket string) (*Config, error) {
 	f, err := os.OpenFile(filename, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(err) {
 		return nil, errConfigReplacing
@@ -331,7 +344,7 @@ func readRuntimeConfig(filename, remote string) (*Config, error) {
 	if err != nil {
 		return nil, ErrUnsafeRuntime
 	}
-	config, err := ParseConfig(string(raw), remote)
+	config, err := parseConfig(string(raw), remote, socket)
 	if err != nil {
 		return nil, ErrConfigChanged
 	}

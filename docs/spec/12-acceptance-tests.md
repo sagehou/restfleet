@@ -70,13 +70,22 @@
 | REP-003 | P0 | Agent 对已有 repository object 发 DELETE；Gateway 拒绝，对象仍存在。 |
 | REP-004 | P0 | Agent 对已有 object 尝试 overwrite；Gateway 拒绝或不改变原内容。 |
 | REP-005 | P0 | Agent 备份需要读 index；正常成功，文档/UI 不标记为 write-only。 |
-| REP-006 | P0 | Agent filesystem/process/env inventory；不存在 rclone/OneDrive/Crypt/admin secret。 |
+| REP-006 | P0 | Agent filesystem/process/env inventory；不存在 rclone/provider/Crypt/admin secret。 |
 | REP-007 | P0 | 数据库 dump 无 master key；所有 secret plaintext 不可获得。 |
 | REP-008 | P0 | 错误 master key 启动；Server fail closed，危险操作不可执行。 |
 | REP-009 | P0 | Gateway rclone config materialize；位于 tmpfs、0600、重启后重新生成。 |
 | REP-010 | P0 | rclone 自动刷新 OAuth token；新 revision 加密回 DB，重启后仍可访问。 |
 | REP-011 | P1 | Gateway password rotation；Agent ACK 新 revision 后旧 secret 在 overlap 后失效，备份不中断。 |
 | REP-012 | P0 | 请求 Shared Repository；V1 API 返回明确不支持。 |
+
+多后端扩展验收：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-013 | P0 | OneDrive/Google Drive/WebDAV 导入与独立仓库记录创建；provider 自动识别，metadata 无目标或秘密回显，旧 OneDrive 数据兼容。 |
+| REP-014 | P0 | Google Drive token 更新加密 CAS 回写；folder/team/scope/client 改写被 watcher 拒绝，WebDAV 静态秘密不能伪装成 OAuth refresh。 |
+| REP-015 | P0 | WebDAV 内网、metadata、混合 DNS、重绑定、socket 注入和不可信 TLS 被拒绝；重定向不能选择非固定网络目的地。 |
+| REP-016 | P0 MANUAL_INTEGRATION | 三种后端分别完成真实云端写入、备份、索引和恢复；OAuth 两种后端完成刷新/重启验收，WebDAV 完成认证失效/替换与服务兼容性验收。 |
 
 ## 7. Backup 与 Restic 解析
 

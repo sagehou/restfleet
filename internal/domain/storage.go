@@ -7,7 +7,11 @@ import (
 	"github.com/google/uuid"
 )
 
-const StorageProvider = "RCLONE_ONEDRIVE"
+const (
+	StorageOneDrive = "RCLONE_ONEDRIVE"
+	StorageGDrive   = "RCLONE_GDRIVE"
+	StorageWebDAV   = "RCLONE_WEBDAV"
+)
 
 var (
 	ErrStorageUnavailable   = errors.New("storage credential service is not configured")

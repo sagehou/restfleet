@@ -177,7 +177,7 @@ superseded_by
 ```text
 id
 name
-provider             RCLONE_ONEDRIVE
+provider             RCLONE_ONEDRIVE | RCLONE_GDRIVE | RCLONE_WEBDAV
 remote_name
 status               UNTESTED | HEALTHY | DEGRADED | EXPIRED | DISABLED
 secret_ref
@@ -189,7 +189,7 @@ last_refreshed_at
 created_at / updated_at / revision
 ```
 
-`provider_metadata` 可以含 drive type、drive ID 的 hash/后四位、region，但不得含 token/client_secret/crypt password。
+provider MUST 从验证后的后端配置派生，旧 RCLONE_ONEDRIVE 值保持兼容。rclone type=drive 对应 RCLONE_GDRIVE；WebDAV vendor 不改变 provider。当前 metadata 不返回 URL/user/folder ID 等配置值；未来 provider_metadata 也 MUST NOT 包含认证秘密。WebDAV 静态凭据没有 OAuth refresh，last_refreshed_at MUST 不伪造。
 
 ## 7. Repository
 

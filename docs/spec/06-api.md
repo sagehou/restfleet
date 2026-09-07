@@ -180,17 +180,19 @@ POST   /api/v1/storage-credentials/{id}/reauthenticate
 POST   /api/v1/storage-credentials/{id}/disable
 ```
 
-V1 `POST`/`replace-secret` 支持导入受限的 rclone config/OneDrive token bundle。Response 返回 metadata 和 status，不返回原 Secret。
+V1 `POST`/`replace-secret` 支持导入受限的 rclone config/provider credential bundle。Response 返回 metadata 和 status，不返回原 Secret。
 
 `test`、`reauthenticate` 返回 Operation。OAuth redirect/callback 若进入 V1.1，使用短期 state、PKCE，并与发起 Session 绑定。
 
 ### 7.1 M4 第一批已实现的凭据 API
 
-已实现 GET/POST collection、GET detail、POST replace-secret/disable；metadata list 支持 limit（1–200）与 opaque cursor，未知或重复 query 参数返回 400。导入与替换请求的 rclone_config 为 writeOnly，字段白名单与限制见 [ADR-0007](../adr/0007-storage-credential-import.md)。
+已实现 GET/POST collection、GET detail、POST replace-secret/disable；metadata list 支持 limit（1–200）与 opaque cursor，未知或重复 query 参数返回 400。导入与替换请求的 rclone_config 为 writeOnly，原始字段白名单见 [ADR-0007](../adr/0007-storage-credential-import.md)，多后端扩展以 [ADR-0012](../adr/0012-rclone-multiple-backends.md) 为准。
 
 replace-secret/disable MUST 使用 If-Match；发生并发变更返回 412。替换 MUST 保持存储目标和 Crypt 设置，违反返回 409 STORAGE_TARGET_CHANGED；禁用后替换返回 409 CREDENTIAL_DISABLED。导入与替换仅返回 UNTESTED metadata，不证明远端可用。未配置 master key 时修改返回 503 STORAGE_UNAVAILABLE。
 
 POST /api/v1/storage-credentials/{id}/test 已实现，要求 ADMIN、CSRF 与 Idempotency-Key，禁止 body/query。返回 202 Operation 与 Location；GET /api/v1/operations/{id} 允许 ADMIN/VIEWER 查询进度。未配置 runtime 返回 503；已有未终态测试返回 409 CREDENTIAL_TEST_BUSY。metadata 新增 last_test_operation_id、last_tested_at、last_test_result、last_refreshed_at。成功表示 Crypt 根目录读取成功，不证明写权限。详细事务与错误语义见 [ADR-0009](../adr/0009-credential-test-jobs.md)。
+
+provider 枚举扩展为 RCLONE_ONEDRIVE、RCLONE_GDRIVE、RCLONE_WEBDAV，由服务端从配置派生；创建请求仍只提交 name/remote_name/rclone_config。替换 MUST 保持后端与固定目标，不得通过更换 provider、Google folder/team ID、WebDAV URL/vendor/user 或 Crypt key 完成迁移。WebDAV 仅静态认证，不支持 token command；所有失败仍返回固定错误，不暴露目标 URL 或 provider 诊断。
 
 reauthenticate 与 metadata PATCH 尚未交付；UI MUST NOT 将这些能力展示为可用。仓库 API 当前范围见 8.1。
 
