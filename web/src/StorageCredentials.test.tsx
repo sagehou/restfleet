@@ -96,3 +96,19 @@ it('requires confirmation to disable and handles expired sessions', async () => 
   fireEvent.click(screen.getByRole('button', { name: '确认禁用' }))
   await waitFor(() => expect(onUnauthorized).toHaveBeenCalledOnce())
 })
+
+it.each([
+  ['RCLONE_ONEDRIVE', 'OneDrive + Crypt'],
+  ['RCLONE_GDRIVE', 'Google Drive + Crypt'],
+  ['RCLONE_WEBDAV', 'WebDAV + Crypt'],
+])('renders %s metadata without assuming OneDrive', async (provider, label) => {
+  const item = { ...credential, provider }
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => respond(String(input) === endpoint ? { items: [item] } : item)))
+  render(<StorageCredentials canManage onUnauthorized={onUnauthorized} />)
+  expect(await screen.findByText(label)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '查看 Archive' }))
+  await screen.findByRole('heading', { name: 'Archive' })
+  expect(screen.getAllByText(label)).toHaveLength(2)
+  if (provider === 'RCLONE_WEBDAV') expect(screen.getByText(/静态 WebDAV 凭据不自动刷新/)).toBeInTheDocument()
+  expect(screen.queryByText('google-secret-canary')).not.toBeInTheDocument()
+})

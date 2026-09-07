@@ -29,6 +29,11 @@ type Config struct {
 // ParseConfig accepts a deliberately restricted INI subset, then emits canonical
 // config rather than passing user-supplied configuration syntax to rclone.
 func ParseConfig(raw, remote string) (*Config, error) {
+	return parseConfig(raw, remote, "")
+}
+
+// socket is an exact runtime-owned path, never an option supplied by an API caller.
+func parseConfig(raw, remote, socket string) (*Config, error) {
 	if len(raw) == 0 || len(raw) > MaxConfigBytes || !utf8.ValidString(raw) ||
 		!remotePattern.MatchString(remote) {
 		return nil, ErrInvalidConfig
@@ -86,19 +91,30 @@ func ParseConfig(raw, remote string) (*Config, error) {
 		return nil, ErrInvalidConfig
 	}
 	cloud := sections[upstream]
-	if cloud == nil || cloud["type"] != "onedrive" ||
-		!allowedKeys(cloud, "type", "token", "drive_id", "drive_type", "client_id", "client_secret", "region") ||
-		!drivePattern.MatchString(cloud["drive_id"]) ||
-		(cloud["drive_type"] != "personal" && cloud["drive_type"] != "business" && cloud["drive_type"] != "documentLibrary") ||
-		(cloud["region"] != "" && cloud["region"] != "global") {
+	if cloud == nil {
 		return nil, ErrInvalidConfig
 	}
-	if cloud["client_id"] != "" && !drivePattern.MatchString(cloud["client_id"]) {
+	if socket != "" {
+		if cloud["type"] != "webdav" || cloud["unix_socket"] != socket {
+			return nil, ErrInvalidConfig
+		}
+		delete(cloud, "unix_socket")
+	}
+	if !validateBackend(cloud) {
 		return nil, ErrInvalidConfig
 	}
-	if cloud["client_secret"] != "" && !obscured(cloud["client_secret"]) {
-		return nil, ErrInvalidConfig
-	}
+	return &Config{sections: sections, remote: remote}, nil
+}
+
+// Backend is safe metadata derived from the validated configuration.
+func (c *Config) Backend() string { return c.cloud()["type"] }
+
+func (c *Config) cloud() map[string]string {
+	upstream, _, _ := strings.Cut(c.sections[c.remote]["remote"], ":")
+	return c.sections[upstream]
+}
+
+func normalizeToken(cloud map[string]string) bool {
 	var token struct {
 		AccessToken  string    `json:"access_token"`
 		TokenType    string    `json:"token_type"`
@@ -110,16 +126,14 @@ func ParseConfig(raw, remote string) (*Config, error) {
 	if !json.Valid([]byte(cloud["token"])) || decoder.Decode(&token) != nil ||
 		token.AccessToken == "" || token.RefreshToken == "" || token.TokenType != "Bearer" ||
 		token.Expiry.IsZero() || strings.IndexFunc(token.AccessToken+token.RefreshToken, unicode.IsControl) >= 0 {
-		return nil, ErrInvalidConfig
+		return false
 	}
-	// Emit only understood token fields; duplicate JSON keys cannot survive normalization.
 	encoded, err := json.Marshal(token)
 	if err != nil {
-		return nil, ErrInvalidConfig
+		return false
 	}
 	cloud["token"] = string(encoded)
-	cloud["region"] = "global"
-	return &Config{sections: sections, remote: remote}, nil
+	return true
 }
 
 func allowedKeys(values map[string]string, allowed ...string) bool {
@@ -174,29 +188,14 @@ func (c *Config) Bytes() []byte {
 	return []byte(out.String())
 }
 
-// SameExceptToken is stricter than administrator replacement: a child process
-// may refresh OAuth tokens but must not change OAuth client identity or keys.
-func (c *Config) SameExceptToken(other *Config) bool {
-	if !c.SameTarget(other) {
-		return false
-	}
-	for name, fields := range c.sections {
-		if fields["type"] == "onedrive" &&
-			(fields["client_id"] != other.sections[name]["client_id"] ||
-				fields["client_secret"] != other.sections[name]["client_secret"]) {
-			return false
-		}
-	}
-	return true
-}
+// SameExceptToken allows only OAuth token refresh by a child process.
+func (c *Config) SameExceptToken(other *Config) bool { return c.sameConfig(other, false) }
 
-// SameTarget prevents a token replacement from relocating existing repositories
-// or silently changing the crypt key and making historical objects unreadable.
-func (c *Config) SameTarget(other *Config) bool {
-	if c == nil || other == nil {
-		return false
-	}
-	if c.remote != other.remote || len(c.sections) != len(other.sections) {
+// SameTarget permits credential replacement, never relocation or a new identity.
+func (c *Config) SameTarget(other *Config) bool { return c.sameConfig(other, true) }
+
+func (c *Config) sameConfig(other *Config, replace bool) bool {
+	if c == nil || other == nil || c.remote != other.remote || len(c.sections) != len(other.sections) {
 		return false
 	}
 	for name, fields := range c.sections {
@@ -206,7 +205,15 @@ func (c *Config) SameTarget(other *Config) bool {
 		}
 		for _, pair := range []struct{ a, b map[string]string }{{fields, next}, {next, fields}} {
 			for key, value := range pair.a {
-				if fields["type"] == "onedrive" && (key == "token" || key == "client_id" || key == "client_secret") {
+				oauth := fields["type"] == "onedrive" || fields["type"] == "drive"
+				if oauth && (key == "token" || replace && (key == "client_id" || key == "client_secret")) {
+					continue
+				}
+				if replace && fields["type"] == "webdav" && (key == "pass" || key == "bearer_token") {
+					// Keep authentication mode, including whether this value is present.
+					if (value == "") != (pair.b[key] == "") {
+						return false
+					}
 					continue
 				}
 				if pair.b[key] != value {

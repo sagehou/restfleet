@@ -235,13 +235,13 @@ func TestRuntimeRejectsUnsafeFiles(t *testing.T) {
 		}
 	}
 	write()
-	if _, err := readRuntimeConfig(target, "encrypted"); err != nil {
+	if _, err := readRuntimeConfig(target, "encrypted", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(target, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readRuntimeConfig(target, "encrypted"); !errors.Is(err, ErrUnsafeRuntime) {
+	if _, err := readRuntimeConfig(target, "encrypted", ""); !errors.Is(err, ErrUnsafeRuntime) {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(target, 0600); err != nil {
@@ -251,14 +251,14 @@ func TestRuntimeRejectsUnsafeFiles(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readRuntimeConfig(link, "encrypted"); !errors.Is(err, ErrUnsafeRuntime) {
+	if _, err := readRuntimeConfig(link, "encrypted", ""); !errors.Is(err, ErrUnsafeRuntime) {
 		t.Fatal(err)
 	}
 	hard := filepath.Join(root, "hard")
 	if err := os.Link(target, hard); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readRuntimeConfig(target, "encrypted"); !errors.Is(err, ErrUnsafeRuntime) {
+	if _, err := readRuntimeConfig(target, "encrypted", ""); !errors.Is(err, ErrUnsafeRuntime) {
 		t.Fatal(err)
 	}
 	if err := os.Remove(hard); err != nil {
@@ -268,13 +268,13 @@ func TestRuntimeRejectsUnsafeFiles(t *testing.T) {
 	if err := syscall.Mkfifo(fifo, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readRuntimeConfig(fifo, "encrypted"); !errors.Is(err, ErrUnsafeRuntime) {
+	if _, err := readRuntimeConfig(fifo, "encrypted", ""); !errors.Is(err, ErrUnsafeRuntime) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, bytes.Repeat([]byte("x"), MaxConfigBytes+1), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readRuntimeConfig(target, "encrypted"); !errors.Is(err, ErrUnsafeRuntime) {
+	if _, err := readRuntimeConfig(target, "encrypted", ""); !errors.Is(err, ErrUnsafeRuntime) {
 		t.Fatal(err)
 	}
 }
@@ -427,7 +427,7 @@ func TestRuntimeWithConfigRedactsCommandErrors(t *testing.T) {
 			if approvedBinary != binary {
 				t.Error("binary changed")
 			}
-			if _, err := readRuntimeConfig(filename, "encrypted"); err != nil {
+			if _, err := readRuntimeConfig(filename, "encrypted", ""); err != nil {
 				t.Error("unsafe config")
 			}
 			return errors.New("canary-secret: subprocess detail")

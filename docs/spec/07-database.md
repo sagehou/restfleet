@@ -175,11 +175,15 @@ create table secrets (
 
 M4 第一批 MUST 复用 migration 00003 的实际 secrets 字段（kind、algorithm、key_id、ciphertext、nonce、wrapped_data_key、wrap_nonce、aad、created_at），不得以逻辑 schema 示例另建不兼容的加密格式。
 
-storage_credentials 保存 id、name、provider、remote_name、status、secret_ref、secret_revision、revision、created_at、updated_at。名称大小写不敏感唯一，provider 仅 RCLONE_ONEDRIVE，状态使用领域模型枚举；尚未连接测试的记录为 UNTESTED。
+storage_credentials 保存 id、name、provider、remote_name、status、secret_ref、secret_revision、revision、created_at、updated_at。名称大小写不敏感唯一，schema 5 的 provider 仅 RCLONE_ONEDRIVE（schema 8 扩展见下），状态使用领域模型枚举；尚未连接测试的记录为 UNTESTED。
 
 storage_credential_revisions 使用 (credential_id, revision) 主键，将版本映射到不可变的 secrets 记录。create/replace 的两表更新、密文 insert 与 AuditEvent MUST 同事务；运行时角色只能对密文历史 SELECT/INSERT。替换使用行锁与 revision CAS，失败事务不得残留孤立的秘密版本。
 
 测试/刷新状态字段、runtime dispatch 和 repository 外键在后续 M4 migration 增补。第一批不得伪造 last_tested_at 或 HEALTHY。
+
+### 5.3.2 多后端 provider（schema 8）
+
+迁移 00008 MUST 仅扩展 provider CHECK，加入 RCLONE_GDRIVE 与 RCLONE_WEBDAV；不得重写旧 provider、密文、AAD、secret revision 或 Repository 外键。密文载荷继续保存 canonical rclone config，不新增明文端点/认证列。Down 在已有新后端记录时 MUST 失败并整体回滚，不得删除数据或将其改标 OneDrive；生产使用前向修复迁移。
 
 ### 5.4 repositories
 

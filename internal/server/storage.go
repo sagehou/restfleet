@@ -61,7 +61,7 @@ func (c *ControlPlane) CreateStorageCredential(ctx context.Context, name, remote
 	}
 	now := c.clock().UTC()
 	credential := domain.StorageCredential{
-		ID: id, Name: name, Provider: domain.StorageProvider, RemoteName: remote,
+		ID: id, Name: name, Provider: storageProvider(config), RemoteName: remote,
 		Status: "UNTESTED", SecretRevision: 1, Revision: 1, CreatedAt: now, UpdatedAt: now,
 	}
 	return c.saveStorageConfig(ctx, credential, 0, config, actor, meta, "STORAGE_CREDENTIAL_CREATE")
@@ -103,7 +103,7 @@ func (c *ControlPlane) ReplaceStorageCredential(ctx context.Context, id uuid.UUI
 	}
 	defer clear(oldBytes)
 	previous, err := rclone.ParseConfig(string(oldBytes), credential.RemoteName)
-	if err != nil {
+	if err != nil || storageProvider(previous) != credential.Provider {
 		return domain.StorageCredential{}, domain.ErrStorageUnavailable
 	}
 	if !previous.SameTarget(next) {
@@ -199,4 +199,17 @@ func openStorageSecret(key []byte, credential domain.StorageCredential, e domain
 		return nil, domain.ErrStorageUnavailable
 	}
 	return plaintext, nil
+}
+
+func storageProvider(config *rclone.Config) string {
+	switch config.Backend() {
+	case "onedrive":
+		return domain.StorageOneDrive
+	case "drive":
+		return domain.StorageGDrive
+	case "webdav":
+		return domain.StorageWebDAV
+	default:
+		return ""
+	}
 }

@@ -14,7 +14,7 @@ If an implementation conflicts with a specification, update the specification in
 
 ## Non-negotiable security invariants
 
-- An Agent MUST NOT receive rclone configuration, cloud-storage credentials, OneDrive OAuth tokens, rclone crypt passwords, the server master key, or maintenance credentials.
+- An Agent MUST NOT receive rclone configuration, cloud-storage credentials, provider OAuth tokens, rclone crypt passwords, the server master key, or maintenance credentials.
 - An Agent MUST NOT be able to delete or overwrite existing repository objects.
 - An Agent necessarily has read-and-create access to its own Restic repository; do not describe append-only as write-only.
 - V1 MUST default to one Repository per Host, with a distinct Restic repository password and gateway identity per Host.
@@ -91,7 +91,7 @@ docs/
 - Implement one milestone at a time.
 - Do not add Kubernetes, multi-tenancy, HA, arbitrary remote shell, Agent auto-update, or shared repositories to V1 unless the specification is intentionally revised.
 - Prefer the smallest implementation that satisfies the current milestone and preserves future interfaces.
-- Avoid speculative abstractions for storage providers not in V1. OneDrive through rclone is the required V1 backend, while adapter boundaries must remain testable.
+- V1 supports OneDrive, Google Drive and HTTPS WebDAV through rclone + Crypt. Keep provider validation explicit and adapter boundaries testable; additional rclone backends require reviewed configuration and network policies, not arbitrary config passthrough.
 
 ## Documentation rules
 

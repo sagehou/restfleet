@@ -6,7 +6,7 @@ RestFleet V1 优先保护：
 
 1. 历史备份不被已攻陷 Host 删除或覆盖；
 2. 单个 Host 被攻陷时不横向泄露其他 Host 的备份；
-3. rclone、OneDrive OAuth、Crypt 密码、中心 CA 与维护凭据不离开中心；
+3. rclone、云后端 OAuth/密码、Crypt 密码、中心 CA 与维护凭据不离开中心；
 4. Agent 身份不可被简单复制或永久冒用；
 5. 恢复、下载、Retention 与维护操作可授权、可审计；
 6. Secret 不进入日志、命令行参数、指标、前端状态和错误响应。
@@ -42,7 +42,7 @@ V1 不声称抵御：
 | Public Gateway | 高数据路径权限 | rclone materialized config、gateway auth verifier |
 | PostgreSQL | 敏感但不单独可信 | 密文、token hash、metadata |
 | Agent | 单 Host 范围可信 | Agent private key、本 Host Repo password/gateway secret |
-| OneDrive | 外部依赖 | rclone crypt 后的 repository objects |
+| OneDrive / Google Drive / WebDAV | 外部依赖 | rclone crypt 后的 repository objects |
 
 ## 4. 威胁与控制
 
@@ -161,6 +161,12 @@ Gateway 必须验证 username 与路径前缀匹配。只验证“密码正确�
 - 进程停止后删除 materialized file；
 - crash recovery 清理 stale temp directories；
 - stdout/stderr 必须经过 token、URL credential 与 provider error redaction。
+
+### 8.2 多后端与 WebDAV 出站
+
+V1 MUST 使用受限的 OneDrive、Google Drive 或 HTTPS WebDAV 后端加 Crypt；新增后端必须有显式配置校验和安全验收，不得放开任意配置透传。Google Drive MUST 使用自有 OAuth client，并绑定实际 folder ID 或 Shared Drive ID；OAuth refresh 只改变 token，不得改变目标或 client。
+
+WebDAV URL MUST 拒绝非 HTTPS、userinfo、query/fragment、异常路径、私网/loopback/link-local/metadata/保留 IP。runtime MUST 在每次启动时校验全部 DNS 结果，并通过私有 Unix socket 将子进程连接固定到已验证 IP:port，防止 DNS 重绑定和重定向选择其他网络地址。TLS MUST 继续由 rclone 验证；生成 socket 选项 MUST 不进入持久化密文或 API，且不得由输入配置指定。内网/NAS 访问本批不开放，不得以 insecure TLS 绕过。具体允许字段和替换边界见 [ADR-0012](../adr/0012-rclone-multiple-backends.md)。
 
 ## 9. Web 安全
 

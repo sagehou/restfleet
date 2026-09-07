@@ -84,7 +84,7 @@ V1 是可以真实用于少量到数十台 Linux VPS 的完整最小产品，不
 - ADMIN 为唯一必须实现角色；
 - 一个中心实例；
 - 默认/唯一一 Host 一 Repo；
-- OneDrive + rclone crypt 为唯一生产验证后端；
+- rclone + Crypt 支持 OneDrive、Google Drive、HTTPS WebDAV；各后端完成适用验收后才能声称生产验证通过；
 - 模块化单体；
 - PostgreSQL job queue，无外部 broker；
 - Snapshot entries 按需/cache，不预索引全部文件；
@@ -98,7 +98,7 @@ V1 是可以真实用于少量到数十台 Linux VPS 的完整最小产品，不
 
 - VIEWER role；
 - OIDC（Authentik 等）登录；
-- Web 内完整 OneDrive OAuth reauthentication + PKCE；
+- Web 内完整 provider OAuth reauthentication + PKCE；
 - Repository password key rotation workflow；
 - trust bundle/CA 自动轮换；
 - 目录 tar/zip download；
@@ -126,7 +126,7 @@ V1 是可以真实用于少量到数十台 Linux VPS 的完整最小产品，不
 - 任意远程 shell；
 - 中心 SSH/root key 管理；
 - 备份数据经 Control API/gRPC；
-- Agent 持有 rclone/OneDrive/Crypt credentials；
+- Agent 持有 rclone/provider/Crypt credentials；
 - Agent 执行 forget/prune/check/unlock；
 - 把 append-only 宣称为不可读；
 - 以 `rclone obscure` 作为 secret encryption；
@@ -147,7 +147,7 @@ V1 release 前必须：
 - center outage local scheduling test 通过；
 - secret canary leak test 通过；
 - PostgreSQL/master key disaster recovery drill 通过；
-- OneDrive token refresh persistence test 通过；
+- OneDrive 与 Google Drive token refresh persistence、WebDAV 认证/网络/备份恢复验收通过；
 - 文档和示例均无真实 credentials；
 - 固定依赖版本、checksums、SBOM 与 release notes。
 
@@ -164,7 +164,7 @@ V1 测试目标：
 - 每 Operation 10 MiB retained raw logs；
 - 1M snapshot entries 的受控流式扫描测试。
 
-这些是正确性/资源上界测试，不承诺所有 OneDrive 租户都达到相同吞吐。
+这些是正确性/资源上界测试，不承诺所有云后端或 WebDAV 服务都达到相同吞吐。
 
 ## 9. Definition of Done
 

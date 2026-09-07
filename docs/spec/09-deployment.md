@@ -8,7 +8,7 @@
 - Docker Engine + Docker Compose v2；
 - `linux/amd64`、`linux/arm64` images；
 - PostgreSQL 16+；
-- 能访问 OneDrive/Microsoft OAuth 与各 Agent；
+- 能访问所选后端及其官方 OAuth 服务（OneDrive / Google Drive），或通过 HTTPS 访问公网 WebDAV；Agent 只连接中心；
 - 对外一个 HTTPS endpoint，可按 path/port 暴露 Web、gRPC、Repository Gateway。
 
 ### Agent
@@ -58,6 +58,8 @@ gateway-runtime
 - gRPC proxy 必须支持 HTTP/2、长连接和合理 keepalive；
 - Repository transfer timeout 默认至少 1h，按部署调整；
 - 若使用同一域名，建议 `/api`、`/agent`、`/restic` 明确分流。
+
+WebDAV 的运行时连接由受限 tmpfs 中的私有 Unix socket 转发至已校验公网 IP，MUST 不发布该 socket 或新增代理端口。默认系统 CA 验证保持启用，内网/NAS 与自签名 WebDAV 本批不开放；未验证连接不得显示为已完成备份能力。
 
 ## 4. 持久化目录
 

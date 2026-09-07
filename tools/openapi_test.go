@@ -44,3 +44,19 @@ func TestRepositoryOpenAPIContract(t *testing.T) {
 		t.Fatal("Host ownership optional in contract")
 	}
 }
+
+func TestStorageProviderContract(t *testing.T) {
+	spec, err := openapi3.NewLoader().LoadFromFile("../api/openapi/restfleet-v1.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := spec.Components.Schemas["StorageCredential"].Value.Properties["provider"].Value
+	for _, provider := range []string{"RCLONE_ONEDRIVE", "RCLONE_GDRIVE", "RCLONE_WEBDAV"} {
+		if err := schema.VisitJSON(provider); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := schema.VisitJSON("RCLONE_ARBITRARY"); err == nil {
+		t.Fatal("unreviewed backend accepted")
+	}
+}

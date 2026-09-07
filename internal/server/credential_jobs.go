@@ -105,7 +105,7 @@ func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID
 	}
 	defer clear(raw)
 	previous, err := rclone.ParseConfig(string(raw), job.Credential.RemoteName)
-	if err != nil {
+	if err != nil || storageProvider(previous) != job.Credential.Provider {
 		return true, c.store.CompleteCredentialJob(ctx, job.ID, owner, "CONFIG_UNSAFE")
 	}
 	workCtx, cancel := context.WithCancel(ctx)

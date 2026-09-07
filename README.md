@@ -2,7 +2,7 @@
 
 RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面。它通过轻量 Agent 统一下发备份计划、采集运行状态、浏览快照、触发恢复并集中执行仓库维护，同时把 rclone 与云存储凭据严格留在中心节点。
 
-> 当前 M0–M3 已完成，M4 正分批开发：首批提供中心存储凭据导入与管理。仓库初始化、Gateway 与备份执行仍待后续交付；`docs/spec/` 中的规范是 V1 实现约束。
+> 当前 M0–M3 已完成，M4 正分批开发：已提供凭据管理/异步读取测试、独立仓库记录与初始化适配器；后端扩展为 OneDrive、Google Drive、HTTPS WebDAV + Crypt。初始化任务接线、Gateway 与备份执行仍待后续交付；`docs/spec/` 中的规范是 V1 实现约束。
 
 开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
 
@@ -10,7 +10,7 @@ RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面
 
 - Agent 仅主动向中心建立出站 mTLS 连接，不开放入站管理端口。
 - 备份数据直接流向 Repository Gateway，不经过 Control API。
-- rclone、OneDrive OAuth、Crypt 密码与仓库维护权限只存在于中心节点。
+- rclone、后端 OAuth/认证密码、Crypt 密码与仓库维护权限只存在于中心节点。
 - Agent 可读取并追加其被授权仓库，但不能删除或改写已有仓库对象。
 - 默认每台 Host 使用独立 Repository、独立 Restic 密码和独立网关身份。
 - 中心离线时，Agent 使用最近一次已确认配置继续本地调度备份。
@@ -28,7 +28,7 @@ make test
 make build cross-build
 ```
 
-当前 Server 需要已经迁移到 schema v5 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。开发 Compose 也拆分了 migrator/runtime 数据库身份，并且不向宿主机发布 PostgreSQL 或 metrics 端口。
+当前 Server 需要已经迁移到 schema v8 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。开发 Compose 也拆分了 migrator/runtime 数据库身份，并且不向宿主机发布 PostgreSQL 或 metrics 端口。
 
 首次启动：
 
@@ -55,7 +55,7 @@ Bootstrap token 仅在首次初始化时从本机 `secrets/bootstrap-token` 读�
 | [数据库](docs/spec/07-database.md) | PostgreSQL Schema、约束、索引与事务规则 |
 | [Web Console](docs/spec/08-web-console.md) | 页面、交互、危险操作与状态表达 |
 | [部署](docs/spec/09-deployment.md) | 中心、Native Agent、Docker Agent 与升级 |
-| [存储凭据](docs/storage-credentials.md) | M4 首批导入、替换、禁用与当前限制 |
+| [存储凭据](docs/storage-credentials.md) | 多后端导入、测试、替换与当前限制 |
 | [可观测性](docs/spec/10-observability.md) | Metrics、Logs、Health、Alert、Audit |
 | [V1 范围](docs/spec/11-v1-scope.md) | V1、V1.5、V2 的功能边界 |
 | [验收测试](docs/spec/12-acceptance-tests.md) | 可执行的功能、安全与故障验收条件 |

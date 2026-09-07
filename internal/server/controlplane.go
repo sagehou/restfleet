@@ -146,7 +146,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		settings.PasswordParams = security.DefaultArgon2Params
 	}
 	if settings.ExpectedSchema == 0 {
-		settings.ExpectedSchema = 7
+		settings.ExpectedSchema = 8
 	}
 	if settings.Enrollment.HeartbeatInterval == 0 {
 		settings.Enrollment.HeartbeatInterval = 15 * time.Second

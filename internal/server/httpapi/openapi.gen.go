@@ -323,13 +323,19 @@ func (e RepositoryStatus) Valid() bool {
 
 // Defines values for StorageCredentialProvider.
 const (
+	RCLONEGDRIVE   StorageCredentialProvider = "RCLONE_GDRIVE"
 	RCLONEONEDRIVE StorageCredentialProvider = "RCLONE_ONEDRIVE"
+	RCLONEWEBDAV   StorageCredentialProvider = "RCLONE_WEBDAV"
 )
 
 // Valid indicates whether the value is a known member of the StorageCredentialProvider enum.
 func (e StorageCredentialProvider) Valid() bool {
 	switch e {
+	case RCLONEGDRIVE:
+		return true
 	case RCLONEONEDRIVE:
+		return true
+	case RCLONEWEBDAV:
 		return true
 	default:
 		return false
@@ -713,7 +719,7 @@ type StorageCredentialStatus string
 type StorageCredentialCreate struct {
 	Name string `json:"name"`
 
-	// RcloneConfig Restricted OneDrive + Crypt configuration, at most 256 KiB UTF-8.
+	// RcloneConfig Restricted OneDrive, Google Drive or HTTPS WebDAV + Crypt configuration, at most 256 KiB UTF-8. Provider is inferred; endpoint and secret values are never returned.
 	RcloneConfig *string `json:"rclone_config,omitempty"`
 	RemoteName   string  `json:"remote_name"`
 }

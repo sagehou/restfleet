@@ -561,7 +561,7 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            provider: "RCLONE_ONEDRIVE";
+            provider: "RCLONE_ONEDRIVE" | "RCLONE_GDRIVE" | "RCLONE_WEBDAV";
             remote_name: string;
             /** @enum {string} */
             status: "UNTESTED" | "HEALTHY" | "DEGRADED" | "EXPIRED" | "DISABLED";
@@ -588,7 +588,7 @@ export interface components {
         StorageCredentialCreate: {
             name: string;
             remote_name: string;
-            /** @description Restricted OneDrive + Crypt configuration, at most 256 KiB UTF-8. */
+            /** @description Restricted OneDrive, Google Drive or HTTPS WebDAV + Crypt configuration, at most 256 KiB UTF-8. Provider is inferred; endpoint and secret values are never returned. */
             rclone_config: string;
         };
         StorageCredentialReplace: {
