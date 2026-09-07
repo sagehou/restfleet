@@ -10,6 +10,7 @@ import (
 
 func repositoryResponse(r domain.Repository) Repository {
 	return Repository{Id: r.ID, Name: r.Name, HostId: r.HostID, StorageCredentialId: r.StorageCredentialID,
+		InitializedAt: r.InitializedAt, LastInitializeOperationId: r.LastInitializeOperationID,
 		Status: RepositoryStatus(r.Status), FormatVersion: r.FormatVersion,
 		GatewaySecretRevision: r.GatewaySecretRevision, ResticSecretRevision: r.ResticSecretRevision,
 		Revision: r.Revision, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}

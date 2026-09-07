@@ -87,6 +87,14 @@
 | REP-015 | P0 | WebDAV 内网、metadata、混合 DNS、重绑定、socket 注入和不可信 TLS 被拒绝；重定向不能选择非固定网络目的地。 |
 | REP-016 | P0 MANUAL_INTEGRATION | 三种后端分别完成真实云端写入、备份、索引和恢复；OAuth 两种后端完成刷新/重启验收，WebDAV 完成认证失效/替换与服务兼容性验收。 |
 
+初始化任务验收（不替代 REP-016）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-017 | P0 | initialize 要求 ADMIN/CSRF/幂等 key，无 body/query；任务、审计、事件与 outbox 原子提交，同 key 不重复创建。 |
+| REP-018 | P0 | 初始化与有效 backup/maintenance lease 冲突时拒绝执行；job/repository 续租及审计后 fence 拒绝旧 owner 提交或刷新。 |
+| REP-019 | P0 | worker 中断后重领，复用原路径/密码及最新 token；成功仅设置中心验证 metadata，保持 PROVISIONING，失败不自动 unlock/delete 或创建另一套凭据。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

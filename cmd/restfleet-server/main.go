@@ -19,6 +19,7 @@ import (
 	"github.com/sagehou/restfleet/internal/buildinfo"
 	"github.com/sagehou/restfleet/internal/persistence/postgres"
 	"github.com/sagehou/restfleet/internal/rclone"
+	"github.com/sagehou/restfleet/internal/restic"
 	"github.com/sagehou/restfleet/internal/security"
 	control "github.com/sagehou/restfleet/internal/server"
 	"github.com/sagehou/restfleet/internal/server/agentgrpc"
@@ -65,6 +66,7 @@ func run(logger *slog.Logger) error {
 	}
 	var credentialRuntime *rclone.Runtime
 	var runCredentialTest control.CredentialTestRunner
+	var initializeRepository control.RepositoryInitializer
 	if config.EnrollmentEnabled {
 		credentialRuntime, err = rclone.NewRuntime(config.CredentialRuntimeDir, config.RcloneBinary)
 		if err != nil {
@@ -72,12 +74,18 @@ func run(logger *slog.Logger) error {
 		}
 		defer func() { _ = credentialRuntime.Close() }()
 		runCredentialTest = credentialRuntime.Test
+		provisioner, err := restic.NewProvisioner(config.ResticBinary, credentialRuntime)
+		if err != nil {
+			return err
+		}
+		initializeRepository = provisioner.Provision
 	}
 	controlPlane, err := control.NewControlPlane(store, control.Settings{
-		RunCredentialTest: runCredentialTest,
-		BootstrapToken:    config.BootstrapToken,
-		MasterKey:         config.MasterKey,
-		ExpectedSchema:    postgres.ExpectedSchemaVersion,
+		RunCredentialTest:    runCredentialTest,
+		InitializeRepository: initializeRepository,
+		BootstrapToken:       config.BootstrapToken,
+		MasterKey:            config.MasterKey,
+		ExpectedSchema:       postgres.ExpectedSchemaVersion,
 		Enrollment: control.EnrollmentSettings{
 			Pepper: security.DeriveEnrollmentPepper(config.MasterKey),
 			CA:     agentCA, PublicURL: config.PublicURL,

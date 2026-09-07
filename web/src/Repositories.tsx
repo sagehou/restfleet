@@ -1,7 +1,8 @@
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import type { components } from './api/schema'
 import { ApiError, csrfToken, errorMessage, requestJSON } from './api/client'
 
+type Operation = components['schemas']['Operation']
 type Repository = components['schemas']['Repository']
 type RepositoryList = components['schemas']['RepositoryList']
 type Host = components['schemas']['Host']
@@ -24,6 +25,11 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [operation, setOperation] = useState<Operation | null>(null)
+  const [operationRefresh, setOperationRefresh] = useState(0)
+  const initializeKey = useRef<{ repositoryId: string; key: string } | null>(null)
+  const operationId = selected?.last_initialize_operation_id
+  const initializing = Boolean(operationId && (!operation || operation.id !== operationId || !operation.finished_at))
 
   const handleError = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) { onUnauthorized(); return }
@@ -48,6 +54,41 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
     void load(undefined, controller.signal)
     return () => controller.abort()
   }, [load])
+
+  useEffect(() => {
+    if (!operationId) return
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const poll = () => requestJSON<Operation>(`/api/v1/operations/${operationId}`, { signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return
+        setOperation(result)
+        if (!result.finished_at) { timer = setTimeout(() => { void poll() }, 1000); return }
+        void requestJSON<Repository>(`${endpoint}/${result.repository_id}`, { signal: controller.signal })
+          .then((repo) => { if (!controller.signal.aborted) setSelected((current) => current?.id === repo.id ? repo : current) })
+          .catch((error: unknown) => { if (!controller.signal.aborted) handleError(error) })
+        void load(undefined, controller.signal)
+      })
+      .catch((error: unknown) => { if (!controller.signal.aborted) handleError(error) })
+    void poll()
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [operationId, operationRefresh, handleError, load])
+
+  async function initialize() {
+    if (!selected || busy || initializing || selected.initialized_at) return
+    setBusy(true)
+    setMessage('')
+    try {
+      if (initializeKey.current?.repositoryId !== selected.id) initializeKey.current = { repositoryId: selected.id, key: crypto.randomUUID() }
+      const result = await requestJSON<Operation>(`${endpoint}/${selected.id}/initialize`, {
+        method: 'POST', headers: { 'X-CSRF-Token': csrfToken(), 'Idempotency-Key': initializeKey.current.key },
+      })
+      initializeKey.current = null
+      setOperation(result)
+      setSelected((current) => current?.id === result.repository_id ? { ...current, last_initialize_operation_id: result.id } : current)
+    } catch (error) { handleError(error) }
+    finally { setBusy(false) }
+  }
 
   async function loadCredentials(cursor?: string) {
     setBusy(true)
@@ -105,7 +146,7 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
           {canManage && <button className="primary-button" disabled={busy} onClick={() => { setCreating(true); setSelected(null); void loadCredentials() }}>创建仓库</button>}
         </div>
       </div>
-      <p className="warning-text" role="status">当前支持安全创建仓库记录。初始化任务、Gateway 接入和 Agent 确认尚未接通，新仓库暂不可备份。</p>
+      <p className="warning-text" role="status">当前支持创建仓库和中心初始化。Gateway 接入和 Agent 确认尚未接通，新仓库暂不可备份。</p>
       {message && <p className="error-message" role="alert">{message}</p>}
       {creating && (
         <form aria-label="创建独立仓库" className="credential-form" onSubmit={submit}>
@@ -136,13 +177,22 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
             <div><dt>所属 Host</dt><dd>{hostName(selected.host_id)}</dd></div>
             <div><dt>存储凭据 ID</dt><dd>{selected.storage_credential_id}</dd></div>
             <div><dt>状态</dt><dd>{statusLabels[selected.status]}</dd></div>
+            <div><dt>中心初始化</dt><dd>{selected.initialized_at ? `已验证（${selected.initialized_at}）` : '尚未完成'}</dd></div>
             <div><dt>仓库格式</dt><dd>{selected.format_version ? `v${selected.format_version}` : '尚未验证'}</dd></div>
             <div><dt>Gateway 凭据版本</dt><dd>{selected.gateway_secret_revision}</dd></div>
             <div><dt>Restic 凭据版本</dt><dd>{selected.restic_secret_revision}</dd></div>
             <div><dt>记录版本</dt><dd>{selected.revision}</dd></div>
           </dl>
           <p className="muted">快照和容量尚未采集；保存凭据版本不代表已下发或已被 Agent 接受。</p>
-          <button className="secondary-button" disabled={busy} onClick={() => { void openDetail(selected.id) }}>刷新详情</button>
+          {operationId && <div role="status" aria-label="初始化任务状态">
+            <p>操作 {operationId}：{!operation || operation.id !== operationId ? '正在读取状态' : operation.finished_at
+              ? operation.status === 'SUCCEEDED' ? '中心初始化已验证，等待 Gateway 和 Agent 确认' : `初始化未成功（${operation.error_code}）`
+              : operation.status === 'QUEUED' ? '等待中心 worker' : '正在初始化'}</p>
+          </div>}
+          <div className="actions">
+            {canManage && selected.status === 'PROVISIONING' && !selected.initialized_at && <button className="primary-button" disabled={busy || initializing} onClick={() => { void initialize() }}>初始化仓库</button>}
+            <button className="secondary-button" disabled={busy} onClick={() => { setOperationRefresh((current) => current + 1); void openDetail(selected.id) }}>刷新详情</button>
+          </div>
         </article>
       )}
       {loading && <p aria-live="polite">正在加载仓库…</p>}

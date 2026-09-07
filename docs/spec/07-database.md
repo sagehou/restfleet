@@ -226,6 +226,14 @@ Host 行锁后依次锁定 StorageCredential、写入两份独立随机密码的
 
 新仓库 MUST 为 PROVISIONING，format_version MUST 为 NULL，凭据与记录 revision 为 1。信封 AAD MUST 绑定 Host、Repository、kind、revision、secret ID 和 master key ID。运行时角色仅获两张新表的 SELECT/INSERT；后续初始化或轮换所需更新权限 MUST 在对应迁移中显式增加。记录创建不需要 outbox；后续 initialize MUST 使用持久化 Operation/jobs，不能复用 HTTP 请求寿命执行。
 
+### 5.4.2 M4 初始化（schema 9）
+
+迁移 00009 MUST 添加 repositories 的原生 restic_id（不返回 API）、initialized_at 和 last_initialize_operation_id；扩展 operations/jobs 的 REPOSITORY_INITIALIZE 类型和 repository_id FK。已有密文/AAD/密码 MUST 不变。成功结果与 Operation 终态、事件、outbox、审计及租约释放 MUST 同事务提交，initialized_at MUST 对应 format v2 与有效原生 ID。失败不设置这些字段，不将 Repository 改为 READY。
+
+repository_leases 以 repository_id 为主键，保存 operation_id、owner、kind（MAINTENANCE/BACKUP）和 expires_at。当前初始化只取得 MAINTENANCE；未来备份与维护 MUST 复用此 admission 边界，不得旁路。领取按 job→operation→Host→Repository→credential→lease→audit 锁定，仓库 advisory xact lock 协调 admission；job/repository 两份租约 MUST 原子续租。任何有效备份/维护 lease 阻止领取。runtime MUST 单实例并等待子进程退出，DB lease 不等价于云端写入 fencing。
+
+运行角色只增加租约 SELECT/INSERT/UPDATE 和仓库初始化 metadata 列 UPDATE，不授予 DELETE 或密码字段 UPDATE。有初始化 Operation 时 Down MUST 在删除字段前失败；生产使用前向修复。
+
 ### 5.5 template_revisions / plan_revisions
 
 每次变更保存不可变 snapshot：

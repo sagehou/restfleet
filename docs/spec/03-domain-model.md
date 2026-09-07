@@ -205,6 +205,8 @@ gateway_secret_revision
 restic_secret_ref
 restic_secret_revision
 format_version
+initialized_at / last_initialize_operation_id
+restic_id             central-only native identity, never an Agent ACK
 status                PROVISIONING | READY | DEGRADED | LOCKED | DISABLED | ERROR
 maintenance_policy_id
 last_indexed_at
@@ -354,6 +356,7 @@ FORGET
 PRUNE
 UNLOCK
 CREDENTIAL_TEST
+REPOSITORY_INITIALIZE
 CREDENTIAL_ROTATE
 HOOK
 ```

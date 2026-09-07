@@ -73,26 +73,29 @@ type Store interface {
 	Repositories(context.Context, uuid.UUID, int) ([]domain.Repository, error)
 	Repository(context.Context, uuid.UUID) (domain.Repository, error)
 	RepositoryCount(context.Context) (int64, error)
+	RepositoryResticSecret(context.Context, uuid.UUID) (domain.SecretEnvelope, error)
 	CreateRepository(context.Context, domain.Repository, domain.SecretEnvelope, domain.SecretEnvelope, domain.AuditEvent) (domain.Repository, error)
 	Operation(context.Context, uuid.UUID) (domain.Operation, error)
-	EnqueueCredentialTest(context.Context, domain.Operation, []byte, []byte, []byte, domain.AuditEvent) (domain.Operation, error)
+	EnqueueStorageOperation(context.Context, domain.Operation, []byte, []byte, []byte, domain.AuditEvent) (domain.Operation, error)
 	ClaimCredentialJob(context.Context, uuid.UUID) (domain.CredentialJob, error)
 	RenewCredentialJob(context.Context, uuid.UUID, uuid.UUID) error
 	RefreshCredentialJob(context.Context, uuid.UUID, uuid.UUID, int64, domain.SecretEnvelope) (domain.StorageCredential, error)
 	CompleteCredentialJob(context.Context, uuid.UUID, uuid.UUID, string) error
+	CompleteRepositoryJob(context.Context, uuid.UUID, uuid.UUID, string, string, int) error
 }
 
 // Settings controls security policy. Production defaults are applied to zero values.
 type Settings struct {
-	BootstrapToken    string
-	IdleTTL           time.Duration
-	AbsoluteTTL       time.Duration
-	PasswordParams    security.Argon2Params
-	ExpectedSchema    int
-	Clock             func() time.Time
-	Enrollment        EnrollmentSettings
-	MasterKey         []byte
-	RunCredentialTest CredentialTestRunner
+	BootstrapToken       string
+	IdleTTL              time.Duration
+	AbsoluteTTL          time.Duration
+	PasswordParams       security.Argon2Params
+	ExpectedSchema       int
+	Clock                func() time.Time
+	Enrollment           EnrollmentSettings
+	MasterKey            []byte
+	RunCredentialTest    CredentialTestRunner
+	InitializeRepository RepositoryInitializer
 }
 
 // RequestMeta contains only non-secret request correlation data.
@@ -118,18 +121,19 @@ func (e *ValidationError) Error() string {
 
 // ControlPlane contains M1 auth and readiness rules without HTTP or SQL details.
 type ControlPlane struct {
-	store              Store
-	bootstrapTokenHash []byte
-	idleTTL            time.Duration
-	absoluteTTL        time.Duration
-	passwordParams     security.Argon2Params
-	dummyPasswordHash  string
-	expectedSchema     int
-	clock              func() time.Time
-	enrollment         EnrollmentSettings
-	disconnectAgent    func(uuid.UUID)
-	masterKey          []byte
-	runCredentialTest  CredentialTestRunner
+	store                Store
+	bootstrapTokenHash   []byte
+	idleTTL              time.Duration
+	absoluteTTL          time.Duration
+	passwordParams       security.Argon2Params
+	dummyPasswordHash    string
+	expectedSchema       int
+	clock                func() time.Time
+	enrollment           EnrollmentSettings
+	disconnectAgent      func(uuid.UUID)
+	masterKey            []byte
+	runCredentialTest    CredentialTestRunner
+	initializeRepository RepositoryInitializer
 }
 
 func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
@@ -146,7 +150,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		settings.PasswordParams = security.DefaultArgon2Params
 	}
 	if settings.ExpectedSchema == 0 {
-		settings.ExpectedSchema = 8
+		settings.ExpectedSchema = 9
 	}
 	if settings.Enrollment.HeartbeatInterval == 0 {
 		settings.Enrollment.HeartbeatInterval = 15 * time.Second
@@ -162,17 +166,18 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		return nil, err
 	}
 	return &ControlPlane{
-		store:              store,
-		bootstrapTokenHash: security.HashSecret(settings.BootstrapToken),
-		idleTTL:            settings.IdleTTL,
-		absoluteTTL:        settings.AbsoluteTTL,
-		passwordParams:     settings.PasswordParams,
-		dummyPasswordHash:  dummyHash,
-		expectedSchema:     settings.ExpectedSchema,
-		clock:              settings.Clock,
-		enrollment:         settings.Enrollment,
-		masterKey:          append([]byte(nil), settings.MasterKey...),
-		runCredentialTest:  settings.RunCredentialTest,
+		store:                store,
+		bootstrapTokenHash:   security.HashSecret(settings.BootstrapToken),
+		idleTTL:              settings.IdleTTL,
+		absoluteTTL:          settings.AbsoluteTTL,
+		passwordParams:       settings.PasswordParams,
+		dummyPasswordHash:    dummyHash,
+		expectedSchema:       settings.ExpectedSchema,
+		clock:                settings.Clock,
+		enrollment:           settings.Enrollment,
+		masterKey:            append([]byte(nil), settings.MasterKey...),
+		runCredentialTest:    settings.RunCredentialTest,
+		initializeRepository: settings.InitializeRepository,
 	}, nil
 }
 

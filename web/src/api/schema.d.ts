@@ -466,6 +466,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repositories/{repository_id}/initialize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Queues central repository initialization. No body or query. Success is not READY or Agent ACK. */
+        post: operations["initializeRepository"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/operations/{operation_id}": {
         parameters: {
             query?: never;
@@ -500,6 +519,10 @@ export interface components {
             status: "PROVISIONING" | "READY" | "DEGRADED" | "LOCKED" | "DISABLED" | "ERROR";
             /** @description Absent until verified by the central initialization worker. */
             format_version?: number;
+            /** Format: date-time */
+            initialized_at?: string;
+            /** Format: uuid */
+            last_initialize_operation_id?: string;
             /** Format: int64 */
             gateway_secret_revision: number;
             /** Format: int64 */
@@ -530,8 +553,10 @@ export interface components {
         Operation: {
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            repository_id?: string;
             /** @enum {string} */
-            type: "CREDENTIAL_TEST";
+            type: "CREDENTIAL_TEST" | "REPOSITORY_INITIALIZE";
             /** @enum {string} */
             status: "QUEUED" | "DISPATCHED" | "ACKNOWLEDGED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCEL_REQUESTED" | "CANCELED" | "TIMED_OUT" | "LOST" | "REJECTED";
             /** @enum {string} */
@@ -554,7 +579,7 @@ export interface components {
             /** Format: date-time */
             finished_at?: string;
             /** @enum {string} */
-            error_code: "" | "CONNECTION_FAILED" | "TEST_TIMED_OUT" | "CONFIG_UNSAFE" | "REFRESH_FAILED" | "CREDENTIAL_CHANGED" | "CREDENTIAL_DISABLED" | "SECRET_UNAVAILABLE" | "WORKER_LOST";
+            error_code: "" | "CONNECTION_FAILED" | "TEST_TIMED_OUT" | "CONFIG_UNSAFE" | "REFRESH_FAILED" | "CREDENTIAL_CHANGED" | "CREDENTIAL_DISABLED" | "SECRET_UNAVAILABLE" | "WORKER_LOST" | "INITIALIZE_FAILED" | "INITIALIZE_TIMED_OUT" | "REPOSITORY_LOCKED" | "REPOSITORY_MISMATCH" | "REPOSITORY_NOT_EMPTY" | "PASSWORD_REJECTED" | "REPOSITORY_UNAVAILABLE";
         };
         StorageCredential: {
             /** Format: uuid */
@@ -1774,6 +1799,40 @@ export interface operations {
             };
             path: {
                 credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable Operation; poll the Location URL for progress. */
+            202: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    initializeRepository: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                repository_id: string;
             };
             cookie?: never;
         };
