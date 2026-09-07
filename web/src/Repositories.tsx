@@ -85,7 +85,7 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
       })
       initializeKey.current = null
       setOperation(result)
-      setSelected((current) => current?.id === result.repository_id ? { ...current, last_initialize_operation_id: result.id } : current)
+      setSelected((current) => current && current.id === result.repository_id ? { ...current, last_initialize_operation_id: result.id } : current)
     } catch (error) { handleError(error) }
     finally { setBusy(false) }
   }
