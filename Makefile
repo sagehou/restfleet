@@ -59,6 +59,7 @@ lint: tools
 	cd web && $(NPM) run typecheck
 
 test:
+	$(GO) -C tools test ./...
 	$(GO) test ./...
 	cd web && $(NPM) test
 
