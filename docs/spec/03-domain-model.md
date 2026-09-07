@@ -219,9 +219,11 @@ created_at / updated_at / revision
 
 V1 不允许一个 Host 同时绑定多个 active Repository，也不允许多个 Host 绑定同一 Repository。Schema 可以为 V2 预留 join table，但 API 必须拒绝 Shared Repo。
 
+未归档 Repository MUST 独占 Host；DISABLED/ERROR 不释放归属，避免通过状态变化隐式创建第二个仓库。初始化尚未验证时 format_version MUST 为空。
+
 ### RepositoryCredentialRevision
 
-记录向 Agent 下发的版本，而非明文：
+记录可向 Agent 下发的凭据版本引用，而非明文。版本存在或 valid_from 生效时间 MUST NOT 被解释为已下发/已接受；接受状态以 Agent 配置 ACK 为准。
 
 ```text
 id

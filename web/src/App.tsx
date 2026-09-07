@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react'
 import type { components } from './api/schema'
 import { ApiError, csrfToken, errorMessage, requestJSON } from './api/client'
 import { StorageCredentials } from './StorageCredentials'
+import { Repositories } from './Repositories'
 
 type Session = components['schemas']['Session']
 type BootstrapStatus = components['schemas']['BootstrapStatus']
@@ -15,7 +16,7 @@ type AgentList = components['schemas']['AgentList']
 type EnrollmentTokenCreated = components['schemas']['EnrollmentTokenCreated']
 type Problem = components['schemas']['Problem']
 type Phase = 'loading' | 'bootstrap' | 'login' | 'authenticated' | 'error'
-type Page = 'overview' | 'hosts' | 'credentials' | 'version'
+type Page = 'overview' | 'hosts' | 'credentials' | 'repositories' | 'version'
 type DataState = 'idle' | 'loading' | 'ready' | 'error'
 
 const navigation = [
@@ -252,7 +253,10 @@ export function App() {
           <button className={page === 'credentials' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('credentials')}>
             存储凭据
           </button>
-          {navigation.slice(2).map((item) => (
+          <button className={page === 'repositories' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('repositories')}>
+            仓库
+          </button>
+          {navigation.slice(3).map((item) => (
             <button className="nav-item" disabled key={item} title="后续里程碑提供">
               {item}
             </button>
@@ -276,6 +280,7 @@ export function App() {
           <HostsView hosts={hosts} state={dataState} reload={loadAuthenticatedData} />
         )}
         {page === 'credentials' && <StorageCredentials canManage={session?.user.role === 'ADMIN'} onUnauthorized={storageSessionExpired} />}
+        {page === 'repositories' && <Repositories hosts={hosts} canManage={session?.user.role === 'ADMIN'} onUnauthorized={storageSessionExpired} />}
         {page === 'version' && (
           <VersionView version={version} state={dataState} />
         )}

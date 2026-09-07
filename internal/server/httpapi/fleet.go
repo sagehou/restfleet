@@ -470,6 +470,12 @@ func (a *API) fleetProblem(w http.ResponseWriter, r *http.Request, err error) {
 		a.problem(w, r, http.StatusUnprocessableEntity, "VALIDATION_FAILED", "Validation failed", "One or more fields are invalid.", &fieldErrors)
 	case errors.Is(err, control.ErrForbidden):
 		a.problem(w, r, http.StatusForbidden, "ROLE_DENIED", "Request denied", "Administrator access is required.", nil)
+	case errors.Is(err, domain.ErrHostRepositoryExists):
+		a.problem(w, r, http.StatusConflict, "HOST_REPOSITORY_EXISTS", "Conflict", "This Host already owns a repository. Refresh the repository list before retrying.", nil)
+	case errors.Is(err, domain.ErrSharedRepository):
+		a.problem(w, r, http.StatusConflict, "SHARED_REPOSITORY_NOT_SUPPORTED", "Unsupported repository", "V1 requires one independent repository per Host.", nil)
+	case errors.Is(err, domain.ErrHostUnavailable):
+		a.problem(w, r, http.StatusConflict, "HOST_UNAVAILABLE", "Host unavailable", "Disabled or revoked Hosts cannot create repositories.", nil)
 	case errors.Is(err, domain.ErrStorageUnavailable):
 		a.problem(w, r, http.StatusServiceUnavailable, "STORAGE_UNAVAILABLE", "Storage unavailable", "Storage credential management is not available.", nil)
 	case errors.Is(err, domain.ErrCredentialTestBusy):
@@ -477,7 +483,7 @@ func (a *API) fleetProblem(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrIdempotencyReused):
 		a.problem(w, r, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "Conflict", "The idempotency key was used for another request.", nil)
 	case errors.Is(err, domain.ErrCredentialDisabled):
-		a.problem(w, r, http.StatusConflict, "CREDENTIAL_DISABLED", "Credential disabled", "Disabled credentials cannot be replaced.", nil)
+		a.problem(w, r, http.StatusConflict, "CREDENTIAL_DISABLED", "Credential disabled", "Disabled storage credentials cannot be used for this operation.", nil)
 	case errors.Is(err, domain.ErrStorageTargetChanged):
 		a.problem(w, r, http.StatusConflict, "STORAGE_TARGET_CHANGED", "Storage target changed", "Replacement must preserve the storage target and Crypt settings.", nil)
 	case errors.Is(err, domain.ErrNotFound):

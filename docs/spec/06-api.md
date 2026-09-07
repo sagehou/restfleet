@@ -192,7 +192,7 @@ replace-secret/disable MUST 使用 If-Match；发生并发变更返回 412。替
 
 POST /api/v1/storage-credentials/{id}/test 已实现，要求 ADMIN、CSRF 与 Idempotency-Key，禁止 body/query。返回 202 Operation 与 Location；GET /api/v1/operations/{id} 允许 ADMIN/VIEWER 查询进度。未配置 runtime 返回 503；已有未终态测试返回 409 CREDENTIAL_TEST_BUSY。metadata 新增 last_test_operation_id、last_tested_at、last_test_result、last_refreshed_at。成功表示 Crypt 根目录读取成功，不证明写权限。详细事务与错误语义见 [ADR-0009](../adr/0009-credential-test-jobs.md)。
 
-reauthenticate、metadata PATCH 与后续仓库 API 尚未交付；UI MUST NOT 将这些能力展示为可用。
+reauthenticate 与 metadata PATCH 尚未交付；UI MUST NOT 将这些能力展示为可用。仓库 API 当前范围见 8.1。
 
 ## 8. Repositories
 
@@ -213,6 +213,18 @@ V1 Repository 必须传 `host_id`，且一个 Host 只能有一个 active repo�
 Create 只创建 PROVISIONING 记录；initialize 是 202 long operation。也可提供 `initialize=true` convenience，但仍返回 Operation。
 
 任何响应不得包含 backend_path 的完整外部 endpoint、gateway password、Restic password 或 secret ciphertext。
+
+### 8.1 M4 仓库记录批次
+
+已实现 GET/POST collection 与 GET detail。创建要求 ADMIN 与 CSRF，仅接受 name、host_id、storage_credential_id 和可选 shared（默认 false）；shared=true MUST 返回 409 SHARED_REPOSITORY_NOT_SUPPORTED。客户端提交路径、密码、状态或其他未知字段 MUST 返回 400，且不得回显字段值。
+
+Host MUST 为 PENDING/ACTIVE，存储凭据 MUST 未禁用；资源不存在返回 404，Host 不可用返回 409 HOST_UNAVAILABLE，凭据禁用返回 409 CREDENTIAL_DISABLED。UNTESTED 凭据 MAY 用于创建记录，但不得解释为已验证云端读写权限。每个 Host 的唯一性以未归档为界，DISABLED/ERROR 仓库仍占有该 Host。
+
+创建仅返回 201 PROVISIONING metadata、Location 和 ETag；不执行云端操作或派发初始化任务。重复/并发创建同一 Host MUST 返回 409 HOST_REPOSITORY_EXISTS，不生成第二组持久化凭据；请求结果因网络中断不确定时，客户端 SHOULD 刷新列表确认，而不是自动反复创建。未配置 master key 返回 503 STORAGE_UNAVAILABLE。
+
+ADMIN/VIEWER MAY 读取 metadata；列表支持 limit（1–200）与 opaque cursor，拒绝未知/重复 query 参数；detail 禁止 query。API MUST NOT 返回 backend_path、gateway_username、secret_ref、明文或密文。format_version 在中心验证前 MUST 缺省；凭据 revision 仅表示已保存版本，不表示 Agent 已接受。
+
+initialize/test/index/disable/PATCH/stats 以及 Agent 配置下发仍未交付，M4 尚未完成。见 [ADR-0011](../adr/0011-repository-records-and-ownership.md)。
 
 ## 9. Retention 与 Maintenance Policies
 

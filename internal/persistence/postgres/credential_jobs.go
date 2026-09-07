@@ -288,7 +288,7 @@ func (s *Store) RefreshCredentialJob(ctx context.Context, id, owner uuid.UUID, e
 	if err = tx.QueryRow(ctx, "select clock_timestamp()").Scan(&now); err != nil {
 		return job.Credential, err
 	}
-	if err = insertStorageSecret(ctx, tx, e); err != nil {
+	if err = insertSecret(ctx, tx, e); err != nil {
 		return job.Credential, err
 	}
 	_, err = tx.Exec(ctx, `insert into storage_credential_revisions(credential_id,revision,secret_ref,created_at)

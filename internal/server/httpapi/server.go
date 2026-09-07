@@ -262,11 +262,16 @@ func (a *API) DashboardSummary(w http.ResponseWriter, r *http.Request) {
 		a.internalProblem(w, r)
 		return
 	}
+	repositories, err := a.control.RepositoryCount(r.Context())
+	if err != nil {
+		a.internalProblem(w, r)
+		return
+	}
 	a.json(w, http.StatusOK, DashboardSummary{
 		CollectedAt: time.Now().UTC(), Hosts: int64(len(hosts)),
 		AgentsOnline: int64(health.Online), AgentsDegraded: int64(health.Degraded),
 		AgentsOffline: int64(health.Offline),
-		Plans:         0, Repositories: 0, Operations: 0,
+		Plans:         0, Repositories: repositories, Operations: 0,
 	})
 }
 
@@ -283,7 +288,7 @@ func (a *API) Version(w http.ResponseWriter, r *http.Request) {
 		Version:       a.build.Version,
 		Commit:        a.build.Commit,
 		BuiltAt:       a.build.Date,
-		SchemaVersion: 6,
+		SchemaVersion: 7,
 	})
 }
 
