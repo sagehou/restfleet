@@ -214,6 +214,14 @@ create table repositories (
 
 Partial unique index：每 Host 仅一个未 archive Repository。V2 共享 Repo 需要显式迁移，不提前削弱 V1 约束。
 
+### 5.4.1 M4 实际仓库记录（schema 7）
+
+迁移 00007 创建 repositories 与 repository_credential_revisions，复用实际 secrets 信封字段。gateway_username 使用生成的 UUIDv7（SQL uuid），backend_path MUST 精确为 restfleet/agents/{gateway_username}/{repository_id}；身份和相对路径不接受客户端输入。本批不创建尚未使用的维护策略、统计或 Agent ACK 字段。
+
+Host 行锁后依次锁定 StorageCredential、写入两份独立随机密码的密文、Repository、两条初始 revision 与 REPOSITORY_CREATE 审计，MUST 在同一事务提交。任意失败 MUST 全部回滚。唯一索引 repositories_host_idx 以 archived_at is null 为条件，不排除 DISABLED/ERROR，防止错误状态绕过 per-Host 隔离。两个 secret_ref MUST 不同，历史使用 unique(repository_id,kind,revision)，每个历史 secret_ref 唯一。
+
+新仓库 MUST 为 PROVISIONING，format_version MUST 为 NULL，凭据与记录 revision 为 1。信封 AAD MUST 绑定 Host、Repository、kind、revision、secret ID 和 master key ID。运行时角色仅获两张新表的 SELECT/INSERT；后续初始化或轮换所需更新权限 MUST 在对应迁移中显式增加。记录创建不需要 outbox；后续 initialize MUST 使用持久化 Operation/jobs，不能复用 HTTP 请求寿命执行。
+
 ### 5.5 template_revisions / plan_revisions
 
 每次变更保存不可变 snapshot：

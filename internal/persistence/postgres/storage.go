@@ -61,7 +61,7 @@ func (s *Store) StorageCredentialSecret(ctx context.Context, id uuid.UUID) (doma
 	return e, err
 }
 
-func insertStorageSecret(ctx context.Context, tx pgx.Tx, e domain.SecretEnvelope) error {
+func insertSecret(ctx context.Context, tx pgx.Tx, e domain.SecretEnvelope) error {
 	_, err := tx.Exec(ctx, `
 		insert into secrets (id, kind, algorithm, key_id, ciphertext, nonce,
 			wrapped_data_key, wrap_nonce, aad, created_at)
@@ -92,7 +92,7 @@ func (s *Store) SaveStorageCredential(
 		}
 	}
 	if secret != nil {
-		if err := insertStorageSecret(ctx, tx, *secret); err != nil {
+		if err := insertSecret(ctx, tx, *secret); err != nil {
 			return domain.StorageCredential{}, err
 		}
 	}

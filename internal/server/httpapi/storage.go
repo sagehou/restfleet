@@ -24,27 +24,8 @@ func (a *API) ListStorageCredentials(w http.ResponseWriter, r *http.Request, par
 	if _, ok := a.authorizeRead(w, r); !ok {
 		return
 	}
-	for key, values := range r.URL.Query() {
-		if (key != "limit" && key != "cursor") || len(values) != 1 {
-			a.problem(w, r, http.StatusBadRequest, "INVALID_QUERY", "Invalid request", "The list query is invalid.", nil)
-			return
-		}
-	}
-	limit := 50
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
-	after := uuid.Nil
-	if params.Cursor != nil {
-		raw, err := base64.RawURLEncoding.DecodeString(*params.Cursor)
-		if err != nil || len(raw) != 16 {
-			a.problem(w, r, http.StatusBadRequest, "INVALID_CURSOR", "Invalid request", "The cursor is invalid.", nil)
-			return
-		}
-		copy(after[:], raw)
-	}
-	if limit < 1 || limit > 200 {
-		a.problem(w, r, http.StatusBadRequest, "INVALID_LIMIT", "Invalid request", "Limit must be between 1 and 200.", nil)
+	after, limit, ok := a.listPage(w, r, params.Limit, params.Cursor)
+	if !ok {
 		return
 	}
 	credentials, err := a.control.StorageCredentials(r.Context(), after, limit+1)

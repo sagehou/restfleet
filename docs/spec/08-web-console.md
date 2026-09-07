@@ -137,6 +137,12 @@ Actions：Test、Refresh Index、Check、Retention Preview、Prune、Unlock Prev
 
 UI 必须解释 `restore size`、`raw data`、`provider used` 三者差异。
 
+### 6.3 M4 仓库记录批次
+
+当前开放 list/detail 与 ADMIN 创建记录，复用现有控制台样式。创建使用已有 Host 与未禁用 StorageCredential，不接受密码或路径；Viewer 仅可读。列表和凭据选择 MUST 支持分页。Dashboard 仓库数 MUST 来源于未归档记录的实际计数。
+
+UI MUST 明示 PROVISIONING 暂不可备份；format_version 缺省显示“尚未验证”，快照与容量显示尚未采集而非虚构 0。保存的凭据版本不表示已被 Agent 接受。失败请求显示错误，不伪装为空列表；创建冲突提示刷新列表确认已有结果。尚未交付的初始化、维护、轮换等动作 MUST NOT 显示为可用。
+
 ## 7. Templates
 
 - 展示 current revision、paths count、exclude count、schedule、retention、dependent Plans；

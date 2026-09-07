@@ -291,6 +291,36 @@ func (e OperationType) Valid() bool {
 	}
 }
 
+// Defines values for RepositoryStatus.
+const (
+	RepositoryStatusDEGRADED     RepositoryStatus = "DEGRADED"
+	RepositoryStatusDISABLED     RepositoryStatus = "DISABLED"
+	RepositoryStatusERROR        RepositoryStatus = "ERROR"
+	RepositoryStatusLOCKED       RepositoryStatus = "LOCKED"
+	RepositoryStatusPROVISIONING RepositoryStatus = "PROVISIONING"
+	RepositoryStatusREADY        RepositoryStatus = "READY"
+)
+
+// Valid indicates whether the value is a known member of the RepositoryStatus enum.
+func (e RepositoryStatus) Valid() bool {
+	switch e {
+	case RepositoryStatusDEGRADED:
+		return true
+	case RepositoryStatusDISABLED:
+		return true
+	case RepositoryStatusERROR:
+		return true
+	case RepositoryStatusLOCKED:
+		return true
+	case RepositoryStatusPROVISIONING:
+		return true
+	case RepositoryStatusREADY:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StorageCredentialProvider.
 const (
 	RCLONEONEDRIVE StorageCredentialProvider = "RCLONE_ONEDRIVE"
@@ -613,6 +643,42 @@ type Problem struct {
 	Type      string             `json:"type"`
 }
 
+// Repository defines model for Repository.
+type Repository struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// FormatVersion Absent until verified by the central initialization worker.
+	FormatVersion         *int               `json:"format_version,omitempty"`
+	GatewaySecretRevision int64              `json:"gateway_secret_revision"`
+	HostId                openapi_types.UUID `json:"host_id"`
+	Id                    openapi_types.UUID `json:"id"`
+	Name                  string             `json:"name"`
+	ResticSecretRevision  int64              `json:"restic_secret_revision"`
+	Revision              int64              `json:"revision"`
+	Status                RepositoryStatus   `json:"status"`
+	StorageCredentialId   openapi_types.UUID `json:"storage_credential_id"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+}
+
+// RepositoryStatus defines model for Repository.Status.
+type RepositoryStatus string
+
+// RepositoryCreate defines model for RepositoryCreate.
+type RepositoryCreate struct {
+	HostId openapi_types.UUID `json:"host_id"`
+	Name   string             `json:"name"`
+
+	// Shared true is rejected with 409 SHARED_REPOSITORY_NOT_SUPPORTED in V1.
+	Shared              *bool              `json:"shared,omitempty"`
+	StorageCredentialId openapi_types.UUID `json:"storage_credential_id"`
+}
+
+// RepositoryList defines model for RepositoryList.
+type RepositoryList struct {
+	Items      []Repository `json:"items"`
+	NextCursor *string      `json:"next_cursor,omitempty"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	AbsoluteExpiresAt time.Time `json:"absolute_expires_at"`
@@ -750,6 +816,17 @@ type CreateEnrollmentTokenParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// ListRepositoriesParams defines parameters for ListRepositories.
+type ListRepositoriesParams struct {
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// CreateRepositoryParams defines parameters for CreateRepository.
+type CreateRepositoryParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // ListStorageCredentialsParams defines parameters for ListStorageCredentials.
 type ListStorageCredentialsParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
@@ -799,6 +876,9 @@ type UpdateHostJSONRequestBody = HostPatch
 
 // CreateEnrollmentTokenJSONRequestBody defines body for CreateEnrollmentToken for application/json ContentType.
 type CreateEnrollmentTokenJSONRequestBody = EnrollmentTokenCreate
+
+// CreateRepositoryJSONRequestBody defines body for CreateRepository for application/json ContentType.
+type CreateRepositoryJSONRequestBody = RepositoryCreate
 
 // CreateStorageCredentialJSONRequestBody defines body for CreateStorageCredential for application/json ContentType.
 type CreateStorageCredentialJSONRequestBody = StorageCredentialCreate
@@ -871,6 +951,15 @@ type ServerInterface interface {
 
 	// (GET /api/v1/operations/{operation_id})
 	GetOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID)
+
+	// (GET /api/v1/repositories)
+	ListRepositories(w http.ResponseWriter, r *http.Request, params ListRepositoriesParams)
+
+	// (POST /api/v1/repositories)
+	CreateRepository(w http.ResponseWriter, r *http.Request, params CreateRepositoryParams)
+
+	// (GET /api/v1/repositories/{repo_id})
+	GetRepository(w http.ResponseWriter, r *http.Request, repoId openapi_types.UUID)
 
 	// (GET /api/v1/storage-credentials)
 	ListStorageCredentials(w http.ResponseWriter, r *http.Request, params ListStorageCredentialsParams)
@@ -1700,6 +1789,123 @@ func (siw *ServerInterfaceWrapper) GetOperation(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ListRepositories operation middleware
+func (siw *ServerInterfaceWrapper) ListRepositories(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRepositoriesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRepositories(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRepository operation middleware
+func (siw *ServerInterfaceWrapper) CreateRepository(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateRepositoryParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRepository(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRepository operation middleware
+func (siw *ServerInterfaceWrapper) GetRepository(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "repo_id" -------------
+	var repoId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "repo_id", r.PathValue("repo_id"), &repoId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repo_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRepository(w, r, repoId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListStorageCredentials operation middleware
 func (siw *ServerInterfaceWrapper) ListStorageCredentials(w http.ResponseWriter, r *http.Request) {
 
@@ -2233,6 +2439,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agent-enrollment", wrapper.EnrollAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/agents/{agent_id}", wrapper.GetAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/agents/{agent_id}/revoke", wrapper.RevokeAgent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/repositories", wrapper.ListRepositories)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/repositories", wrapper.CreateRepository)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/repositories/{repo_id}", wrapper.GetRepository)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.ListStorageCredentials)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.CreateStorageCredential)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)

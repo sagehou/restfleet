@@ -70,6 +70,10 @@ type Store interface {
 	StorageCredential(context.Context, uuid.UUID) (domain.StorageCredential, error)
 	StorageCredentialSecret(context.Context, uuid.UUID) (domain.SecretEnvelope, error)
 	SaveStorageCredential(context.Context, domain.StorageCredential, int64, *domain.SecretEnvelope, domain.AuditEvent) (domain.StorageCredential, error)
+	Repositories(context.Context, uuid.UUID, int) ([]domain.Repository, error)
+	Repository(context.Context, uuid.UUID) (domain.Repository, error)
+	RepositoryCount(context.Context) (int64, error)
+	CreateRepository(context.Context, domain.Repository, domain.SecretEnvelope, domain.SecretEnvelope, domain.AuditEvent) (domain.Repository, error)
 	Operation(context.Context, uuid.UUID) (domain.Operation, error)
 	EnqueueCredentialTest(context.Context, domain.Operation, []byte, []byte, []byte, domain.AuditEvent) (domain.Operation, error)
 	ClaimCredentialJob(context.Context, uuid.UUID) (domain.CredentialJob, error)
@@ -142,7 +146,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		settings.PasswordParams = security.DefaultArgon2Params
 	}
 	if settings.ExpectedSchema == 0 {
-		settings.ExpectedSchema = 6
+		settings.ExpectedSchema = 7
 	}
 	if settings.Enrollment.HeartbeatInterval == 0 {
 		settings.Enrollment.HeartbeatInterval = 15 * time.Second

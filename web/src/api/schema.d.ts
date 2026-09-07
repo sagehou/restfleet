@@ -342,6 +342,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listRepositories"];
+        put?: never;
+        /** @description Creates a PROVISIONING record with independent encrypted credentials. Does not initialize remote storage or enable backups. Concurrent/repeated creation for a Host returns 409 HOST_REPOSITORY_EXISTS; refresh metadata after an ambiguous network result. */
+        post: operations["createRepository"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{repo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getRepository"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage-credentials": {
         parameters: {
             query?: never;
@@ -453,6 +488,45 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Repository: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            host_id: string;
+            /** Format: uuid */
+            storage_credential_id: string;
+            /** @enum {string} */
+            status: "PROVISIONING" | "READY" | "DEGRADED" | "LOCKED" | "DISABLED" | "ERROR";
+            /** @description Absent until verified by the central initialization worker. */
+            format_version?: number;
+            /** Format: int64 */
+            gateway_secret_revision: number;
+            /** Format: int64 */
+            restic_secret_revision: number;
+            /** Format: int64 */
+            revision: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        RepositoryList: {
+            items: components["schemas"]["Repository"][];
+            next_cursor?: string;
+        };
+        RepositoryCreate: {
+            name: string;
+            /** Format: uuid */
+            host_id: string;
+            /** Format: uuid */
+            storage_credential_id: string;
+            /**
+             * @description true is rejected with 409 SHARED_REPOSITORY_NOT_SUPPORTED in V1.
+             * @default false
+             */
+            shared: boolean;
+        };
         Operation: {
             /** Format: uuid */
             id: string;
@@ -1427,6 +1501,96 @@ export interface operations {
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listRepositories: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repository metadata only; no backend path or secrets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    createRepository: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepositoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Record created; ETag and Location identify the repository. No secrets are returned, even once. */
+            201: {
+                headers: {
+                    ETag?: string;
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Repository"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getRepository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metadata only; ETag contains the revision. PROVISIONING is not READY. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Repository"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };
