@@ -156,6 +156,6 @@ it('restores the latest failed initialization operation when opening a repositor
   }))
   render(<Repositories hosts={[host]} canManage onUnauthorized={onUnauthorized} />)
   fireEvent.click(await screen.findByRole('button', { name: '查看 Archive' }))
-  expect(await screen.findByRole('status', { name: '初始化任务状态' })).toHaveTextContent('REPOSITORY_LOCKED')
+  await waitFor(() => expect(screen.getByRole('status', { name: '初始化任务状态' })).toHaveTextContent('REPOSITORY_LOCKED'))
   expect(screen.getByRole('button', { name: '初始化仓库' })).toBeEnabled()
 })
