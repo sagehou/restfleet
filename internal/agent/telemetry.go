@@ -9,6 +9,7 @@ import (
 	"time"
 
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
+	"github.com/sagehou/restfleet/internal/domain"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -45,7 +46,7 @@ func inventorySnapshot(
 		Containerized:  isContainerized(),
 		AvailableBytes: map[string]uint64{"agent_state": free},
 		ClockOffsetMs:  clockOffset.Milliseconds(),
-		Capabilities:   []string{"certificate_rotation_v1", "desired_state_v1", "inventory_v1"},
+		Capabilities:   []string{"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability},
 	}
 }
 
