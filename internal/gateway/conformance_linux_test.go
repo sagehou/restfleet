@@ -13,7 +13,6 @@ import (
 	"encoding/pem"
 	"io"
 	"math/big"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,7 +20,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -44,7 +42,10 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 			t.Fatal("unapproved engine binary")
 		}
 	}
-	dir := t.TempDir()
+	s, dir, runtimeRoot := supervisorFixture(t, "real", 1)
+	if err := os.WriteFile(filepath.Join(dir, "real-rclone"), []byte(rcloneBinary), 0600); err != nil {
+		t.Fatal(err)
+	}
 	repo := filepath.Join(dir, "repo")
 	passwordFile := filepath.Join(dir, "password")
 	if err := os.WriteFile(passwordFile, []byte("test-only-repository-password-for-gateway"), 0600); err != nil {
@@ -65,61 +66,26 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := os.MkdirTemp("/dev/shm", "rf-gw-real-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(runtime) }()
-	config, socket := filepath.Join(runtime, "rclone.conf"), filepath.Join(runtime, "rest.sock")
-	if err := os.WriteFile(config, nil, 0600); err != nil {
-		t.Fatal(err)
-	}
-	backend := exec.CommandContext(ctx, rcloneBinary, "serve", "restic", repo,
-		"--config", config, "--addr", socket, "--append-only", "--cache-objects=false",
-		"--retries", "1", "--low-level-retries", "1")
-	backend.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C", "TMPDIR=" + runtime}
-	backend.Stdout, backend.Stderr = io.Discard, io.Discard
-	backend.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
-	if backend.Start() != nil {
-		t.Fatal("fixture backend failed to start")
-	}
-	defer func() { _ = syscall.Kill(-backend.Process.Pid, syscall.SIGKILL); _ = backend.Wait() }()
-	for deadline := time.Now().Add(10 * time.Second); ; {
-		conn, err := net.DialTimeout("unix", socket, 100*time.Millisecond)
-		if err == nil {
-			_ = conn.Close()
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("fixture backend socket unavailable")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if err := os.Chmod(socket, 0600); err != nil {
-		t.Fatal(err)
-	}
 	var mu sync.Mutex
 	lockCleanups := 0
-	s, secret, err := NewBackupSession(ctx, bindingFixture(), socket, func(_ context.Context, e Event) error {
+	s.audit = func(_ context.Context, e Event) error {
 		mu.Lock()
 		defer mu.Unlock()
 		if e.Action == "lock_cleanup" {
 			lockCleanups++
 		}
 		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	defer s.Close()
 	server := httptest.NewTLSServer(s)
 	defer server.Close()
+	op := startSupervised(t, s, backupFixture(), noGatewayRefresh)
+	access := waitAccess(t, op)
 	ca := filepath.Join(dir, "ca.pem")
 	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0600); err != nil {
 		t.Fatal(err)
 	}
-	env := []string{"RESTIC_REPOSITORY=rest:" + server.URL + s.prefix, "RESTIC_REST_USERNAME=" + s.binding.GatewayID.String(),
-		"RESTIC_REST_PASSWORD=" + string(secret), "RESTIC_CACERT=" + ca}
+	env := []string{"RESTIC_REPOSITORY=rest:" + server.URL + access.EndpointPath, "RESTIC_REST_USERNAME=" + backupFixture().Binding.GatewayID.String(),
+		"RESTIC_REST_PASSWORD=" + string(access.Password), "RESTIC_CACERT=" + ca}
 	source := filepath.Join(dir, "source")
 	if err := os.Mkdir(source, 0700); err != nil {
 		t.Fatal(err)
@@ -128,7 +94,7 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, filename), []byte(contents), 0600); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := run(env, "backup", "--host", s.binding.HostID.String(), source)
+	raw, err := run(env, "backup", "--host", backupFixture().Binding.HostID.String(), source)
 	if err != nil {
 		t.Fatal("pinned backup through guarded TLS endpoint failed")
 	}
@@ -197,11 +163,11 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 	}
 	client := server.Client()
 	call := func(method, path, body string, want int) {
-		r, err := http.NewRequestWithContext(ctx, method, server.URL+s.prefix+path, strings.NewReader(body))
+		r, err := http.NewRequestWithContext(ctx, method, server.URL+access.EndpointPath+path, strings.NewReader(body))
 		if err != nil {
 			t.Fatal("invalid fixture request")
 		}
-		r.SetBasicAuth(s.binding.GatewayID.String(), string(secret))
+		r.SetBasicAuth(backupFixture().Binding.GatewayID.String(), string(access.Password))
 		resp, err := client.Do(r)
 		if err != nil {
 			t.Fatal("gateway request failed")
@@ -242,4 +208,6 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 	if err != nil || string(after) != foreign {
 		t.Fatal("foreign lock changed")
 	}
+	finishSupervised(t, op)
+	assertSupervisorClean(t, dir, runtimeRoot, backupFixture())
 }

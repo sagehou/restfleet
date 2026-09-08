@@ -102,6 +102,13 @@ Gateway 临时锁例外验收（用户确认的安全模型变更，见 ADR-0014
 | REP-020 | P0 | 锁归属绑定可信 Host/Repository/Operation 与独立会话能力；上传失败不授权，取消/过期/重启及删除响应丢失不恢复删除权，旧会话凭据不能删除新会话对象。 |
 | REP-021 | P0 | 公共写入先验证完整内容 SHA-256、大小和规范路径，config/keys 只读；并发重复/畸形/跨 Host/未知方法/错误 TLS/后端非 404 探测均 fail closed，审计失败不执行锁删除。 |
 
+Gateway supervisor 生命周期验收：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-022 | P0 | 配置/审计/socket/HEAD config 验证未完成或失败时，不发布路由/能力；ready 后请求只到固定 UUID root 的 append-only 后端；不自动 init 或重启。 |
+| REP-023 | P0 | 会话结束、超时、取消、后端退出、refresh 目标篡改/回写失败；能力清零、路由撤销、进程组退出、tmpfs 清理完成后才释放进程内容量；同 Host/Repo/Gateway/Operation/Credential 互斥，不替代持久化租约。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

@@ -20,14 +20,15 @@ import (
 )
 
 var (
-	ErrUnsafeRuntime  = errors.New("unsafe credential runtime")
-	ErrRuntimeBusy    = errors.New("credential runtime is already owned")
-	ErrRuntimeClosed  = errors.New("credential runtime is closed")
-	ErrConfigChanged  = errors.New("credential runtime configuration changed unexpectedly")
-	ErrRefreshPersist = errors.New("credential refresh could not be persisted")
-	ErrTestFailed     = errors.New("storage connection test failed")
-	ErrTestOutput     = errors.New("invalid storage connection test result")
-	ErrCommandFailed  = errors.New("credential runtime command failed")
+	ErrUnsafeRuntime   = errors.New("unsafe credential runtime")
+	ErrRuntimeBusy     = errors.New("credential runtime is already owned")
+	ErrRuntimeClosed   = errors.New("credential runtime is closed")
+	ErrConfigChanged   = errors.New("credential runtime configuration changed unexpectedly")
+	ErrRefreshPersist  = errors.New("credential refresh could not be persisted")
+	ErrTestFailed      = errors.New("storage connection test failed")
+	ErrTestOutput      = errors.New("invalid storage connection test result")
+	ErrCommandFailed   = errors.New("credential runtime command failed")
+	ErrGatewayLifetime = errors.New("gateway runtime requires a deadline within 24 hours")
 )
 
 const testTimeout = time.Minute
@@ -156,6 +157,30 @@ func (r *Runtime) WithConfig(ctx context.Context, raw []byte, remote string,
 	persist func(context.Context, []byte) error,
 	run func(context.Context, string, string) error,
 ) (resultErr error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	return r.withConfig(ctx, raw, remote, persist, run)
+}
+
+// WithGatewayConfig lends the same protected runtime to a gateway supervisor,
+// for a caller-authorized lifetime of at most 24 hours. It does not renew leases,
+// grant admission or restart a failed session. Callback ownership, refresh CAS,
+// cancellation, error redaction and cleanup are identical to WithConfig.
+func (r *Runtime) WithGatewayConfig(ctx context.Context, raw []byte, remote string,
+	persist func(context.Context, []byte) error,
+	run func(context.Context, string, string) error,
+) error {
+	deadline, ok := ctx.Deadline()
+	if !ok || time.Until(deadline) > 24*time.Hour {
+		return ErrGatewayLifetime
+	}
+	return r.withConfig(ctx, raw, remote, persist, run)
+}
+
+func (r *Runtime) withConfig(ctx context.Context, raw []byte, remote string,
+	persist func(context.Context, []byte) error,
+	run func(context.Context, string, string) error,
+) (resultErr error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.lock == nil {
@@ -168,7 +193,7 @@ func (r *Runtime) WithConfig(ctx context.Context, raw []byte, remote string,
 	if err != nil {
 		return ErrInvalidConfig
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if run == nil {
 		return ErrCommandFailed
