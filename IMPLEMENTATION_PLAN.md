@@ -144,7 +144,9 @@
 
 第八批（#23，已合并）实现 Gateway 单会话安全层、临时锁归属验证、内容哈希/路径/方法限制与固定二进制离线验证（ADR-0014，用户已同意正常备份临时锁例外）。本批不开放公网 listener 或会话创建 API；supervisor、持久化准入/审计、Agent 凭据下发/ACK 和离线协调仍待接线，M4 不标完成。
 
-第九批接入进程内 Gateway supervisor/router：复用 tmpfs/token watcher，增加有界长会话入口、私有 rclone 进程组、ready 后挂载、互斥/容量和完整退出清理。固定二进制备份读回测试改为经 supervisor 执行；command 公网配置、持久化准入/审计、Agent ACK 和离线协调仍待接入。
+第九批（#24，已合并）接入进程内 Gateway supervisor/router：复用 tmpfs/token watcher，增加有界长会话入口、私有 rclone 进程组、ready 后挂载、互斥/容量和完整退出清理。固定二进制备份读回测试改为经 supervisor 执行；command 公网配置、持久化准入/审计、Agent ACK 和离线协调仍待接入。
+
+第十批接入 Agent 仓库凭据交付：复用 outbound mTLS、专用 0600 原子文件、PostgreSQL 交付记录/outbox/审计与精确 ACK；Web 区分交付与确认。只交付本 Host 已初始化仓库的密码，兼容无 capability 的旧 Agent。尚未完成公网 Gateway、持久化 backup admission、密码 overlap/retirement、离线协调或 READY，M4 继续进行。
 
 ### Goal
 
@@ -169,7 +171,7 @@
 
 ### Tests/Exit
 
-- REP-001–023；
+- REP-001–026；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

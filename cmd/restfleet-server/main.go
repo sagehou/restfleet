@@ -85,6 +85,7 @@ func run(logger *slog.Logger) error {
 		InitializeRepository: initializeRepository,
 		BootstrapToken:       config.BootstrapToken,
 		MasterKey:            config.MasterKey,
+		GatewayPublicURL:     config.GatewayPublicURL,
 		ExpectedSchema:       postgres.ExpectedSchemaVersion,
 		Enrollment: control.EnrollmentSettings{
 			Pepper: security.DeriveEnrollmentPepper(config.MasterKey),

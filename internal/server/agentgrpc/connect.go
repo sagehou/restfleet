@@ -2,6 +2,7 @@ package agentgrpc
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -86,6 +87,12 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 		}
 	}
 
+	credentialCapable := slices.Contains(hello.GetCapabilities(), domain.RepositoryCredentialsCapability)
+	if credentialCapable {
+		if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, true); err != nil {
+			return err
+		}
+	}
 	lastAgentSequence := first.GetSequence()
 	for {
 		message, err := waitForMessage(stream, received, revoked)
@@ -124,6 +131,11 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				return status.Error(codes.Unavailable, "heartbeat persistence failed")
 			}
 			s.observeHeartbeatResult("accepted")
+			if credentialCapable {
+				if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, false); err != nil {
+					return err
+				}
+			}
 		case message.GetInventoryReport() != nil:
 			inventory, err := inventoryFromProto(agentID, message.GetInventoryReport())
 			if err != nil {
@@ -138,6 +150,12 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 					return s.denied(stream.Context(), "AGENT_REVOKED", meta, codes.PermissionDenied, "Agent identity is not active")
 				}
 				return status.Error(codes.Unavailable, "inventory persistence failed")
+			}
+		case message.GetCredentialRevisionAccepted() != nil:
+			ack := message.GetCredentialRevisionAccepted()
+			id, err := uuid.Parse(ack.GetDeliveryId())
+			if !credentialCapable || err != nil || s.control.AcceptAgentCredential(stream.Context(), agentID, id, ack.GetRevision()) != nil {
+				return s.invalidMessage(stream, meta, "CREDENTIAL_ACK_INVALID")
 			}
 		case message.GetConfigAccepted() != nil:
 			accepted := message.GetConfigAccepted()

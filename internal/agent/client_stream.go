@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
+	"github.com/sagehou/restfleet/internal/domain"
 )
 
 func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, error) {
@@ -57,7 +58,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 			SupportedProtocolVersions: []string{"1.0", "0.9"},
 			AcceptedConfigRevision:    acceptedRevision,
 			Capabilities: []string{
-				"certificate_rotation_v1", "desired_state_v1", "inventory_v1",
+				"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability,
 			},
 			LocalTime: timestamppb.Now(),
 		}},
@@ -147,6 +148,16 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 			}
 			serverSequence = message.GetSequence()
 			switch {
+			case message.GetCredentialRevision() != nil:
+				ack, err := state.ApplyRepositoryCredential(identity, message.GetCredentialRevision())
+				if err != nil {
+					return true, err
+				}
+				if err := sendAgentMessage(stream, &agentSequence, protocol, &agentv1.AgentToServer{
+					Payload: &agentv1.AgentToServer_CredentialRevisionAccepted{CredentialRevisionAccepted: ack},
+				}); err != nil {
+					return true, err
+				}
 			case message.GetDesiredStateSnapshot() != nil:
 				result, err := state.ApplyDesiredState(identity.AgentID, message.GetDesiredStateSnapshot())
 				if err != nil {

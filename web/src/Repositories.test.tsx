@@ -159,3 +159,14 @@ it('restores the latest failed initialization operation when opening a repositor
   await waitFor(() => expect(screen.getByRole('status', { name: '初始化任务状态' })).toHaveTextContent('REPOSITORY_LOCKED'))
   expect(screen.getByRole('button', { name: '初始化仓库' })).toBeEnabled()
 })
+
+
+it('shows a durable credential ACK without treating the repository as READY', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => respond(String(input) === endpoint
+    ? { items: [repository] }
+    : { ...repository, initialized_at: repository.created_at, agent_credential_revision: 2, agent_credential_accepted_at: repository.updated_at })))
+  render(<Repositories hosts={[host]} canManage onUnauthorized={onUnauthorized} />)
+  fireEvent.click(await screen.findByRole('button', { name: '查看 Archive' }))
+  expect(await screen.findByText(/版本 2，已确认保存/)).toBeInTheDocument()
+  expect(screen.getByText(/不代表 Gateway 已就绪或备份已成功/)).toBeInTheDocument()
+})

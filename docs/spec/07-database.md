@@ -234,6 +234,12 @@ repository_leases 以 repository_id 为主键，保存 operation_id、owner、ki
 
 运行角色只增加租约 SELECT/INSERT/UPDATE 和仓库初始化 metadata 列 UPDATE，不授予 DELETE 或密码字段 UPDATE。有初始化 Operation 时 Down MUST 在删除字段前失败；生产使用前向修复。
 
+### 5.4.3 Agent 凭据交付（schema 10）
+
+`repository_agent_deliveries` MUST 以 agent_id 为主键，保存当前交付 UUID、Repository、单调 revision、Gateway origin+CA 指纹、两个加密 secret_ref、created_at 和可空 accepted_at，不存明文。首次交付/变更 MUST 与脱敏 outbox、秘密访问审计同事务；旧 secret/AAD 不变。锁顺序 Agent→Host→Repository→StorageCredential→delivery→audit，与吊销兼容。
+
+ACK MUST 重验 ACTIVE Agent/Host、未禁用的仓库/存储凭据、当前交付 ID/revision/配置指纹/秘密引用；只确认当前交付并完成旧 outbox，不改变仓库状态。应用角色仅有 SELECT/INSERT/UPDATE，MUST NOT 获得 DELETE；已有交付记录时 Down MUST 拒绝删除历史。
+
 ### 5.5 template_revisions / plan_revisions
 
 每次变更保存不可变 snapshot：

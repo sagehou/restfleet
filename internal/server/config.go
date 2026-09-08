@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/sagehou/restfleet/internal/domain"
 )
 
 type RuntimeConfig struct {
@@ -30,6 +32,7 @@ type RuntimeConfig struct {
 	CredentialRuntimeDir string
 	RcloneBinary         string
 	ResticBinary         string
+	GatewayPublicURL     string
 }
 
 func LoadRuntimeConfig() (RuntimeConfig, error) {
@@ -64,6 +67,7 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 		return RuntimeConfig{}, err
 	}
 
+	config.GatewayPublicURL = os.Getenv("RESTFLEET_GATEWAY_PUBLIC_URL")
 	config.PublicURL = strings.TrimSpace(os.Getenv("RESTFLEET_PUBLIC_URL"))
 	config.GRPCEndpoint = strings.TrimSpace(os.Getenv("RESTFLEET_GRPC_ENDPOINT"))
 	config.GRPCServerName = strings.TrimSpace(os.Getenv("RESTFLEET_GRPC_SERVER_NAME"))
@@ -104,6 +108,10 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 		if !strings.Contains(string(config.ServerCABundlePEM), "-----BEGIN CERTIFICATE-----") {
 			return RuntimeConfig{}, errors.New("RESTFLEET_SERVER_CA_BUNDLE_FILE is not a PEM certificate bundle")
 		}
+	}
+
+	if config.GatewayPublicURL != "" && (!config.EnrollmentEnabled || !domain.ValidGatewayOrigin(config.GatewayPublicURL)) {
+		return RuntimeConfig{}, errors.New("Gateway origin requires HTTPS and complete enrollment configuration")
 	}
 
 	if value := os.Getenv("RESTFLEET_SECURE_COOKIES"); value != "" {

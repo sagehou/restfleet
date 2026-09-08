@@ -9,13 +9,15 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
-const repositoryColumns = "id,host_id,storage_credential_id,name,status,backend_path,gateway_username,gateway_secret_ref,restic_secret_ref,gateway_secret_revision,restic_secret_revision,revision,format_version,created_at,updated_at,coalesce(restic_id,''),initialized_at,last_initialize_operation_id"
+const repositoryColumns = "id,host_id,storage_credential_id,name,status,backend_path,gateway_username,gateway_secret_ref,restic_secret_ref,gateway_secret_revision,restic_secret_revision,revision,format_version,created_at,updated_at,coalesce(restic_id,''),initialized_at,last_initialize_operation_id" +
+	",(select d.revision from repository_agent_deliveries d join agents a on a.id=d.agent_id and a.status='ACTIVE' where d.repository_id=repositories.id and a.host_id=repositories.host_id and d.gateway_secret_ref=repositories.gateway_secret_ref and d.restic_secret_ref=repositories.restic_secret_ref)" +
+	",(select d.accepted_at from repository_agent_deliveries d join agents a on a.id=d.agent_id and a.status='ACTIVE' where d.repository_id=repositories.id and a.host_id=repositories.host_id and d.gateway_secret_ref=repositories.gateway_secret_ref and d.restic_secret_ref=repositories.restic_secret_ref)"
 
 func scanRepository(row rowScanner) (domain.Repository, error) {
 	var r domain.Repository
 	err := row.Scan(&r.ID, &r.HostID, &r.StorageCredentialID, &r.Name, &r.Status, &r.BackendPath,
 		&r.GatewayID, &r.GatewaySecretRef, &r.ResticSecretRef, &r.GatewaySecretRevision, &r.ResticSecretRevision,
-		&r.Revision, &r.FormatVersion, &r.CreatedAt, &r.UpdatedAt, &r.ResticID, &r.InitializedAt, &r.LastInitializeOperationID)
+		&r.Revision, &r.FormatVersion, &r.CreatedAt, &r.UpdatedAt, &r.ResticID, &r.InitializedAt, &r.LastInitializeOperationID, &r.AgentCredentialRevision, &r.AgentCredentialAcceptedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return r, domain.ErrNotFound
 	}

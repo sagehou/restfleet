@@ -109,6 +109,14 @@ Gateway supervisor 生命周期验收：
 | REP-022 | P0 | 配置/审计/socket/HEAD config 验证未完成或失败时，不发布路由/能力；ready 后请求只到固定 UUID root 的 append-only 后端；不自动 init 或重启。 |
 | REP-023 | P0 | 会话结束、超时、取消、后端退出、refresh 目标篡改/回写失败；能力清零、路由撤销、进程组退出、tmpfs 清理完成后才释放进程内容量；同 Host/Repo/Gateway/Operation/Credential 互斥，不替代持久化租约。 |
 
+Agent 初始仓库凭据交付验收（ADR-0015，不替代 REP-011 轮换和 AGT-005）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-024 | P0 | mTLS 下发仅包含同 Host 已初始化仓库的密码；三种 provider 均无云端材料泄漏；无 capability 的旧 Agent 不接收新消息，审计失败不得解密/下发。 |
+| REP-025 | P0 | Agent 原子 0600 落盘后 ACK，重连/重复/并发不改变交付身份；拒绝回滚、冲突和不安全文件；错误保留 last-known-good。 |
+| REP-026 | P0 | ACK 精确绑定当前 Agent/交付 ID/revision/秘密引用/Gateway 配置；跨 Host、禁用、吊销和过期版本被拒绝；ACK/outbox/审计原子提交，Web 不误报 READY。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

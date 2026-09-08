@@ -25,6 +25,8 @@ type Repository struct {
 	FormatVersion                                         *int
 	ResticID                                              string
 	InitializedAt                                         *time.Time
+	AgentCredentialRevision                               *int64
+	AgentCredentialAcceptedAt                             *time.Time
 	LastInitializeOperationID                             *uuid.UUID
 	CreatedAt, UpdatedAt                                  time.Time
 }
