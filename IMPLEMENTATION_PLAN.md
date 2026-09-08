@@ -146,7 +146,9 @@
 
 第九批（#24，已合并）接入进程内 Gateway supervisor/router：复用 tmpfs/token watcher，增加有界长会话入口、私有 rclone 进程组、ready 后挂载、互斥/容量和完整退出清理。固定二进制备份读回测试改为经 supervisor 执行；command 公网配置、持久化准入/审计、Agent ACK 和离线协调仍待接入。
 
-第十批接入 Agent 仓库凭据交付：复用 outbound mTLS、专用 0600 原子文件、PostgreSQL 交付记录/outbox/审计与精确 ACK；Web 区分交付与确认。只交付本 Host 已初始化仓库的密码，兼容无 capability 的旧 Agent。尚未完成公网 Gateway、持久化 backup admission、密码 overlap/retirement、离线协调或 READY，M4 继续进行。
+第十批（#25，已合并）接入 Agent 仓库凭据交付：复用 outbound mTLS、专用 0600 原子文件、PostgreSQL 交付记录/outbox/审计与精确 ACK；Web 区分交付与确认。只交付本 Host 已初始化仓库的密码，兼容无 capability 的旧 Agent。尚未完成公网 Gateway、持久化 backup admission、密码 overlap/retirement、离线协调或 READY，M4 继续进行。
+
+第十一批增加 supervisor 的有界 TLS transport：128 连接、认证前限流、聚合限流审计、传输 deadline 与关闭清理；固定 Restic/rclone 备份读回改走此入口。复用现有组件，不提供缺少持久化准入的公网 command；独立 readiness、持久化准入/审计、会话能力交付、rotation 和离线协调仍待完成。
 
 ### Goal
 
@@ -171,7 +173,7 @@
 
 ### Tests/Exit
 
-- REP-001–026；
+- REP-001–028；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。
