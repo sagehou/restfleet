@@ -142,7 +142,9 @@
 
 范围变更：根据用户要求，V1 存储后端扩展为 OneDrive、Google Drive、HTTPS WebDAV + rclone Crypt；第六批（#21，已合并）交付配置/凭据/网络安全与 UI 兼容。第七批（#22，已合并）接入 initialize API、持久化 Operation/jobs、双重租约、中心执行和状态 UI；成功仍为 PROVISIONING，Gateway/Agent ACK 留在后续批次。其他 rclone 后端需显式校验与测试后再加入，不能直接透传配置。
 
-第八批实现 Gateway 单会话安全层、临时锁归属验证、内容哈希/路径/方法限制与固定二进制离线验证（ADR-0014，用户已同意正常备份临时锁例外）。本批不开放公网 listener 或会话创建 API；supervisor、持久化准入/审计、Agent 凭据下发/ACK 和离线协调仍待接线，M4 不标完成。
+第八批（#23，已合并）实现 Gateway 单会话安全层、临时锁归属验证、内容哈希/路径/方法限制与固定二进制离线验证（ADR-0014，用户已同意正常备份临时锁例外）。本批不开放公网 listener 或会话创建 API；supervisor、持久化准入/审计、Agent 凭据下发/ACK 和离线协调仍待接线，M4 不标完成。
+
+第九批接入进程内 Gateway supervisor/router：复用 tmpfs/token watcher，增加有界长会话入口、私有 rclone 进程组、ready 后挂载、互斥/容量和完整退出清理。固定二进制备份读回测试改为经 supervisor 执行；command 公网配置、持久化准入/审计、Agent ACK 和离线协调仍待接入。
 
 ### Goal
 
@@ -167,7 +169,7 @@
 
 ### Tests/Exit
 
-- REP-001–021；
+- REP-001–023；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

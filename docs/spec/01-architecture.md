@@ -222,7 +222,7 @@ V1 不使用 Redis。Job Dispatcher 使用 `jobs` 表、`FOR UPDATE SKIP LOCKED`
 
 - 同一 Plan 同时最多一个 Backup Operation；
 - 同一 Host 默认最多一个 I/O-heavy operation；
-- 同一 Repository 可接受多个正常 backup，但 V1 默认一 Host 一 Repo；
+- V1 默认一 Host 一 Repo，同一 Host/Repository 同时最多一个授权 backup 会话（ADR-0014），不共享临时锁归属；
 - `forget`、`prune`、`check`、`unlock` 每 Repo 串行；
 - destructive maintenance 开始前等待 active backup lease 释放；
 - 所有 lease 可过期并续租，进程崩溃后可恢复；
