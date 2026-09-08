@@ -111,7 +111,7 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 	}
 
 	if config.GatewayPublicURL != "" && (!config.EnrollmentEnabled || !domain.ValidGatewayOrigin(config.GatewayPublicURL)) {
-		return RuntimeConfig{}, errors.New("Gateway origin requires HTTPS and complete enrollment configuration")
+		return RuntimeConfig{}, errors.New("gateway origin requires HTTPS and complete enrollment configuration")
 	}
 
 	if value := os.Getenv("RESTFLEET_SECURE_COOKIES"); value != "" {
