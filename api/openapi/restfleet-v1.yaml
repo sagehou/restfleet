@@ -622,6 +622,7 @@ paths:
         required: true
         schema: { type: string, format: uuid }
     post:
+      # 未释放的备份占用（含已到期记录）返回既有 409 REPOSITORY_BUSY；禁用仍可用。
       operationId: replaceStorageCredential
       parameters:
         - $ref: "#/components/parameters/CsrfToken"

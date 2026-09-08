@@ -124,6 +124,13 @@ Gateway TLS transport 验收（不等于 command 可公网部署）：
 | REP-027 | P0 | 固定 Restic/rclone 经真实 TLS transport 备份、清理本会话锁及读回成功；错误 CA、旧 TLS、明文、HTTP/2 绕过、超大 header、非规范路径及伪造 proxy header 均不获得额外权限，无管理路由或原始秘密回显。 |
 | REP-028 | P0 | 未完成握手/idle 占连接容量且超时释放；认证前固定窗口限流、审计洪泛合并且失败不放行；取消或 listener 故障中断 stalled upload 并等待请求/审计、进程组和 tmpfs 清理，已关闭 transport 不可重用。 |
 
+持久化备份占用验收（ADR-0016，不替代 Gateway 接线或 AGT-005）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-029 | P0 | 三种后端均只从认证 Agent 的当前已 ACK 仓库申请占用；重复/并发重放不延长期限、无新任务；跨 Host、错误 owner、失效 ACK、禁用/撤销及不安全期限拒绝，原始秘密不进入记录/outbox。 |
+| REP-030 | P0 | 同凭据的备份占用与 test/init/replace、有效 repository lease 互斥；过期仍排斥新 owner/维护，只有可信 owner 清理确认才释放；claim 不能旁路，禁用不自动释放，审计失败回滚占用/outbox/释放，Down 不能抹去历史。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

@@ -122,6 +122,9 @@ func (s *Store) EnqueueStorageOperation(ctx context.Context, o domain.Operation,
 	if err != nil {
 		return o, err
 	}
+	if err = ensureNoBackupAdmission(ctx, tx, c.ID); err != nil {
+		return o, err
+	}
 	if c.Status == "DISABLED" {
 		return o, domain.ErrCredentialDisabled
 	}
@@ -222,6 +225,9 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	if err != nil {
 		return job, err
 	}
+	if err = ensureNoBackupAdmission(ctx, tx, job.Credential.ID); err != nil {
+		return job, err
+	}
 	var now time.Time
 	if err = tx.QueryRow(ctx, "select clock_timestamp()").Scan(&now); err != nil {
 		return job, err
@@ -314,6 +320,9 @@ func lockCredentialJob(ctx context.Context, tx pgx.Tx, id, owner uuid.UUID) (dom
 		}
 	}
 	job.Credential, err = scanCredential(tx.QueryRow(ctx, "select "+credentialColumns+" from storage_credentials where id=$1 for update", job.Operation.StorageCredentialID))
+	if err == nil {
+		err = ensureNoBackupAdmission(ctx, tx, job.Credential.ID)
+	}
 	if err == nil {
 		err = ensureProvisionLease(ctx, tx, job)
 	}

@@ -14,7 +14,7 @@ import (
 
 // Agent -> Host -> Repository -> credential -> delivery -> audit. Agent first
 // matches revocation; Host locking also excludes concurrent disable/archive.
-func lockAgentRepository(ctx context.Context, tx pgx.Tx, agentID uuid.UUID) (domain.Repository, error) {
+func lockAgentRepository(ctx context.Context, tx pgx.Tx, agentID uuid.UUID, credentialWrite bool) (domain.Repository, error) {
 	var hostID uuid.UUID
 	err := tx.QueryRow(ctx, "select host_id from agents where id=$1 and status='ACTIVE' for update", agentID).Scan(&hostID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -38,7 +38,11 @@ func lockAgentRepository(ctx context.Context, tx pgx.Tx, agentID uuid.UUID) (dom
 	if r.InitializedAt == nil || (r.Status != "PROVISIONING" && r.Status != "READY" && r.Status != "DEGRADED" && r.Status != "LOCKED") {
 		return r, domain.ErrNotFound
 	}
-	err = tx.QueryRow(ctx, "select status<>'DISABLED' from storage_credentials where id=$1 for share", r.StorageCredentialID).Scan(&active)
+	credentialLock := "for share"
+	if credentialWrite {
+		credentialLock = "for update"
+	}
+	err = tx.QueryRow(ctx, "select status<>'DISABLED' from storage_credentials where id=$1 "+credentialLock, r.StorageCredentialID).Scan(&active)
 	if err != nil {
 		return r, err
 	}
@@ -90,7 +94,7 @@ func (s *Store) PrepareAgentCredential(ctx context.Context, agentID uuid.UUID, c
 		return domain.AgentCredentialDelivery{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	r, err := lockAgentRepository(ctx, tx, agentID)
+	r, err := lockAgentRepository(ctx, tx, agentID, false)
 	if err != nil {
 		return domain.AgentCredentialDelivery{}, err
 	}
@@ -148,7 +152,7 @@ func (s *Store) AcceptAgentCredential(ctx context.Context, agentID, deliveryID u
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	r, err := lockAgentRepository(ctx, tx, agentID)
+	r, err := lockAgentRepository(ctx, tx, agentID, false)
 	if err != nil {
 		return err
 	}

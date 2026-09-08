@@ -87,6 +87,13 @@ func (s *Store) SaveStorageCredential(
 		if err != nil {
 			return domain.StorageCredential{}, err
 		}
+		// Disabling remains available for revocation; replacing material must
+		// wait for confirmed data-plane cleanup, even after admission expiry.
+		if secret != nil {
+			if err := ensureNoBackupAdmission(ctx, tx, c.ID); err != nil {
+				return domain.StorageCredential{}, err
+			}
+		}
 		if current.Revision != expectedRevision {
 			return domain.StorageCredential{}, domain.ErrRevisionConflict
 		}
