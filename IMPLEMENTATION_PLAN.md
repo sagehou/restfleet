@@ -148,7 +148,9 @@
 
 第十批（#25，已合并）接入 Agent 仓库凭据交付：复用 outbound mTLS、专用 0600 原子文件、PostgreSQL 交付记录/outbox/审计与精确 ACK；Web 区分交付与确认。只交付本 Host 已初始化仓库的密码，兼容无 capability 的旧 Agent。尚未完成公网 Gateway、持久化 backup admission、密码 overlap/retirement、离线协调或 READY，M4 继续进行。
 
-第十一批增加 supervisor 的有界 TLS transport：128 连接、认证前限流、聚合限流审计、传输 deadline 与关闭清理；固定 Restic/rclone 备份读回改走此入口。复用现有组件，不提供缺少持久化准入的公网 command；独立 readiness、持久化准入/审计、会话能力交付、rotation 和离线协调仍待完成。
+第十一批（#26，已合并）增加 supervisor 的有界 TLS transport：128 连接、认证前限流、聚合限流审计、传输 deadline 与关闭清理；固定 Restic/rclone 备份读回改走此入口。复用现有组件，不提供缺少持久化准入的公网 command；独立 readiness、持久化准入/审计、会话能力交付、rotation 和离线协调仍待完成。
+
+第十二批实现持久化备份占用原语及中心写入口互斥（ADR-0016 / schema 11）：复用凭据锁、Repository advisory lock、审计/outbox；到期不自动释放占用，可信 owner 确认清理后才释放。尚不接 Gateway 进程/公开申请/会话下发，也不宣称离线授权或 M4 完成。
 
 ### Goal
 
@@ -173,7 +175,7 @@
 
 ### Tests/Exit
 
-- REP-001–028；
+- REP-001–030；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

@@ -230,7 +230,7 @@ Host 行锁后依次锁定 StorageCredential、写入两份独立随机密码的
 
 迁移 00009 MUST 添加 repositories 的原生 restic_id（不返回 API）、initialized_at 和 last_initialize_operation_id；扩展 operations/jobs 的 REPOSITORY_INITIALIZE 类型和 repository_id FK。已有密文/AAD/密码 MUST 不变。成功结果与 Operation 终态、事件、outbox、审计及租约释放 MUST 同事务提交，initialized_at MUST 对应 format v2 与有效原生 ID。失败不设置这些字段，不将 Repository 改为 READY。
 
-repository_leases 以 repository_id 为主键，保存 operation_id、owner、kind（MAINTENANCE/BACKUP）和 expires_at。当前初始化只取得 MAINTENANCE；未来备份与维护 MUST 复用此 admission 边界，不得旁路。领取按 job→operation→Host→Repository→credential→lease→audit 锁定，仓库 advisory xact lock 协调 admission；job/repository 两份租约 MUST 原子续租。任何有效备份/维护 lease 阻止领取。runtime MUST 单实例并等待子进程退出，DB lease 不等价于云端写入 fencing。
+repository_leases 以 repository_id 为主键，保存 operation_id、owner、kind（MAINTENANCE/BACKUP）和 expires_at。当前初始化只取得 MAINTENANCE；备份与维护 MUST 复用此 admission 边界，不得旁路；schema 11 的数据面占用是额外必须检查的持久化 fence，见 §5.4.4。领取按 job→operation→Host→Repository→credential→lease→audit 锁定，仓库 advisory xact lock 协调 admission；job/repository 两份租约 MUST 原子续租。任何有效备份/维护 lease 阻止领取。runtime MUST 单实例并等待子进程退出，DB lease 不等价于云端写入 fencing。
 
 运行角色只增加租约 SELECT/INSERT/UPDATE 和仓库初始化 metadata 列 UPDATE，不授予 DELETE 或密码字段 UPDATE。有初始化 Operation 时 Down MUST 在删除字段前失败；生产使用前向修复。
 
@@ -239,6 +239,20 @@ repository_leases 以 repository_id 为主键，保存 operation_id、owner、ki
 `repository_agent_deliveries` MUST 以 agent_id 为主键，保存当前交付 UUID、Repository、单调 revision、Gateway origin+CA 指纹、两个加密 secret_ref、created_at 和可空 accepted_at，不存明文。首次交付/变更 MUST 与脱敏 outbox、秘密访问审计同事务；旧 secret/AAD 不变。锁顺序 Agent→Host→Repository→StorageCredential→delivery→audit，与吊销兼容。
 
 ACK MUST 重验 ACTIVE Agent/Host、未禁用的仓库/存储凭据、当前交付 ID/revision/配置指纹/秘密引用；只确认当前交付并完成旧 outbox，不改变仓库状态。应用角色仅有 SELECT/INSERT/UPDATE，MUST NOT 获得 DELETE；已有交付记录时 Down MUST 拒绝删除历史。
+
+### 5.4.4 备份占用（schema 11，ADR-0016）
+
+`gateway_backup_admissions` MUST 保存中心生成的准入 ID/owner、认证 Agent 的 Host/Repository/Gateway/StorageCredential 绑定、当前已 ACK 的 delivery ID/配置指纹/仓库秘密引用、创建/到期/释放时间。MUST NOT 保存秘密明文、可执行配置或虚构 Backup Operation。delivery ID 是不可变快照，不 FK 到会被替换的当前交付行。
+
+首次准入 MUST 按 Agent→Host→Repository→独占 StorageCredential→admission→audit 锁定，复用 Repository advisory xact lock；凭据锁必须直接取得 FOR UPDATE，MUST NOT 先共享再升级造成跨 Host 死锁。必须验证 Agent/Host ACTIVE、仓库已初始化且为 PROVISIONING/READY/DEGRADED、凭据未 DISABLED、精确当前凭据 ACK。同凭据任何未终态 Operation 或有效 repository lease MUST 阻止准入。
+
+准入至少 1min、最多 24h，使用 DB UTC 时间；并发精确重放返回原始 ID/截止时间，不续期或重复 outbox。改变 owner/Agent/delivery/配置/时长、重开过期或已释放 ID MUST 拒绝。创建和释放 MUST 与脱敏 outbox/审计同事务；审计等待后必须再次检查截止时间。
+
+未释放占用对 Host、Agent、Repository、Gateway identity、StorageCredential 分别有 partial unique index，条件只能是 released_at IS NULL，MUST NOT 将到期当作清理成功。现有 enqueue、claim、refresh/completion、初始化租约取得和凭据替换 MUST 在相同凭据锁下检查此 fence。禁用凭据仍可执行，后续在线使用校验拒绝它，但不隐式释放占用。
+
+只有可信中心 owner 在完成请求/会话/进程/刷新清理后 MAY 幂等释放；Agent 无释放权。在线 Check MUST 重验当前身份、ACK、配置、未释放与未到期；不解密材料、不改变 Repository 状态。应用角色只获得 SELECT/INSERT 和 released_at 列 UPDATE，不授予 DELETE、重绑 owner 或延长截止时间。Down 在任何历史记录存在时 MUST 整体拒绝。
+
+此批没有公网或 gRPC 申请入口，也不自动消费准入 outbox；进程接线、崩溃 owner 恢复及 AGT-005 离线授权/审计/OAuth 刷新仍待完成。生产升级接线前 MUST 停止所有旧版中心 writer，再运行 schema 11 与新版 writer；不了解占用表的旧二进制 MUST NOT 和新版准入并行。
 
 ### 5.5 template_revisions / plan_revisions
 
@@ -415,7 +429,7 @@ Primary key `(scope_hash, idempotency_key_hash)`。不保存原始 key。并发�
 
 - durable worker/job lease 存表；
 - repository destructive operation 同时使用 transaction advisory lock，key 从 repo UUID 稳定派生；
-- Agent backup active lease 由 heartbeat/operation 更新；
+- Agent backup active lease 由 heartbeat/operation 更新；数据面已委托的占用还必须经可信 Gateway 清理确认才释放，不能由 Agent 心跳或超时单独释放；
 - maintenance 开始前检查 active leases，并在一个 transaction 中取得 maintenance lease；
 - advisory lock 只作为进程并发保护，业务可见状态仍存表。
 

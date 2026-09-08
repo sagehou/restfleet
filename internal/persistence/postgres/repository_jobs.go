@@ -40,6 +40,9 @@ func lockProvisionRepository(ctx context.Context, tx pgx.Tx, id uuid.UUID) (doma
 
 func acquireProvisionLease(ctx context.Context, tx pgx.Tx, job domain.CredentialJob, now time.Time) error {
 	r := job.Repository
+	if err := ensureNoBackupAdmission(ctx, tx, r.StorageCredentialID); err != nil {
+		return err
+	}
 	// The repository advisory lock coordinates future backup/maintenance lease
 	// admission. The row remains authoritative after the transaction ends.
 	if _, err := tx.Exec(ctx, "select pg_advisory_xact_lock(hashtextextended($1,0))", r.ID.String()); err != nil {

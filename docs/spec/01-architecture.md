@@ -225,7 +225,7 @@ V1 不使用 Redis。Job Dispatcher 使用 `jobs` 表、`FOR UPDATE SKIP LOCKED`
 - V1 默认一 Host 一 Repo，同一 Host/Repository 同时最多一个授权 backup 会话（ADR-0014），不共享临时锁归属；
 - `forget`、`prune`、`check`、`unlock` 每 Repo 串行；
 - destructive maintenance 开始前等待 active backup lease 释放；
-- 所有 lease 可过期并续租，进程崩溃后可恢复；
+- worker lease 可过期并续租，进程崩溃后可恢复；数据面备份占用到期只撤销授权，不证明旧进程清理，维护仍 MUST 等待可信 owner 清理确认（ADR-0016）；
 - Restic exit code `11` 作为 lock contention 分类，而非 generic failure。
 
 ## 11. 技术版本策略

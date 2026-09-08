@@ -208,6 +208,14 @@ transport MUST 直接交给 supervisor，保留原始路径，不挂载健康、
 
 此批只完成可复用 transport；command 的受保护配置加载、独立 readiness、持久化 admission/审计接线和离线协调仍未完成，MUST NOT 开放公网部署或将 Repository 标成 READY。
 
+### 7.7 备份占用交付边界
+
+schema 11 的持久化备份占用原语已接入现有中心写入口互斥，见 ADR-0016；它不会启动 Gateway，不解密云端材料、不下发会话能力，也不标记 READY。MUST 在停掉所有旧版中心 writer 后迁移/升级；旧二进制不认识新的占用 fence，不能混跑。
+
+可信调用方 MUST 持久保存准入 ID/owner，并在使用前校验当前绑定和剩余授权时间；每次真实备份仍需独立 session/锁归属。MUST 将会话截止时间限制在准入期限内；关闭并等待全部请求、后端进程组和刷新持久化清理后才允许提交释放。准入到期、Agent 断线/撤销、凭据禁用、DB 不可用均 MUST NOT 被用作“已经清理”的证据。释放确认丢失时保留占用并重试，禁止按到期批量删除/释放记录。
+
+尚未实现 Gateway 的 owner 恢复协调或公开申请入口，因此不能手工拼接这些原语后宣称生产可用。离线许可、审计缓冲与 OAuth refresh 持久化仍须单独满足 AGT-005；在线 Check 的 fail-closed 行为不替代最终离线方案。
+
 ## 8. Native Agent 安装
 
 目标目录：

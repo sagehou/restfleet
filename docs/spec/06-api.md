@@ -230,7 +230,7 @@ initialize 已实现，见 8.2；test/index/disable/PATCH/stats 仍未交付；A
 
 ### 8.2 中心初始化
 
-POST /api/v1/repositories/{repository_id}/initialize MUST 要求 ADMIN、CSRF 与 Idempotency-Key，拒绝 body/query/重复 key header，返回 202 Operation 与 Location。同 key 返回原任务；新 key 在任务未终态或有有效 repository lease 时返回 409 REPOSITORY_BUSY。共享存储凭据的 test/init 串行；其连接测试入口仍返回 CREDENTIAL_TEST_BUSY。Host 不可用、凭据禁用分别返回 HOST_UNAVAILABLE / CREDENTIAL_DISABLED；非 PROVISIONING 或已初始化返回 REPOSITORY_UNAVAILABLE。缺少初始化 runtime/master key 返回 503。
+POST /api/v1/repositories/{repository_id}/initialize MUST 要求 ADMIN、CSRF 与 Idempotency-Key，拒绝 body/query/重复 key header，返回 202 Operation 与 Location。同 key 返回原任务；新 key 在任务未终态或有有效 repository lease 时返回 409 REPOSITORY_BUSY。共享存储凭据的 test/init 串行；未终态测试冲突返回 CREDENTIAL_TEST_BUSY。schema 11 中未释放的备份占用（即使已到期）阻止 initialize、credential test 和 replace-secret，返回既有 409 REPOSITORY_BUSY；disable 仍可撤销凭据，但不代表后端已清理。Host 不可用、凭据禁用分别返回 HOST_UNAVAILABLE / CREDENTIAL_DISABLED；非 PROVISIONING 或已初始化返回 REPOSITORY_UNAVAILABLE。缺少初始化 runtime/master key 返回 503。
 
 GET Operation 新增 REPOSITORY_INITIALIZE 类型与 repository_id；Repository metadata 新增 initialized_at 与 last_initialize_operation_id。成功 MUST 保持 PROVISIONING，只设置验证后的 format_version / initialized_at，MUST NOT 返回原生 Restic ID、密码、路径或秘密引用。初始化失败显示固定 error_code，重试必须新 Operation；不得重开终态、自动删除、unlock 或更换密码。Agent 仓库凭据 ACK 已接线，但 READY 仍未交付。租约/恢复详见 [ADR-0013](../adr/0013-repository-initialization-jobs.md)。
 
