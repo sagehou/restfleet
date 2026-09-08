@@ -178,12 +178,13 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
             <div><dt>存储凭据 ID</dt><dd>{selected.storage_credential_id}</dd></div>
             <div><dt>状态</dt><dd>{statusLabels[selected.status]}</dd></div>
             <div><dt>中心初始化</dt><dd>{selected.initialized_at ? `已验证（${selected.initialized_at}）` : '尚未完成'}</dd></div>
+            <div><dt>Agent 凭据交付</dt><dd>{selected.agent_credential_revision ? `版本 ${selected.agent_credential_revision}，${selected.agent_credential_accepted_at ? `已确认保存（${selected.agent_credential_accepted_at}）` : '等待 Agent 确认'}` : '尚未下发'}</dd></div>
             <div><dt>仓库格式</dt><dd>{selected.format_version ? `v${selected.format_version}` : '尚未验证'}</dd></div>
             <div><dt>Gateway 凭据版本</dt><dd>{selected.gateway_secret_revision}</dd></div>
             <div><dt>Restic 凭据版本</dt><dd>{selected.restic_secret_revision}</dd></div>
             <div><dt>记录版本</dt><dd>{selected.revision}</dd></div>
           </dl>
-          <p className="muted">快照和容量尚未采集；保存凭据版本不代表已下发或已被 Agent 接受。</p>
+          <p className="muted">快照和容量尚未采集；Agent 凭据确认仅表示已安全保存，不代表 Gateway 已就绪或备份已成功。</p>
           {operationId && <div role="status" aria-label="初始化任务状态">
             <p>操作 {operationId}：{!operation || operation.id !== operationId ? '正在读取状态' : operation.finished_at
               ? operation.status === 'SUCCEEDED' ? '中心初始化已验证，等待 Gateway 和 Agent 确认' : `初始化未成功（${operation.error_code}）`

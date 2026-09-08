@@ -74,6 +74,8 @@ type Store interface {
 	Repository(context.Context, uuid.UUID) (domain.Repository, error)
 	RepositoryCount(context.Context) (int64, error)
 	RepositoryResticSecret(context.Context, uuid.UUID) (domain.SecretEnvelope, error)
+	PrepareAgentCredential(context.Context, uuid.UUID, string, bool) (domain.AgentCredentialDelivery, error)
+	AcceptAgentCredential(context.Context, uuid.UUID, uuid.UUID, int64, string) error
 	CreateRepository(context.Context, domain.Repository, domain.SecretEnvelope, domain.SecretEnvelope, domain.AuditEvent) (domain.Repository, error)
 	Operation(context.Context, uuid.UUID) (domain.Operation, error)
 	EnqueueStorageOperation(context.Context, domain.Operation, []byte, []byte, []byte, domain.AuditEvent) (domain.Operation, error)
@@ -96,6 +98,7 @@ type Settings struct {
 	MasterKey            []byte
 	RunCredentialTest    CredentialTestRunner
 	InitializeRepository RepositoryInitializer
+	GatewayPublicURL     string
 }
 
 // RequestMeta contains only non-secret request correlation data.
@@ -134,11 +137,15 @@ type ControlPlane struct {
 	masterKey            []byte
 	runCredentialTest    CredentialTestRunner
 	initializeRepository RepositoryInitializer
+	gatewayPublicURL     string
 }
 
 func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 	if len(settings.MasterKey) != 0 && len(settings.MasterKey) != 32 {
 		return nil, domain.ErrStorageUnavailable
+	}
+	if settings.GatewayPublicURL != "" && (!domain.ValidGatewayOrigin(settings.GatewayPublicURL) || !domain.ValidCredentialCA(settings.Enrollment.ServerCABundlePEM) || len(settings.MasterKey) != 32) {
+		return nil, domain.ErrRepositoryCredential
 	}
 	if settings.IdleTTL == 0 {
 		settings.IdleTTL = 30 * time.Minute
@@ -150,7 +157,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		settings.PasswordParams = security.DefaultArgon2Params
 	}
 	if settings.ExpectedSchema == 0 {
-		settings.ExpectedSchema = 9
+		settings.ExpectedSchema = 10
 	}
 	if settings.Enrollment.HeartbeatInterval == 0 {
 		settings.Enrollment.HeartbeatInterval = 15 * time.Second
@@ -178,6 +185,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		masterKey:            append([]byte(nil), settings.MasterKey...),
 		runCredentialTest:    settings.RunCredentialTest,
 		initializeRepository: settings.InitializeRepository,
+		gatewayPublicURL:     settings.GatewayPublicURL,
 	}, nil
 }
 

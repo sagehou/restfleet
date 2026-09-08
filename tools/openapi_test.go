@@ -39,6 +39,16 @@ func TestRepositoryOpenAPIContract(t *testing.T) {
 	if err := schema.VisitJSON(value); err != nil {
 		t.Fatal(err)
 	}
+	value["agent_credential_revision"] = float64(1)
+	value["agent_credential_accepted_at"] = "2026-09-08T00:00:00Z"
+	if err := schema.VisitJSON(value); err != nil {
+		t.Fatal(err)
+	}
+	value["agent_credential_revision"] = float64(0)
+	if err := schema.VisitJSON(value); err == nil {
+		t.Fatal("invalid credential delivery revision accepted")
+	}
+	value["agent_credential_revision"] = float64(1)
 	delete(value, "host_id")
 	if err := schema.VisitJSON(value); err == nil {
 		t.Fatal("Host ownership optional in contract")

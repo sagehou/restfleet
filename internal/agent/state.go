@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,8 +19,9 @@ const (
 )
 
 type State struct {
-	directory string
-	db        *bolt.DB
+	directory    string
+	db           *bolt.DB
+	credentialMu sync.Mutex
 }
 
 func OpenState(directory string) (*State, error) {

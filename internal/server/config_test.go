@@ -23,6 +23,7 @@ func clearEnvironment(t *testing.T) {
 		"RESTFLEET_MASTER_KEY",
 		"RESTFLEET_MASTER_KEY_FILE",
 		"RESTFLEET_PUBLIC_URL",
+		"RESTFLEET_GATEWAY_PUBLIC_URL",
 		"RESTFLEET_GRPC_ADDRESS",
 		"RESTFLEET_GRPC_ENDPOINT",
 		"RESTFLEET_GRPC_SERVER_NAME",
@@ -124,5 +125,15 @@ func TestRuntimeConfigLoadsEnrollmentSecretsFromFiles(t *testing.T) {
 	if !config.EnrollmentEnabled || len(config.MasterKey) != 32 ||
 		config.GRPCEndpoint != "control.example:443" {
 		t.Fatalf("enrollment configuration incorrect: %+v", config)
+	}
+}
+
+func TestGatewayOriginRequiresEnrollment(t *testing.T) {
+	clearEnvironment(t)
+	t.Setenv("RESTFLEET_ENV", "development")
+	t.Setenv("RESTFLEET_DATABASE_URL", "postgres://development-only")
+	t.Setenv("RESTFLEET_GATEWAY_PUBLIC_URL", "https://gateway.example")
+	if _, err := LoadRuntimeConfig(); err == nil {
+		t.Fatal("Gateway configured without authenticated enrollment")
 	}
 }

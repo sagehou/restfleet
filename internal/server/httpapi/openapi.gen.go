@@ -676,7 +676,12 @@ type Problem struct {
 
 // Repository defines model for Repository.
 type Repository struct {
-	CreatedAt time.Time `json:"created_at"`
+	// AgentCredentialAcceptedAt Durable credential ACK only; does not imply Repository READY.
+	AgentCredentialAcceptedAt *time.Time `json:"agent_credential_accepted_at,omitempty"`
+
+	// AgentCredentialRevision Current delivery revision for the active Agent; not a Gateway session grant.
+	AgentCredentialRevision *int64    `json:"agent_credential_revision,omitempty"`
+	CreatedAt               time.Time `json:"created_at"`
 
 	// FormatVersion Absent until verified by the central initialization worker.
 	FormatVersion             *int                `json:"format_version,omitempty"`

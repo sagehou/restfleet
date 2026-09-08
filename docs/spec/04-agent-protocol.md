@@ -308,6 +308,16 @@ Server 只下发该 Repository 的：
 
 Agent 将 secret 写到专用 mode 0600 文件/加密 local store，回 ACK 后 Server 才进入旧 secret retirement。Secret 消息不得写入一般 message trace。
 
+### 13.1 M4 初始交付与确认（ADR-0015）
+
+本批 MUST 通过 Hello capability `repository_credentials_v1` 协商；1.0 / 0.9 无该 capability 的旧 Agent 不接收新消息。Server MUST 从 mTLS 证书身份查找该 Host 的已初始化仓库，不接受 payload 指定目标。CredentialRevision 含 delivery_id、单调 revision、Agent/Host/Repository/Gateway UUID、两种 secret revision、无 userinfo 的 HTTPS endpoint、CA bundle、两份仓库密码与 valid_from；不包含任何 rclone/OAuth/Crypt/中心维护材料。
+
+Server MUST 在解密前提交准入与秘密访问审计；当前交付 metadata、配置指纹和 outbox 持久化于 PostgreSQL。重连强制重发当前版本，在线心跳重发未确认版本；未初始化、禁用/吊销或未配置 Gateway origin 时不得下发。不能把 send 成功当作 ACK。
+
+Agent MUST 校验规范 UUID、身份/路径绑定、独立 256-bit 密码、CA 和 HTTPS origin，以 0700 目录下专用 0600 `repository-credential.json` 保存；MUST 先 fsync+rename+目录 fsync 再 ACK，重复也重新确保落盘。MUST 拒绝回滚、同 revision 不同内容、无 key revision 的密码变更、跨仓库替换、不安全文件或 symlink；错误 MUST 保留 last-known-good。秘密不写 bbolt/outbound、DesiredState 或通用 trace；缓冲在处理后清理。
+
+ACK 仅含 delivery_id/revision，MUST 精确匹配当前绑定、密钥引用和 Gateway 配置指纹；重复 ACK 幂等，确认、outbox 和审计同事务。ACK 不授予 backup lease，不改变 Repository 为 READY，不撤销旧密码。本批未交付 rotation overlap/retirement、Gateway session admission 或 AGT-005 离线备份验收。
+
 ## 14. Certificate Rotation
 
 - Agent 在证书剩余 7 天时生成新 CSR；

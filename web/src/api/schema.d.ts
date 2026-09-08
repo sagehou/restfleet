@@ -523,6 +523,16 @@ export interface components {
             initialized_at?: string;
             /** Format: uuid */
             last_initialize_operation_id?: string;
+            /**
+             * Format: int64
+             * @description Current delivery revision for the active Agent; not a Gateway session grant.
+             */
+            agent_credential_revision?: number;
+            /**
+             * Format: date-time
+             * @description Durable credential ACK only; does not imply Repository READY.
+             */
+            agent_credential_accepted_at?: string;
             /** Format: int64 */
             gateway_secret_revision: number;
             /** Format: int64 */

@@ -48,7 +48,7 @@ runtime 自动生成服务 UID 私有 Unix socket，将连接固定到已验证�
 
 ## 升级与验收
 
-当前 schema 为 9。00009 新增持久化仓库初始化任务与租约。迁移 00008 只扩展 provider CHECK，不重写现有 OneDrive 数据、AAD、凭据版本或 Repository 绑定。用既有 migrator 升级后再启动新 Server；存在新后端记录时 Down 会失败，不会删除或改标它们。
+当前 schema 为 10。00010 增加 Agent 仓库凭据交付记录，启用方式见部署规范 §7.5；交付/ACK 不代表 Gateway 可用。00009 新增持久化仓库初始化任务与租约。迁移 00008 只扩展 provider CHECK，不重写现有 OneDrive 数据、AAD、凭据版本或 Repository 绑定。用既有 migrator 升级后再启动新 Server；存在新后端记录时 Down 会失败，不会删除或改标它们。
 
 CI 验证配置拒绝、metadata 隔离、权限/事务/CAS、Google refresh、WebDAV DNS/TLS/重定向/清理、Web UI 和双架构构建。真实 OneDrive/Google OAuth 刷新及三种后端的写入、备份、恢复、认证失效和重启恢复仍 MUST 在持有测试凭据的安全环境验收；离线测试不替代真实服务兼容性。
 

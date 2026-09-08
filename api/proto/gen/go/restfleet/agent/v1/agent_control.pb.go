@@ -36,6 +36,7 @@ type AgentToServer struct {
 	//	*AgentToServer_InventoryReport
 	//	*AgentToServer_ConfigAccepted
 	//	*AgentToServer_ConfigRejected
+	//	*AgentToServer_CredentialRevisionAccepted
 	Payload       isAgentToServer_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -160,6 +161,15 @@ func (x *AgentToServer) GetConfigRejected() *ConfigRejected {
 	return nil
 }
 
+func (x *AgentToServer) GetCredentialRevisionAccepted() *CredentialRevisionAccepted {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_CredentialRevisionAccepted); ok {
+			return x.CredentialRevisionAccepted
+		}
+	}
+	return nil
+}
+
 type isAgentToServer_Payload interface {
 	isAgentToServer_Payload()
 }
@@ -188,6 +198,10 @@ type AgentToServer_ConfigRejected struct {
 	ConfigRejected *ConfigRejected `protobuf:"bytes,15,opt,name=config_rejected,json=configRejected,proto3,oneof"`
 }
 
+type AgentToServer_CredentialRevisionAccepted struct {
+	CredentialRevisionAccepted *CredentialRevisionAccepted `protobuf:"bytes,16,opt,name=credential_revision_accepted,json=credentialRevisionAccepted,proto3,oneof"`
+}
+
 func (*AgentToServer_Hello) isAgentToServer_Payload() {}
 
 func (*AgentToServer_CertificateRotationRequest) isAgentToServer_Payload() {}
@@ -200,6 +214,8 @@ func (*AgentToServer_ConfigAccepted) isAgentToServer_Payload() {}
 
 func (*AgentToServer_ConfigRejected) isAgentToServer_Payload() {}
 
+func (*AgentToServer_CredentialRevisionAccepted) isAgentToServer_Payload() {}
+
 type ServerToAgent struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	MessageId       string                 `protobuf:"bytes,1,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
@@ -211,6 +227,7 @@ type ServerToAgent struct {
 	//	*ServerToAgent_Welcome
 	//	*ServerToAgent_CertificateRotationResponse
 	//	*ServerToAgent_DesiredStateSnapshot
+	//	*ServerToAgent_CredentialRevision
 	Payload       isServerToAgent_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -308,6 +325,15 @@ func (x *ServerToAgent) GetDesiredStateSnapshot() *DesiredStateSnapshot {
 	return nil
 }
 
+func (x *ServerToAgent) GetCredentialRevision() *CredentialRevision {
+	if x != nil {
+		if x, ok := x.Payload.(*ServerToAgent_CredentialRevision); ok {
+			return x.CredentialRevision
+		}
+	}
+	return nil
+}
+
 type isServerToAgent_Payload interface {
 	isServerToAgent_Payload()
 }
@@ -324,11 +350,17 @@ type ServerToAgent_DesiredStateSnapshot struct {
 	DesiredStateSnapshot *DesiredStateSnapshot `protobuf:"bytes,12,opt,name=desired_state_snapshot,json=desiredStateSnapshot,proto3,oneof"`
 }
 
+type ServerToAgent_CredentialRevision struct {
+	CredentialRevision *CredentialRevision `protobuf:"bytes,13,opt,name=credential_revision,json=credentialRevision,proto3,oneof"`
+}
+
 func (*ServerToAgent_Welcome) isServerToAgent_Payload() {}
 
 func (*ServerToAgent_CertificateRotationResponse) isServerToAgent_Payload() {}
 
 func (*ServerToAgent_DesiredStateSnapshot) isServerToAgent_Payload() {}
+
+func (*ServerToAgent_CredentialRevision) isServerToAgent_Payload() {}
 
 type Hello struct {
 	state                     protoimpl.MessageState `protogen:"open.v1"`
@@ -1270,11 +1302,204 @@ func (x *RuntimePolicy) GetLogLimitBytes() uint64 {
 	return 0
 }
 
+// Optional repository_credentials_v1 capability. Never put this in message traces.
+type CredentialRevision struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	DeliveryId      string                 `protobuf:"bytes,1,opt,name=delivery_id,json=deliveryId,proto3" json:"delivery_id,omitempty"`
+	Revision        int64                  `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	AgentId         string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	HostId          string                 `protobuf:"bytes,4,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"`
+	RepositoryId    string                 `protobuf:"bytes,5,opt,name=repository_id,json=repositoryId,proto3" json:"repository_id,omitempty"`
+	GatewayId       string                 `protobuf:"bytes,6,opt,name=gateway_id,json=gatewayId,proto3" json:"gateway_id,omitempty"`
+	GatewayRevision int64                  `protobuf:"varint,7,opt,name=gateway_revision,json=gatewayRevision,proto3" json:"gateway_revision,omitempty"`
+	ResticRevision  int64                  `protobuf:"varint,8,opt,name=restic_revision,json=resticRevision,proto3" json:"restic_revision,omitempty"`
+	Endpoint        string                 `protobuf:"bytes,9,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	CaBundlePem     []byte                 `protobuf:"bytes,10,opt,name=ca_bundle_pem,json=caBundlePem,proto3" json:"ca_bundle_pem,omitempty"`
+	GatewayPassword []byte                 `protobuf:"bytes,11,opt,name=gateway_password,json=gatewayPassword,proto3" json:"gateway_password,omitempty"`
+	ResticPassword  []byte                 `protobuf:"bytes,12,opt,name=restic_password,json=resticPassword,proto3" json:"restic_password,omitempty"`
+	ValidFrom       *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=valid_from,json=validFrom,proto3" json:"valid_from,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CredentialRevision) Reset() {
+	*x = CredentialRevision{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CredentialRevision) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CredentialRevision) ProtoMessage() {}
+
+func (x *CredentialRevision) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CredentialRevision.ProtoReflect.Descriptor instead.
+func (*CredentialRevision) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CredentialRevision) GetDeliveryId() string {
+	if x != nil {
+		return x.DeliveryId
+	}
+	return ""
+}
+
+func (x *CredentialRevision) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *CredentialRevision) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *CredentialRevision) GetHostId() string {
+	if x != nil {
+		return x.HostId
+	}
+	return ""
+}
+
+func (x *CredentialRevision) GetRepositoryId() string {
+	if x != nil {
+		return x.RepositoryId
+	}
+	return ""
+}
+
+func (x *CredentialRevision) GetGatewayId() string {
+	if x != nil {
+		return x.GatewayId
+	}
+	return ""
+}
+
+func (x *CredentialRevision) GetGatewayRevision() int64 {
+	if x != nil {
+		return x.GatewayRevision
+	}
+	return 0
+}
+
+func (x *CredentialRevision) GetResticRevision() int64 {
+	if x != nil {
+		return x.ResticRevision
+	}
+	return 0
+}
+
+func (x *CredentialRevision) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *CredentialRevision) GetCaBundlePem() []byte {
+	if x != nil {
+		return x.CaBundlePem
+	}
+	return nil
+}
+
+func (x *CredentialRevision) GetGatewayPassword() []byte {
+	if x != nil {
+		return x.GatewayPassword
+	}
+	return nil
+}
+
+func (x *CredentialRevision) GetResticPassword() []byte {
+	if x != nil {
+		return x.ResticPassword
+	}
+	return nil
+}
+
+func (x *CredentialRevision) GetValidFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ValidFrom
+	}
+	return nil
+}
+
+type CredentialRevisionAccepted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DeliveryId    string                 `protobuf:"bytes,1,opt,name=delivery_id,json=deliveryId,proto3" json:"delivery_id,omitempty"`
+	Revision      int64                  `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CredentialRevisionAccepted) Reset() {
+	*x = CredentialRevisionAccepted{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CredentialRevisionAccepted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CredentialRevisionAccepted) ProtoMessage() {}
+
+func (x *CredentialRevisionAccepted) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CredentialRevisionAccepted.ProtoReflect.Descriptor instead.
+func (*CredentialRevisionAccepted) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *CredentialRevisionAccepted) GetDeliveryId() string {
+	if x != nil {
+		return x.DeliveryId
+	}
+	return ""
+}
+
+func (x *CredentialRevisionAccepted) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
 var File_restfleet_agent_v1_agent_control_proto protoreflect.FileDescriptor
 
 const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\n" +
-	"&restfleet/agent/v1/agent_control.proto\x12\x12restfleet.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8b\x05\n" +
+	"&restfleet/agent/v1/agent_control.proto\x12\x12restfleet.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xff\x05\n" +
 	"\rAgentToServer\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12)\n" +
@@ -1287,8 +1512,9 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\theartbeat\x18\f \x01(\v2\x1d.restfleet.agent.v1.HeartbeatH\x00R\theartbeat\x12P\n" +
 	"\x10inventory_report\x18\r \x01(\v2#.restfleet.agent.v1.InventoryReportH\x00R\x0finventoryReport\x12M\n" +
 	"\x0fconfig_accepted\x18\x0e \x01(\v2\".restfleet.agent.v1.ConfigAcceptedH\x00R\x0econfigAccepted\x12M\n" +
-	"\x0fconfig_rejected\x18\x0f \x01(\v2\".restfleet.agent.v1.ConfigRejectedH\x00R\x0econfigRejectedB\t\n" +
-	"\apayload\"\xc7\x03\n" +
+	"\x0fconfig_rejected\x18\x0f \x01(\v2\".restfleet.agent.v1.ConfigRejectedH\x00R\x0econfigRejected\x12r\n" +
+	"\x1ccredential_revision_accepted\x18\x10 \x01(\v2..restfleet.agent.v1.CredentialRevisionAcceptedH\x00R\x1acredentialRevisionAcceptedB\t\n" +
+	"\apayload\"\xa2\x04\n" +
 	"\rServerToAgent\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12)\n" +
@@ -1298,7 +1524,8 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\awelcome\x18\n" +
 	" \x01(\v2\x1b.restfleet.agent.v1.WelcomeH\x00R\awelcome\x12u\n" +
 	"\x1dcertificate_rotation_response\x18\v \x01(\v2/.restfleet.agent.v1.CertificateRotationResponseH\x00R\x1bcertificateRotationResponse\x12`\n" +
-	"\x16desired_state_snapshot\x18\f \x01(\v2(.restfleet.agent.v1.DesiredStateSnapshotH\x00R\x14desiredStateSnapshotB\t\n" +
+	"\x16desired_state_snapshot\x18\f \x01(\v2(.restfleet.agent.v1.DesiredStateSnapshotH\x00R\x14desiredStateSnapshot\x12Y\n" +
+	"\x13credential_revision\x18\r \x01(\v2&.restfleet.agent.v1.CredentialRevisionH\x00R\x12credentialRevisionB\t\n" +
 	"\apayload\"\xcf\x03\n" +
 	"\x05Hello\x12\x1d\n" +
 	"\n" +
@@ -1388,7 +1615,29 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x0eruntime_policy\x18\x04 \x01(\v2!.restfleet.agent.v1.RuntimePolicyR\rruntimePolicy\"h\n" +
 	"\rRuntimePolicy\x12/\n" +
 	"\x14max_parallel_io_jobs\x18\x01 \x01(\rR\x11maxParallelIoJobs\x12&\n" +
-	"\x0flog_limit_bytes\x18\x02 \x01(\x04R\rlogLimitBytes2j\n" +
+	"\x0flog_limit_bytes\x18\x02 \x01(\x04R\rlogLimitBytes\"\xec\x03\n" +
+	"\x12CredentialRevision\x12\x1f\n" +
+	"\vdelivery_id\x18\x01 \x01(\tR\n" +
+	"deliveryId\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\x03R\brevision\x12\x19\n" +
+	"\bagent_id\x18\x03 \x01(\tR\aagentId\x12\x17\n" +
+	"\ahost_id\x18\x04 \x01(\tR\x06hostId\x12#\n" +
+	"\rrepository_id\x18\x05 \x01(\tR\frepositoryId\x12\x1d\n" +
+	"\n" +
+	"gateway_id\x18\x06 \x01(\tR\tgatewayId\x12)\n" +
+	"\x10gateway_revision\x18\a \x01(\x03R\x0fgatewayRevision\x12'\n" +
+	"\x0frestic_revision\x18\b \x01(\x03R\x0eresticRevision\x12\x1a\n" +
+	"\bendpoint\x18\t \x01(\tR\bendpoint\x12\"\n" +
+	"\rca_bundle_pem\x18\n" +
+	" \x01(\fR\vcaBundlePem\x12)\n" +
+	"\x10gateway_password\x18\v \x01(\fR\x0fgatewayPassword\x12'\n" +
+	"\x0frestic_password\x18\f \x01(\fR\x0eresticPassword\x129\n" +
+	"\n" +
+	"valid_from\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tvalidFrom\"Y\n" +
+	"\x1aCredentialRevisionAccepted\x12\x1f\n" +
+	"\vdelivery_id\x18\x01 \x01(\tR\n" +
+	"deliveryId\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\x03R\brevision2j\n" +
 	"\x13AgentControlService\x12S\n" +
 	"\aConnect\x12!.restfleet.agent.v1.AgentToServer\x1a!.restfleet.agent.v1.ServerToAgent(\x010\x01BJZHgithub.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1;agentv1b\x06proto3"
 
@@ -1404,7 +1653,7 @@ func file_restfleet_agent_v1_agent_control_proto_rawDescGZIP() []byte {
 	return file_restfleet_agent_v1_agent_control_proto_rawDescData
 }
 
-var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_restfleet_agent_v1_agent_control_proto_goTypes = []any{
 	(*AgentToServer)(nil),               // 0: restfleet.agent.v1.AgentToServer
 	(*ServerToAgent)(nil),               // 1: restfleet.agent.v1.ServerToAgent
@@ -1421,41 +1670,46 @@ var file_restfleet_agent_v1_agent_control_proto_goTypes = []any{
 	(*ConfigRejected)(nil),              // 12: restfleet.agent.v1.ConfigRejected
 	(*DesiredStateSnapshot)(nil),        // 13: restfleet.agent.v1.DesiredStateSnapshot
 	(*RuntimePolicy)(nil),               // 14: restfleet.agent.v1.RuntimePolicy
-	nil,                                 // 15: restfleet.agent.v1.InventoryReport.AvailableBytesEntry
-	(*timestamppb.Timestamp)(nil),       // 16: google.protobuf.Timestamp
+	(*CredentialRevision)(nil),          // 15: restfleet.agent.v1.CredentialRevision
+	(*CredentialRevisionAccepted)(nil),  // 16: restfleet.agent.v1.CredentialRevisionAccepted
+	nil,                                 // 17: restfleet.agent.v1.InventoryReport.AvailableBytesEntry
+	(*timestamppb.Timestamp)(nil),       // 18: google.protobuf.Timestamp
 }
 var file_restfleet_agent_v1_agent_control_proto_depIdxs = []int32{
-	16, // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
+	18, // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
 	2,  // 1: restfleet.agent.v1.AgentToServer.hello:type_name -> restfleet.agent.v1.Hello
 	4,  // 2: restfleet.agent.v1.AgentToServer.certificate_rotation_request:type_name -> restfleet.agent.v1.CertificateRotationRequest
 	6,  // 3: restfleet.agent.v1.AgentToServer.heartbeat:type_name -> restfleet.agent.v1.Heartbeat
 	10, // 4: restfleet.agent.v1.AgentToServer.inventory_report:type_name -> restfleet.agent.v1.InventoryReport
 	11, // 5: restfleet.agent.v1.AgentToServer.config_accepted:type_name -> restfleet.agent.v1.ConfigAccepted
 	12, // 6: restfleet.agent.v1.AgentToServer.config_rejected:type_name -> restfleet.agent.v1.ConfigRejected
-	16, // 7: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
-	3,  // 8: restfleet.agent.v1.ServerToAgent.welcome:type_name -> restfleet.agent.v1.Welcome
-	5,  // 9: restfleet.agent.v1.ServerToAgent.certificate_rotation_response:type_name -> restfleet.agent.v1.CertificateRotationResponse
-	13, // 10: restfleet.agent.v1.ServerToAgent.desired_state_snapshot:type_name -> restfleet.agent.v1.DesiredStateSnapshot
-	16, // 11: restfleet.agent.v1.Hello.local_time:type_name -> google.protobuf.Timestamp
-	16, // 12: restfleet.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
-	16, // 13: restfleet.agent.v1.Welcome.drain_deadline:type_name -> google.protobuf.Timestamp
-	16, // 14: restfleet.agent.v1.CertificateRotationResponse.not_after:type_name -> google.protobuf.Timestamp
-	7,  // 15: restfleet.agent.v1.Heartbeat.active_operations:type_name -> restfleet.agent.v1.ActiveOperation
-	8,  // 16: restfleet.agent.v1.Heartbeat.next_runs:type_name -> restfleet.agent.v1.NextRun
-	9,  // 17: restfleet.agent.v1.Heartbeat.health_checks:type_name -> restfleet.agent.v1.HealthCheck
-	16, // 18: restfleet.agent.v1.Heartbeat.local_time:type_name -> google.protobuf.Timestamp
-	16, // 19: restfleet.agent.v1.NextRun.scheduled_at:type_name -> google.protobuf.Timestamp
-	16, // 20: restfleet.agent.v1.InventoryReport.captured_at:type_name -> google.protobuf.Timestamp
-	15, // 21: restfleet.agent.v1.InventoryReport.available_bytes:type_name -> restfleet.agent.v1.InventoryReport.AvailableBytesEntry
-	16, // 22: restfleet.agent.v1.DesiredStateSnapshot.generated_at:type_name -> google.protobuf.Timestamp
-	14, // 23: restfleet.agent.v1.DesiredStateSnapshot.runtime_policy:type_name -> restfleet.agent.v1.RuntimePolicy
-	0,  // 24: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
-	1,  // 25: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
-	25, // [25:26] is the sub-list for method output_type
-	24, // [24:25] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	16, // 7: restfleet.agent.v1.AgentToServer.credential_revision_accepted:type_name -> restfleet.agent.v1.CredentialRevisionAccepted
+	18, // 8: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
+	3,  // 9: restfleet.agent.v1.ServerToAgent.welcome:type_name -> restfleet.agent.v1.Welcome
+	5,  // 10: restfleet.agent.v1.ServerToAgent.certificate_rotation_response:type_name -> restfleet.agent.v1.CertificateRotationResponse
+	13, // 11: restfleet.agent.v1.ServerToAgent.desired_state_snapshot:type_name -> restfleet.agent.v1.DesiredStateSnapshot
+	15, // 12: restfleet.agent.v1.ServerToAgent.credential_revision:type_name -> restfleet.agent.v1.CredentialRevision
+	18, // 13: restfleet.agent.v1.Hello.local_time:type_name -> google.protobuf.Timestamp
+	18, // 14: restfleet.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
+	18, // 15: restfleet.agent.v1.Welcome.drain_deadline:type_name -> google.protobuf.Timestamp
+	18, // 16: restfleet.agent.v1.CertificateRotationResponse.not_after:type_name -> google.protobuf.Timestamp
+	7,  // 17: restfleet.agent.v1.Heartbeat.active_operations:type_name -> restfleet.agent.v1.ActiveOperation
+	8,  // 18: restfleet.agent.v1.Heartbeat.next_runs:type_name -> restfleet.agent.v1.NextRun
+	9,  // 19: restfleet.agent.v1.Heartbeat.health_checks:type_name -> restfleet.agent.v1.HealthCheck
+	18, // 20: restfleet.agent.v1.Heartbeat.local_time:type_name -> google.protobuf.Timestamp
+	18, // 21: restfleet.agent.v1.NextRun.scheduled_at:type_name -> google.protobuf.Timestamp
+	18, // 22: restfleet.agent.v1.InventoryReport.captured_at:type_name -> google.protobuf.Timestamp
+	17, // 23: restfleet.agent.v1.InventoryReport.available_bytes:type_name -> restfleet.agent.v1.InventoryReport.AvailableBytesEntry
+	18, // 24: restfleet.agent.v1.DesiredStateSnapshot.generated_at:type_name -> google.protobuf.Timestamp
+	14, // 25: restfleet.agent.v1.DesiredStateSnapshot.runtime_policy:type_name -> restfleet.agent.v1.RuntimePolicy
+	18, // 26: restfleet.agent.v1.CredentialRevision.valid_from:type_name -> google.protobuf.Timestamp
+	0,  // 27: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
+	1,  // 28: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
+	28, // [28:29] is the sub-list for method output_type
+	27, // [27:28] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_restfleet_agent_v1_agent_control_proto_init() }
@@ -1470,11 +1724,13 @@ func file_restfleet_agent_v1_agent_control_proto_init() {
 		(*AgentToServer_InventoryReport)(nil),
 		(*AgentToServer_ConfigAccepted)(nil),
 		(*AgentToServer_ConfigRejected)(nil),
+		(*AgentToServer_CredentialRevisionAccepted)(nil),
 	}
 	file_restfleet_agent_v1_agent_control_proto_msgTypes[1].OneofWrappers = []any{
 		(*ServerToAgent_Welcome)(nil),
 		(*ServerToAgent_CertificateRotationResponse)(nil),
 		(*ServerToAgent_DesiredStateSnapshot)(nil),
+		(*ServerToAgent_CredentialRevision)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1482,7 +1738,7 @@ func file_restfleet_agent_v1_agent_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_restfleet_agent_v1_agent_control_proto_rawDesc), len(file_restfleet_agent_v1_agent_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
