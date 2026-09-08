@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
+	"github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/security"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -211,4 +213,15 @@ func TestRepositoryCredentialRejectsUnsafeFilesAndConcurrentRollback(t *testing.
 		t.Fatal("concurrent write rolled back newest revision")
 	}
 	c.Clear()
+}
+
+func TestInventoryAdvertisesRepositoryCredentials(t *testing.T) {
+	s, err := OpenState(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !slices.Contains(inventorySnapshot(s, "test", 0).GetCapabilities(), domain.RepositoryCredentialsCapability) {
+		t.Fatal("inventory and Hello capabilities disagree")
+	}
 }
