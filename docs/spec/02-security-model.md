@@ -32,6 +32,8 @@ V1 不声称抵御：
 - 隔离必须依赖 per-Host Repository、独立密码和 path-scoped gateway identity；
 - append-only 的主要价值是防删除/防覆盖，而非防本 Host 读取。
 
+正常备份的临时锁清理是唯一删除例外：Gateway MUST 验证临时锁由同一 Host 的当前授权备份会话新建，才 MAY 接受该锁的 DELETE。预存锁、其他会话锁、维护锁及归属不明的锁 MUST 拒绝；Agent MUST NOT 获得维护性 `unlock`、初始化或 config/keys 写入权限。rclone 原生 append-only 不验证锁归属，MUST NOT 直接暴露到公网；完整边界见 [ADR-0014](../adr/0014-gateway-owned-lock-cleanup.md)。
+
 ## 3. 信任区域
 
 | 区域 | 信任级别 | 持有 Secret |
@@ -242,7 +244,8 @@ Audit payload 禁止包含 secret、完整 Authorization header、Cookie、带�
 发布 V1 前必须证明：
 
 - 使用 Agent credential 对其他 Agent 路径返回拒绝；
-- 使用 Agent credential 对 DELETE/overwrite 返回拒绝；
+- 使用 Agent credential 对历史对象 DELETE/overwrite 返回拒绝，只有已证明归属的当前会话临时锁可清理；
+- 临时锁上传失败、会话取消/过期/重启或删除响应丢失时，不得获得或恢复删除权限；
 - 已撤销证书无法建连；
 - 重放 Enrollment Token 无法生成第二个 Agent；
 - 中心断线时 Agent 仍使用已确认计划执行；

@@ -67,7 +67,7 @@
 |---|---:|---|
 | REP-001 | P0 | 新 Host 建 Repo；得到独立 UUID path、Restic password、gateway identity。 |
 | REP-002 | P0 | Agent A credential 请求 Agent B repo path；Gateway 拒绝。 |
-| REP-003 | P0 | Agent 对已有 repository object 发 DELETE；Gateway 拒绝，对象仍存在。 |
+| REP-003 | P0 | Agent 对已有 repository object（包括预存、其他会话、维护锁）发 DELETE；Gateway 拒绝，对象仍存在。只有当前授权会话成功新建的临时锁可清理，刷新/结束正常，维护 unlock 不下放。 |
 | REP-004 | P0 | Agent 对已有 object 尝试 overwrite；Gateway 拒绝或不改变原内容。 |
 | REP-005 | P0 | Agent 备份需要读 index；正常成功，文档/UI 不标记为 write-only。 |
 | REP-006 | P0 | Agent filesystem/process/env inventory；不存在 rclone/provider/Crypt/admin secret。 |
@@ -94,6 +94,13 @@
 | REP-017 | P0 | initialize 要求 ADMIN/CSRF/幂等 key，无 body/query；任务、审计、事件与 outbox 原子提交，同 key 不重复创建。 |
 | REP-018 | P0 | 初始化与有效 backup/maintenance lease 冲突时拒绝执行；job/repository 续租及审计后 fence 拒绝旧 owner 提交或刷新。 |
 | REP-019 | P0 | worker 中断后重领，复用原路径/密码及最新 token；成功仅设置中心验证 metadata，保持 PROVISIONING，失败不自动 unlock/delete 或创建另一套凭据。 |
+
+Gateway 临时锁例外验收（用户确认的安全模型变更，见 ADR-0014）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-020 | P0 | 锁归属绑定可信 Host/Repository/Operation 与独立会话能力；上传失败不授权，取消/过期/重启及删除响应丢失不恢复删除权，旧会话凭据不能删除新会话对象。 |
+| REP-021 | P0 | 公共写入先验证完整内容 SHA-256、大小和规范路径，config/keys 只读；并发重复/畸形/跨 Host/未知方法/错误 TLS/后端非 404 探测均 fail closed，审计失败不执行锁删除。 |
 
 ## 7. Backup 与 Restic 解析
 

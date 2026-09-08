@@ -15,7 +15,7 @@ If an implementation conflicts with a specification, update the specification in
 ## Non-negotiable security invariants
 
 - An Agent MUST NOT receive rclone configuration, cloud-storage credentials, provider OAuth tokens, rclone crypt passwords, the server master key, or maintenance credentials.
-- An Agent MUST NOT be able to delete or overwrite existing repository objects.
+- An Agent MUST NOT overwrite existing repository objects or delete them, except temporary locks the Gateway proves were created by the same Host in the current authorized backup session. Pre-existing, other-session and maintenance locks remain protected; maintenance `unlock` remains central-only.
 - An Agent necessarily has read-and-create access to its own Restic repository; do not describe append-only as write-only.
 - V1 MUST default to one Repository per Host, with a distinct Restic repository password and gateway identity per Host.
 - A compromised Host MUST NOT expose another Host's repository contents or credentials.
