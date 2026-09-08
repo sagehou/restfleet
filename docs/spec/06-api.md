@@ -234,6 +234,11 @@ POST /api/v1/repositories/{repository_id}/initialize MUST 要求 ADMIN、CSRF �
 
 GET Operation 新增 REPOSITORY_INITIALIZE 类型与 repository_id；Repository metadata 新增 initialized_at 与 last_initialize_operation_id。成功 MUST 保持 PROVISIONING，只设置验证后的 format_version / initialized_at，MUST NOT 返回原生 Restic ID、密码、路径或秘密引用。初始化失败显示固定 error_code，重试必须新 Operation；不得重开终态、自动删除、unlock 或更换密码。Agent 仓库凭据 ACK 已接线，但 READY 仍未交付。租约/恢复详见 [ADR-0013](../adr/0013-repository-initialization-jobs.md)。
 
+
+### 8.3 M4 Agent 凭据确认只读字段
+
+Repository metadata 的可选 `agent_credential_revision` / `agent_credential_accepted_at` 仅反映当前 ACTIVE Agent、匹配当前秘密引用的交付。ACK 为派生状态，不改变仓库记录 revision/ETag；缺省表示尚未交付/确认，不返回密码、交付 ID、内部路径或 secret_ref，不能推导为备份可用。
+
 ## 9. Retention 与 Maintenance Policies
 
 ```http
@@ -474,7 +479,3 @@ Filter：actor、action、resource、result、time range。普通 API 不允许 
 - 示例不得含真实 endpoint/credential；
 - contract tests 验证 handler 与 OpenAPI；
 - breaking change 需要新 API major 或兼容迁移窗口。
-
-### M4 Agent 凭据确认只读字段
-
-Repository metadata 的可选 `agent_credential_revision` / `agent_credential_accepted_at` 仅反映当前 ACTIVE Agent、匹配当前秘密引用的交付。ACK 为派生状态，不改变仓库记录 revision/ETag；缺省表示尚未交付/确认，不返回密码、交付 ID、内部路径或 secret_ref，不能推导为备份可用。

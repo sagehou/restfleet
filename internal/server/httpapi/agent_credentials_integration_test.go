@@ -207,6 +207,7 @@ func TestAgentCredentialDenialConcurrencyAndAuditRollback(t *testing.T) {
 		"update hosts set status='DISABLED' where id=$1",
 		"update agents set status='REVOKED' where host_id=$1",
 		"update repositories set status='DISABLED' where host_id=$1",
+		"update storage_credentials set status='DISABLED' where id=(select storage_credential_id from repositories where host_id=$1)",
 	} {
 		if _, err := pool.Exec(ctx, statement, enrolled.HostId); err != nil {
 			t.Fatal(err)
@@ -227,10 +228,13 @@ func TestAgentCredentialDenialConcurrencyAndAuditRollback(t *testing.T) {
 		if _, err := pool.Exec(ctx, "update repositories set status='PROVISIONING' where id=$1", repo.Id); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := pool.Exec(ctx, "update storage_credentials set status='UNTESTED' where id=$1", repo.StorageCredentialId); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Fail an audit INSERT: neither a new delivery nor its outbox may commit.
 	_, err := pool.Exec(ctx, `create function reject_agent_delivery_audit() returns trigger language plpgsql as $$ begin
-		if new.action='AGENT_REPOSITORY_SECRET_ACCESS' then raise exception 'audit unavailable'; end if; return new; end $$;
+		if new.action in ('AGENT_REPOSITORY_SECRET_ACCESS','AGENT_REPOSITORY_CREDENTIAL_ACCEPTED') then raise exception 'audit unavailable'; end if; return new; end $$;
 		create trigger reject_agent_delivery before insert on audit_events for each row execute function reject_agent_delivery_audit();`)
 	if err != nil {
 		t.Fatal(err)
@@ -242,6 +246,13 @@ func TestAgentCredentialDenialConcurrencyAndAuditRollback(t *testing.T) {
 	called := false
 	if err := changed.WithAgentCredential(ctx, enrolled.AgentId, true, func(domain.RepositoryCredential) error { called = true; return nil }); err == nil || called {
 		t.Fatal("audit failure released secrets")
+	}
+	if c.AcceptAgentCredential(ctx, enrolled.AgentId, id, 1) == nil {
+		t.Fatal("ACK without audit committed")
+	}
+	var accepted bool
+	if err := pool.QueryRow(ctx, "select accepted_at is not null from repository_agent_deliveries where agent_id=$1", enrolled.AgentId).Scan(&accepted); err != nil || accepted {
+		t.Fatal("failed ACK audit left confirmed state")
 	}
 	var revision int
 	if err := pool.QueryRow(ctx, "select revision from repository_agent_deliveries where agent_id=$1", enrolled.AgentId).Scan(&revision); err != nil || revision != 1 {
