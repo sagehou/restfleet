@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -179,8 +180,20 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 	}
 	badEnv := append([]string{}, env...)
 	badEnv[len(badEnv)-1] = "RESTIC_CACERT=" + badCA
-	if _, err := run(badEnv, "snapshots"); err == nil {
-		t.Fatal("untrusted CA accepted")
+	// Restic retries TLS failures. Bound this negative probe independently so
+	// it cannot consume the lifetime of the remaining positive assertions.
+	badCtx, stopBadProbe := context.WithTimeout(ctx, 5*time.Second)
+	defer stopBadProbe()
+	badCommand := exec.CommandContext(badCtx, resticBinary, "--json", "--no-cache", "snapshots")
+	badCommand.Env = append(append([]string{}, baseEnv...), badEnv...)
+	var tlsErrors bytes.Buffer
+	badCommand.Stderr = &tlsErrors
+	badErr := badCommand.Run()
+	stopBadProbe()
+	tlsRejected := bytes.Contains(tlsErrors.Bytes(), []byte("x509: certificate signed by unknown authority"))
+	clear(tlsErrors.Bytes())
+	if badErr == nil || !tlsRejected {
+		t.Fatal("wrong CA did not produce an explicit trust verification failure")
 	}
 	client := server.Client()
 	call := func(method, path, body string, want int) {
