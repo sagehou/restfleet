@@ -174,9 +174,9 @@ rclone OAuth token 更新：
 
 ### 7.3 Gateway 安全层交付边界
 
-已实现单次授权备份安全层及进程内 supervisor/router 与固定二进制离线验收；尚未接入 `restfleet-gateway` command 的公网启动配置、持久化准入/审计和备份会话能力下发；MUST NOT 将 command 骨架或此测试环境部署为可用公网 Gateway。调用方 MUST 维持可信 per-Repository backup lease、独占 backend 生命周期及中心维护排斥；会话替换前 MUST 取消并等待旧请求退出。会话凭据 MUST 通过受保护文件或子进程环境交付 Restic，不能放入 argv/含凭据 URL。
+已实现单次授权备份安全层、进程内 supervisor/router、有界 TLS transport 与固定二进制离线验收；尚未接入 `restfleet-gateway` command 的公网启动配置、持久化准入/审计和备份会话能力下发；MUST NOT 将 command 骨架或此测试环境部署为可用公网 Gateway。调用方 MUST 维持可信 per-Repository backup lease、独占 backend 生命周期及中心维护排斥；会话替换前 MUST 取消并等待旧请求退出。会话凭据 MUST 通过受保护文件或子进程环境交付 Restic，不能放入 argv/含凭据 URL。
 
-当前安全层最多并发 8 请求、串行上传，上传缓冲最多 32 MiB（临时锁 64 KiB），每请求最多 1h；校验整个对象哈希后才提交，MUST NOT 配置超过上限的 Restic pack。supervisor 按调用方配置限制 1–32 个活动会话，且同 Host/Repository/Gateway identity/Operation/StorageCredential 同时最多一个；部署接线仍 MUST 增加监听连接/未认证请求速率限制及独立 TLS readiness；控制 API/数据库离线时的调度和准入协调仍按 §7 与架构可用性规则验收。会话丢失留下的锁 MUST 由中心经审计维护清理，禁止启动时批量删锁。
+当前安全层最多并发 8 请求、串行上传，上传缓冲最多 32 MiB（临时锁 64 KiB），每请求最多 1h；校验整个对象哈希后才提交，MUST NOT 配置超过上限的 Restic pack。supervisor 按调用方配置限制 1–32 个活动会话，且同 Host/Repository/Gateway identity/Operation/StorageCredential 同时最多一个；TLS transport 的连接/认证前限流见 §7.6，部署接线仍 MUST 完成独立 readiness 与持久化准入；控制 API/数据库离线时的调度和准入协调仍按 §7 与架构可用性规则验收。会话丢失留下的锁 MUST 由中心经审计维护清理，禁止启动时批量删锁。
 
 ### 7.4 Gateway supervisor 生命周期
 
@@ -195,6 +195,18 @@ supervisor 批次不提供公网部署就绪声明、备份会话能力下发/AC
 Server 可选配置 `RESTFLEET_GATEWAY_PUBLIC_URL=https://gateway.example.com[:port]`（仅 origin，无尾斜杠、路径、userinfo、query/fragment），默认留空不下发。设置后 MUST 同时具备完整 enrollment 配置；Gateway TLS 使用同一 `RESTFLEET_SERVER_CA_BUNDLE_FILE` 信任集合，MUST 含有效 CA。origin/CA 变化会生成新交付 revision；不得将设置 origin 误认为已启动 Gateway listener。
 
 完成 schema 10 migration、Server/Agent 升级且仓库已初始化后，具备 capability 的 Agent 在连接或心跳时接收本 Host 的仓库凭据并保存 ACK。Web 可查看“尚未下发 / 等待 Agent 确认 / 已确认保存”。此配置不启动 supervisor 会话、不授予 backup lease，也不完成 Gateway rotation/离线协调；Gateway command 仍不是生产可用公网服务。
+
+### 7.6 Gateway TLS transport
+
+`NewPublicServer` MUST 在绑定公网 socket 前校验证书/私钥匹配和证书当前有效期；可信调用方 MUST 从受保护文件加载证书，Agent MUST 继续校验配置的 CA 和 endpoint 名称。transport 只接受 TLS 1.2+ / HTTP/1.1；MUST NOT 回退明文或通过 Control API/gRPC 代理。HTTP/2 暂不启用，后续启用前 MUST 增加显式 stream 上限和固定 Restic 验收；Agent 控制 gRPC 的 HTTP/2 不受影响。
+
+默认最多接受 128 个连接，未完成 TLS 握手和 idle keep-alive 均占容量；超额连接留在操作系统 backlog，不创建额外请求处理 goroutine。TLS/请求头最多 5s，header limit 16 KiB（遵循 Go net/http 的解析缓冲余量），idle 60s；基础读写 30s，仅经认证且进入安全层的对象传输可延长到 1h。处理后未读 body 的清理最多 5s。连接限制不代替边缘网络防护。
+
+认证前使用全局 1s 固定窗口，最多接纳 256 个请求，不按客户端输入创建限流 key；窗口边界可能形成双倍短时突发。MUST NOT 信任 Forwarded/X-Forwarded-* 作为来源或身份。超额返回固定 429、Retry-After: 1 并关闭连接；每窗口首次超额尝试记录无身份、无原始输入的 `denied/rate_limited` 审计，审计失败该请求返回 503，其他超额请求仍拒绝且不重复触发审计。已进入认证/授权的请求保留逐请求拒绝审计；TLS/HTTP 解析失败不记录原始错误。共享窗口可能影响其他 Host 的吞吐，不承诺遭受洪泛时的公平性。
+
+transport MUST 直接交给 supervisor，保留原始路径，不挂载健康、管理或 metrics 路由。Serve 单次使用，取消或 listener 失败后 MUST 关闭入口、取消并等待在途请求/审计与 supervisor 后端清理，返回后调用方才 MAY Close runtime。固定 Restic/rclone 的 TLS 备份、锁清理和读回验收 MUST 经过此 transport。
+
+此批只完成可复用 transport；command 的受保护配置加载、独立 readiness、持久化 admission/审计接线和离线协调仍未完成，MUST NOT 开放公网部署或将 Repository 标成 READY。
 
 ## 8. Native Agent 安装
 

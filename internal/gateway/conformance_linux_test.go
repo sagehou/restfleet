@@ -14,7 +14,6 @@ import (
 	"io"
 	"math/big"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -76,12 +75,11 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 		}
 		return nil
 	}
-	server := httptest.NewTLSServer(s)
-	defer server.Close()
+	server := startPublicFixture(t, s, nil)
 	op := startSupervised(t, s, backupFixture(), noGatewayRefresh)
 	access := waitAccess(t, op)
 	ca := filepath.Join(dir, "ca.pem")
-	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0600); err != nil {
+	if err := os.WriteFile(ca, server.certificate, 0600); err != nil {
 		t.Fatal(err)
 	}
 	env := []string{"RESTIC_REPOSITORY=rest:" + server.URL + access.EndpointPath, "RESTIC_REST_USERNAME=" + backupFixture().Binding.GatewayID.String(),
@@ -161,7 +159,7 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 	if badErr == nil || !tlsRejected {
 		t.Fatal("wrong CA did not produce an explicit trust verification failure")
 	}
-	client := server.Client()
+	client := server.client
 	call := func(method, path, body string, want int) {
 		r, err := http.NewRequestWithContext(ctx, method, server.URL+access.EndpointPath+path, strings.NewReader(body))
 		if err != nil {

@@ -117,6 +117,13 @@ Agent 初始仓库凭据交付验收（ADR-0015，不替代 REP-011 轮换和 AG
 | REP-025 | P0 | Agent 原子 0600 落盘后 ACK，重连/重复/并发不改变交付身份；拒绝回滚、冲突和不安全文件；错误保留 last-known-good。 |
 | REP-026 | P0 | ACK 精确绑定当前 Agent/交付 ID/revision/秘密引用/Gateway 配置；跨 Host、禁用、吊销和过期版本被拒绝；ACK/outbox/审计原子提交，Web 不误报 READY。 |
 
+Gateway TLS transport 验收（不等于 command 可公网部署）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-027 | P0 | 固定 Restic/rclone 经真实 TLS transport 备份、清理本会话锁及读回成功；错误 CA、旧 TLS、明文、HTTP/2 绕过、超大 header、非规范路径及伪造 proxy header 均不获得额外权限，无管理路由或原始秘密回显。 |
+| REP-028 | P0 | 未完成握手/idle 占连接容量且超时释放；认证前固定窗口限流、审计洪泛合并且失败不放行；取消或 listener 故障中断 stalled upload 并等待请求/审计、进程组和 tmpfs 清理，已关闭 transport 不可重用。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |
