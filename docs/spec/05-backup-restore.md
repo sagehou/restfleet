@@ -296,6 +296,8 @@ UI 必须区分“结构一致性通过”与“读取了多少数据”。不�
 
 ## 14. Unlock
 
+本节指中心维护解锁，不包括正常备份刷新/结束时的自身临时锁清理。Agent 的清理权限 MUST 受 Gateway 当前会话归属证明约束，见安全模型 §2 与 ADR-0014；MUST NOT 由 Agent 自行列锁并推断可删除对象。
+
 - 默认只允许清理 stale lock；
 - preview 显示 lock age 与当前 active operations；
 - 存在活动 lease 时拒绝；

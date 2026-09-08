@@ -147,8 +147,8 @@ V1 不自动轮换 Agent CA。计划轮换 MUST 作为维护变更执行：
 2. Server 完成 migration/secret store 初始化；
 3. Server materialize rclone config 与 htpasswd 到 tmpfs；
 4. Gateway 验证 config 存在、权限正确、remote 可解析；
-5. 启动 `rclone serve restic --append-only --private-repos`；
-6. Gateway readiness 成功；
+5. 启动按 Repository 隔离的 `rclone serve restic --append-only --cache-objects=false` 私有 Unix socket；路径隔离由固定 backend root 与 Gateway 安全层共同实现，原始 socket MUST NOT 公开；
+6. Gateway TLS/身份/路径/锁归属安全层及其 supervisor readiness 成功；
 7. Edge 开始路由 Data Plane。
 
 rclone OAuth token 更新：
@@ -170,7 +170,13 @@ rclone OAuth token 更新：
 
 中心 MUST 使用固定 Restic 0.19.1 与 rclone 1.75.1，经私有 Unix socket 执行初始化与只读验证；MUST 沿用 Credential Runtime 的 tmpfs、token watcher/CAS 和清理规则。Restic 与 rclone MUST 分别按进程组取消，后端异常退出 MUST 取消正在运行的 Restic。socket/password/config/cache 均位于同一受限临时目录，不新增 TCP 管理端口。
 
-本批适配器尚未接入 Repository API/jobs/Agent ACK，MUST NOT 因离线 smoke test 成功就把 Repository 标成 READY。Server/Agent/Gateway 镜像均包含固定 Restic；rclone 仍只存在于中心 Server/Gateway 镜像。
+初始化适配器已接入 Repository API/持久化 jobs，尚未接入 Gateway/Agent ACK，MUST NOT 因离线 smoke test 或初始化 Operation 成功就把 Repository 标成 READY。Server/Agent/Gateway 镜像均包含固定 Restic；rclone 仍只存在于中心 Server/Gateway 镜像。
+
+### 7.3 Gateway 安全层交付边界
+
+本批实现单次授权备份的内部 HTTP handler 与固定二进制离线验收，尚未接入 `restfleet-gateway` supervisor、持久化准入/审计和 Agent 下发；MUST NOT 将 command 骨架或此测试环境部署为可用公网 Gateway。调用方 MUST 维持可信 per-Repository backup lease、独占 backend 生命周期及中心维护排斥；会话替换前 MUST 取消并等待旧请求退出。会话凭据 MUST 通过受保护文件或子进程环境交付 Restic，不能放入 argv/含凭据 URL。
+
+当前安全层最多并发 8 请求、串行上传，上传缓冲最多 32 MiB（临时锁 64 KiB），每请求最多 1h；校验整个对象哈希后才提交，MUST NOT 配置超过上限的 Restic pack。supervisor 接线时 MUST 增加全局会话/连接/内存限额及独立 TLS readiness；控制 API/数据库离线时的调度和准入协调仍按 §7 与架构可用性规则验收。会话丢失留下的锁 MUST 由中心经审计维护清理，禁止启动时批量删锁。
 
 ## 8. Native Agent 安装
 
