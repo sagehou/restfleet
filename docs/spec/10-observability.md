@@ -244,6 +244,12 @@ Audit `changes` 使用字段级 allowlist，secret 只记 `secret_revision: old�
 
 此适配器只能由可信中心组装调用，不构成向独立 Public Gateway 交付 Server 数据库凭据的授权。独立进程受保护审计通道、运行协调与离线持久化仍待接入；不得据此宣称公网 command 或 READY 已完成。
 
+### 13.2 Gateway 离线审计目标
+
+ADR-0017 允许 Gateway 在中心暂不可用时以受保护、可靠落盘的有界加密待回写记录承接审计，不能用普通内存队列替换 §13.1。离线记录 MUST 使用同一分类与字段 allowlist，保留事件发生时间和幂等标识；中心接收后另记接收时间，按提交顺序进入权威审计链，MUST NOT 回填或重排已提交的历史链。
+
+待回写区写入失败、满额、来源或完整性校验失败 MUST fail closed；危险清理意图仍 MUST 先于后端 DELETE 可靠保存。审计内容 MUST NOT 混入 token/config 明文，即便刷新记录使用同一受保护存储。重放与中央提交/确认丢失 MUST 有负向与幂等测试；不得把本地保存显示成“已写入中心审计链”。此能力尚待实现，细节与验收见 09 §7.10。
+
 ## 14. Diagnostics bundle
 
 管理员可创建 TTL-bound bundle：
