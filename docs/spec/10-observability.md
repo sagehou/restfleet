@@ -234,6 +234,16 @@ Audit `changes` 使用字段级 allowlist，secret 只记 `secret_revision: old�
 - audit writer 失败时高风险操作 fail closed：credential、restore、download intent、forget/prune/unlock 不执行；
 - 普通只读 Dashboard 在 audit subsystem 短暂故障时可继续，但明确 degraded。
 
+### 13.1 Gateway 在线审计接线
+
+`gateway.NewAuditRecorder` MUST 同步提交既有 append-only 审计链，最多等待 3s；数据库失败、取消或分类非法 MUST 返回固定错误，使会话创建、锁清理与拒绝响应继续 fail closed。MUST NOT 用内存队列确认“持久化成功”；本入口不是 AGT-005 离线缓冲方案。
+
+分类 MUST 使用精确 allowlist：会话开始/结束、授权锁清理意图、拒绝原因（路由/认证/路径/方法/容量/对象或锁归属）。未知 action/reason、部分或非 UUIDv7 绑定、矛盾的 authenticated 标志 MUST 替换为无资源身份的 `GATEWAY_EVENT_REJECTED / INVALID_EVENT`，拒绝原操作，不回显原始内容。无路由/限流事件 MUST 不绑定 Host。已路由事件只写入 repository_id 及 changes 的 route_host_id、gateway_id、session_id、authenticated；MUST NOT 从请求 username/path/headers 猜测 Agent 身份，Actor 使用 SYSTEM，actor_id 为空。
+
+`GATEWAY_LOCK_CLEANUP_INTENT` 在后端 DELETE 前提交，表示准许清理，不是删除完成证明；`GATEWAY_SESSION_END` 表示生命周期结束，不是成功备份结果。session_id 对应当前 Gateway 尝试，不虚构 durable Backup Operation。每条审计使用独立 UUIDv7 request_id，关联通过可信 session_id 完成。不记录 URL、对象名、路径、请求头、原始错误或配置。
+
+此适配器只能由可信中心组装调用，不构成向独立 Public Gateway 交付 Server 数据库凭据的授权。独立进程受保护审计通道、运行协调与离线持久化仍待接入；不得据此宣称公网 command 或 READY 已完成。
+
 ## 14. Diagnostics bundle
 
 管理员可创建 TTL-bound bundle：

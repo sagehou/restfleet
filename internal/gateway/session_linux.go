@@ -43,7 +43,7 @@ type Binding struct {
 	HostID, RepositoryID, GatewayID, OperationID uuid.UUID
 }
 
-// Event contains only verified identity and fixed classifications. Never add a
+// Event contains only trusted route context and fixed classifications. Never add a
 // URL, supplied username, Authorization, backend error or object content here.
 type Event struct {
 	Binding       Binding
