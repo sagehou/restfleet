@@ -76,7 +76,8 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 		return nil
 	}
 	server := startPublicFixture(t, s, nil)
-	op := startSupervised(t, s, backupFixture(), noGatewayRefresh)
+	admission := newAdmissionStoreFixture()
+	op := startAdmitted(t, s, admission, noGatewayRefresh)
 	access := waitAccess(t, op)
 	ca := filepath.Join(dir, "ca.pem")
 	if err := os.WriteFile(ca, server.certificate, 0600); err != nil {
@@ -207,5 +208,8 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 		t.Fatal("foreign lock changed")
 	}
 	finishSupervised(t, op)
+	if admission.releases != 1 {
+		t.Fatal("successful pinned backup did not release admission")
+	}
 	assertSupervisorClean(t, dir, runtimeRoot, backupFixture())
 }
