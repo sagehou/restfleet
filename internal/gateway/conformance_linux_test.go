@@ -21,6 +21,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sagehou/restfleet/internal/domain"
 )
 
 // This exercises the actual shipping engines without any cloud credentials.
@@ -67,13 +69,16 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 	}
 	var mu sync.Mutex
 	lockCleanups := 0
-	s.audit = func(_ context.Context, e Event) error {
+	s.audit, err = NewAuditRecorder(auditStoreFunc(func(_ context.Context, e domain.AuditEvent) error {
 		mu.Lock()
 		defer mu.Unlock()
-		if e.Action == "lock_cleanup" {
+		if e.Action == "GATEWAY_LOCK_CLEANUP_INTENT" {
 			lockCleanups++
 		}
 		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
 	}
 	server := startPublicFixture(t, s, nil)
 	admission := newAdmissionStoreFixture()
