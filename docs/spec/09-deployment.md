@@ -226,6 +226,12 @@ schema 11 的持久化备份占用原语已接入现有中心写入口互斥，�
 
 固定 Restic/rclone 的 TLS 备份读回通过该协调接缝（测试用占用 authority）验证清理后释放；真实 PostgreSQL 原语仍由数据库集成测试覆盖。这不代表完成公网 command、加密材料读取/审计接线、崩溃恢复、会话下发、READY 或三种云端真实服务验收。
 
+### 7.9 中心占用材料借用与刷新
+
+`ControlPlane.WithBackupMaterial` MUST 在当前占用及访问审计提交后解密云端配置，仅向可信中央 runner 借出 rclone config、remote 和占用 metadata；MUST NOT 将 master key 或 Restic password 交给 Gateway。runner MUST 接入 §7.8 的 supervisor、遵守截止时间并等待全部工作完成；本入口本身不发布路由、不释放占用。刷新回调串行化，中心 MUST 校验 token-only 差异并 envelope 加密 CAS 回写；相同配置不产生新版本，回调在借用结束后不可再使用，原始错误不外传。
+
+此接线仍是在线中央材料服务；公网 command、数据面审计持久化、独立 Gateway 进程的受保护材料交付、owner 恢复与 AGT-005 离线协调未完成。不得将它直接暴露为 Agent API 或据此标记 READY。
+
 ## 8. Native Agent 安装
 
 目标目录：

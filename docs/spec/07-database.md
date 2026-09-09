@@ -254,6 +254,8 @@ ACK MUST 重验 ACTIVE Agent/Host、未禁用的仓库/存储凭据、当前交�
 
 此批没有公网或 gRPC 申请入口，也不自动消费准入 outbox；进程接线、崩溃 owner 恢复及 AGT-005 离线授权/审计/OAuth 刷新仍待完成。生产升级接线前 MUST 停止所有旧版中心 writer，再运行 schema 11 与新版 writer；不了解占用表的旧二进制 MUST NOT 和新版准入并行。
 
+占用 owner 的云端材料读取和 token-only 刷新 MUST 复用同一在线校验/锁顺序；材料只返回当前 StorageCredential revision 对应的密文，MUST 与秘密访问审计提交后才借出解密结果。刷新 MUST 在中心重新解析配置、拒绝目标/Crypt/client/非 token 变化，以预期 secret revision 做 CAS，密文版本、metadata、last_refreshed_at 和脱敏审计原子提交。此 owner 专用入口不绕过其他 writer 的占用 fence；到期/释放/撤销/禁用/ACK 或配置变化 MUST 拒绝。审计等待后 MUST 再检查 DB 截止时间，失败不返回材料、不留下部分版本。无新增 schema 或公开协议。
+
 ### 5.5 template_revisions / plan_revisions
 
 每次变更保存不可变 snapshot：
