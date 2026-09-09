@@ -182,41 +182,50 @@ func (s *Store) CheckBackupAdmission(ctx context.Context, id, owner uuid.UUID, c
 		return domain.BackupAdmission{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	deny := func() (domain.BackupAdmission, error) {
-		return domain.BackupAdmission{}, rejectBackupAdmission(ctx, tx, id, uuid.Nil, domain.ErrBackupAdmission)
+	a, err := lockBackupAdmission(ctx, tx, id, owner, configurationHash)
+	if errors.Is(err, domain.ErrBackupAdmission) {
+		return domain.BackupAdmission{}, rejectBackupAdmission(ctx, tx, id, uuid.Nil, err)
 	}
+	if err != nil {
+		return domain.BackupAdmission{}, err
+	}
+	return a, tx.Commit(ctx)
+}
+
+// Caller commits or rolls back; no secret reads/writes precede these locks.
+func lockBackupAdmission(ctx context.Context, tx pgx.Tx, id, owner uuid.UUID, configurationHash string) (domain.BackupAdmission, error) {
 	a, err := scanBackupAdmission(tx.QueryRow(ctx, "select "+admissionColumns+" from gateway_backup_admissions where id=$1 and owner=$2", id, owner))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return deny()
+		return domain.BackupAdmission{}, domain.ErrBackupAdmission
 	}
 	if err != nil {
 		return domain.BackupAdmission{}, err
 	}
 	r, err := lockAgentRepository(ctx, tx, a.AgentID, true)
 	if errors.Is(err, domain.ErrNotFound) {
-		return deny()
+		return domain.BackupAdmission{}, domain.ErrBackupAdmission
 	}
 	if err != nil {
 		return domain.BackupAdmission{}, err
 	}
 	d, err := scanAgentDelivery(ctx, tx, a.AgentID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return deny()
+		return domain.BackupAdmission{}, domain.ErrBackupAdmission
 	}
 	if err != nil {
 		return domain.BackupAdmission{}, err
 	}
 	a, err = scanBackupAdmission(tx.QueryRow(ctx, "select "+admissionColumns+" from gateway_backup_admissions where id=$1 and owner=$2 and released_at is null and expires_at>clock_timestamp() for update", id, owner))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return deny()
+		return domain.BackupAdmission{}, domain.ErrBackupAdmission
 	}
 	if err != nil {
 		return domain.BackupAdmission{}, err
 	}
 	if r.Status == "LOCKED" || !admissionMatches(a, r, d, configurationHash) {
-		return deny()
+		return domain.BackupAdmission{}, domain.ErrBackupAdmission
 	}
-	return a, tx.Commit(ctx)
+	return a, nil
 }
 
 // ReleaseBackupAdmission is CENTRAL-ONLY cleanup acknowledgement, never an
