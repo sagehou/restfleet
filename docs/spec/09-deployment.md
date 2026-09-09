@@ -216,6 +216,16 @@ schema 11 的持久化备份占用原语已接入现有中心写入口互斥，�
 
 尚未实现 Gateway 的 owner 恢复协调或公开申请入口，因此不能手工拼接这些原语后宣称生产可用。离线许可、审计缓冲与 OAuth refresh 持久化仍须单独满足 AGT-005；在线 Check 的 fail-closed 行为不替代最终离线方案。
 
+### 7.8 在线 Gateway 占用协调接缝
+
+`Supervisor.WithAdmittedBackup` 复用 §7.7 的可信中央占用接口；本批不是公网申请 API、进程 owner 恢复或最终离线许可。调用方 MUST 已持久保存 ID/owner、审计材料读取并提供相同绑定的中央配置；MUST 保持单 supervisor/runtime owner，不能将本地互斥描述为跨进程接管证明。
+
+协调器 MUST 在本地容量/身份互斥内、材料落盘前核验当前占用的 ID、owner、配置 hash、Host、Repository、Gateway、StorageCredential、未释放状态与期限；会话截止时间 MUST 不晚于占用截止时间。运行期间每秒复查一次，单次最多 3s；失败、绑定变化或期限变化 MUST 取消会话并等待清理，不续期。撤销检测存在轮询/请求超时延迟；这不是 AGT-005 的离线方案，DB 不可用仍 fail closed。
+
+只有运行、配置最终同步、tmpfs 清理和结束审计全部成功且授权上下文仍有效时，才自动提交释放；释放最多 3s，MUST 在 supervisor 释放容量及 Close 返回之前完成。重复/冲突调用 MUST NOT 释放另一个运行的占用。任何运行异常、撤销、到期、刷新/审计失败或不确定清理均保留占用，等待后续可信恢复；释放失败不重启备份，不按过期自行解锁。
+
+固定 Restic/rclone 的 TLS 备份读回通过该协调接缝（测试用占用 authority）验证清理后释放；真实 PostgreSQL 原语仍由数据库集成测试覆盖。这不代表完成公网 command、加密材料读取/审计接线、崩溃恢复、会话下发、READY 或三种云端真实服务验收。
+
 ## 8. Native Agent 安装
 
 目标目录：

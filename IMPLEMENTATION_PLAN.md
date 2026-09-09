@@ -150,7 +150,9 @@
 
 第十一批（#26，已合并）增加 supervisor 的有界 TLS transport：128 连接、认证前限流、聚合限流审计、传输 deadline 与关闭清理；固定 Restic/rclone 备份读回改走此入口。复用现有组件，不提供缺少持久化准入的公网 command；独立 readiness、持久化准入/审计、会话能力交付、rotation 和离线协调仍待完成。
 
-第十二批实现持久化备份占用原语及中心写入口互斥（ADR-0016 / schema 11）：复用凭据锁、Repository advisory lock、审计/outbox；到期不自动释放占用，可信 owner 确认清理后才释放。尚不接 Gateway 进程/公开申请/会话下发，也不宣称离线授权或 M4 完成。
+第十二批（#27，已合并）实现持久化备份占用原语及中心写入口互斥（ADR-0016 / schema 11）：复用凭据锁、Repository advisory lock、审计/outbox；到期不自动释放占用，可信 owner 确认清理后才释放。尚不接 Gateway 进程/公开申请/会话下发，也不宣称离线授权或 M4 完成。
+
+第十三批接入在线 Gateway 占用生命周期：材料落盘前核验绑定、期限约束、周期复查、成功清理/审计后释放，重复与异常路径保留 fence；固定二进制 TLS 验收经过该接缝。继续复用现有 supervisor 与占用原语；公开 command、owner 恢复、材料/会话交付及离线许可尚未完成。
 
 ### Goal
 

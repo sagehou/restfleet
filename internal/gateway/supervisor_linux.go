@@ -80,6 +80,12 @@ func NewSupervisor(runtime *rclone.Runtime, maxSessions int, audit func(context.
 // escape. There is no retry/restart here: later attempts need fresh admission.
 func (s *Supervisor) WithBackup(ctx context.Context, request BackupRequest,
 	persist func(context.Context, []byte) error, run func(context.Context, Access) error,
+) error {
+	return s.withBackup(ctx, request, persist, run, nil)
+}
+
+func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
+	persist func(context.Context, []byte) error, run func(context.Context, Access) error, admission *admittedBackup,
 ) (result error) {
 	if run == nil || persist == nil {
 		return ErrInvalidSession
@@ -123,6 +129,16 @@ func (s *Supervisor) WithBackup(ctx context.Context, request BackupRequest,
 		s.mu.Unlock()
 		s.running.Done()
 	}()
+	if admission != nil {
+		var finish func(error) error
+		var err error
+		ctx, finish, err = admission.start(ctx, request)
+		if err != nil {
+			return err
+		}
+		// Runs after runtime and end-audit cleanup, before capacity and Close's join.
+		defer func() { result = finish(result) }()
+	}
 	if !s.record(ctx, request.Binding, "session_start", "requested") {
 		return ErrGatewayAudit
 	}
@@ -147,7 +163,7 @@ func (s *Supervisor) WithBackup(ctx context.Context, request BackupRequest,
 
 func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remote, config, binary string,
 	run func(context.Context, Access) error,
-) error {
+) (result error) {
 	dir := filepath.Dir(config)
 	socket := filepath.Join(dir, "rest.sock")
 	if len(socket) >= 108 {
@@ -177,7 +193,13 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 	}
 	stopped := make(chan struct{})
 	go func() { _ = cmd.Wait(); cancel(); close(stopped) }()
-	defer func() { cancel(); <-stopped; _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }()
+	defer func() {
+		cancel()
+		<-stopped
+		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+			result = ErrBackendUnavailable // Never acknowledge cleanup after a failed group kill.
+		}
+	}()
 	if err := waitBackendSocket(backendCtx, socket); err != nil {
 		return ErrBackendUnavailable
 	}
