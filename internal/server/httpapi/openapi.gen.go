@@ -411,6 +411,48 @@ func (e UserRole) Valid() bool {
 	}
 }
 
+// Defines values for WritebackRecordRecordType.
+const (
+	WritebackRecordRecordTypeADMISSIONCHANGE WritebackRecordRecordType = "ADMISSION_CHANGE"
+	WritebackRecordRecordTypeAUDITEVENT      WritebackRecordRecordType = "AUDIT_EVENT"
+	WritebackRecordRecordTypeTOKENREFRESH    WritebackRecordRecordType = "TOKEN_REFRESH"
+)
+
+// Valid indicates whether the value is a known member of the WritebackRecordRecordType enum.
+func (e WritebackRecordRecordType) Valid() bool {
+	switch e {
+	case WritebackRecordRecordTypeADMISSIONCHANGE:
+		return true
+	case WritebackRecordRecordTypeAUDITEVENT:
+		return true
+	case WritebackRecordRecordTypeTOKENREFRESH:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubmitWritebackRecordJSONBodyRecordType.
+const (
+	SubmitWritebackRecordJSONBodyRecordTypeADMISSIONCHANGE SubmitWritebackRecordJSONBodyRecordType = "ADMISSION_CHANGE"
+	SubmitWritebackRecordJSONBodyRecordTypeAUDITEVENT      SubmitWritebackRecordJSONBodyRecordType = "AUDIT_EVENT"
+	SubmitWritebackRecordJSONBodyRecordTypeTOKENREFRESH    SubmitWritebackRecordJSONBodyRecordType = "TOKEN_REFRESH"
+)
+
+// Valid indicates whether the value is a known member of the SubmitWritebackRecordJSONBodyRecordType enum.
+func (e SubmitWritebackRecordJSONBodyRecordType) Valid() bool {
+	switch e {
+	case SubmitWritebackRecordJSONBodyRecordTypeADMISSIONCHANGE:
+		return true
+	case SubmitWritebackRecordJSONBodyRecordTypeAUDITEVENT:
+		return true
+	case SubmitWritebackRecordJSONBodyRecordTypeTOKENREFRESH:
+		return true
+	default:
+		return false
+	}
+}
+
 // Agent defines model for Agent.
 type Agent struct {
 	AcceptedRevision     int64              `json:"accepted_revision"`
@@ -631,6 +673,27 @@ type LoginRequest struct {
 	Username string `json:"username"`
 }
 
+// OfflineAuthorization defines model for OfflineAuthorization.
+type OfflineAuthorization struct {
+	AgentId               openapi_types.UUID `json:"agent_id"`
+	AuthorizationSequence int64              `json:"authorization_sequence"`
+	AuthorizedAt          time.Time          `json:"authorized_at"`
+	ConfigurationHash     string             `json:"configuration_hash"`
+	CreatedAt             time.Time          `json:"created_at"`
+	DeliveryId            openapi_types.UUID `json:"delivery_id"`
+	DisabledAt            *time.Time         `json:"disabled_at,omitempty"`
+	ExpiresAt             time.Time          `json:"expires_at"`
+	GatewayId             openapi_types.UUID `json:"gateway_id"`
+	GatewayInstanceId     openapi_types.UUID `json:"gateway_instance_id"`
+	HostId                openapi_types.UUID `json:"host_id"`
+	Id                    openapi_types.UUID `json:"id"`
+	Owner                 openapi_types.UUID `json:"owner"`
+	RenewedAt             *time.Time         `json:"renewed_at,omitempty"`
+	RepositoryId          openapi_types.UUID `json:"repository_id"`
+	RevokedAt             *time.Time         `json:"revoked_at,omitempty"`
+	StorageCredentialId   openapi_types.UUID `json:"storage_credential_id"`
+}
+
 // Operation defines model for Operation.
 type Operation struct {
 	AcknowledgedAt      *time.Time          `json:"acknowledged_at,omitempty"`
@@ -787,6 +850,21 @@ type Version struct {
 	Version       string `json:"version"`
 }
 
+// WritebackRecord defines model for WritebackRecord.
+type WritebackRecord struct {
+	AuthorizationId   openapi_types.UUID        `json:"authorization_id"`
+	ConfirmedAt       *time.Time                `json:"confirmed_at,omitempty"`
+	CreatedAt         time.Time                 `json:"created_at"`
+	GatewayInstanceId openapi_types.UUID        `json:"gateway_instance_id"`
+	Id                openapi_types.UUID        `json:"id"`
+	Owner             openapi_types.UUID        `json:"owner"`
+	RecordType        WritebackRecordRecordType `json:"record_type"`
+	Sequence          int64                     `json:"sequence"`
+}
+
+// WritebackRecordRecordType defines model for WritebackRecord.RecordType.
+type WritebackRecordRecordType string
+
 // AgentId defines model for AgentId.
 type AgentId = openapi_types.UUID
 
@@ -854,6 +932,40 @@ type CreateEnrollmentTokenParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// IssueOfflineAuthorizationJSONBody defines parameters for IssueOfflineAuthorization.
+type IssueOfflineAuthorizationJSONBody struct {
+	AgentId           openapi_types.UUID `json:"agent_id"`
+	GatewayInstanceId openapi_types.UUID `json:"gateway_instance_id"`
+	LifetimeHours     float32            `json:"lifetime_hours"`
+}
+
+// IssueOfflineAuthorizationParams defines parameters for IssueOfflineAuthorization.
+type IssueOfflineAuthorizationParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// RenewOfflineAuthorizationJSONBody defines parameters for RenewOfflineAuthorization.
+type RenewOfflineAuthorizationJSONBody struct {
+	CurrentSequence  int                `json:"current_sequence"`
+	NewLifetimeHours float32            `json:"new_lifetime_hours"`
+	Owner            openapi_types.UUID `json:"owner"`
+}
+
+// RenewOfflineAuthorizationParams defines parameters for RenewOfflineAuthorization.
+type RenewOfflineAuthorizationParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// RevokeOfflineAuthorizationJSONBody defines parameters for RevokeOfflineAuthorization.
+type RevokeOfflineAuthorizationJSONBody struct {
+	Owner openapi_types.UUID `json:"owner"`
+}
+
+// RevokeOfflineAuthorizationParams defines parameters for RevokeOfflineAuthorization.
+type RevokeOfflineAuthorizationParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // ListRepositoriesParams defines parameters for ListRepositories.
 type ListRepositoriesParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
@@ -900,6 +1012,21 @@ type TestStorageCredentialParams struct {
 	IdempotencyKey string    `json:"Idempotency-Key"`
 }
 
+// SubmitWritebackRecordJSONBody defines parameters for SubmitWritebackRecord.
+type SubmitWritebackRecordJSONBody struct {
+	AuthorizationId   openapi_types.UUID                      `json:"authorization_id"`
+	ChecksumHex       string                                  `json:"checksum_hex"`
+	GatewayInstanceId openapi_types.UUID                      `json:"gateway_instance_id"`
+	Owner             openapi_types.UUID                      `json:"owner"`
+	PayloadBase64     []byte                                  `json:"payload_base64"`
+	RecordId          openapi_types.UUID                      `json:"record_id"`
+	RecordType        SubmitWritebackRecordJSONBodyRecordType `json:"record_type"`
+	Sequence          int                                     `json:"sequence"`
+}
+
+// SubmitWritebackRecordJSONBodyRecordType defines parameters for SubmitWritebackRecord.
+type SubmitWritebackRecordJSONBodyRecordType string
+
 // EnrollAgentJSONRequestBody defines body for EnrollAgent for application/json ContentType.
 type EnrollAgentJSONRequestBody = AgentEnrollmentRequest
 
@@ -921,6 +1048,15 @@ type UpdateHostJSONRequestBody = HostPatch
 // CreateEnrollmentTokenJSONRequestBody defines body for CreateEnrollmentToken for application/json ContentType.
 type CreateEnrollmentTokenJSONRequestBody = EnrollmentTokenCreate
 
+// IssueOfflineAuthorizationJSONRequestBody defines body for IssueOfflineAuthorization for application/json ContentType.
+type IssueOfflineAuthorizationJSONRequestBody IssueOfflineAuthorizationJSONBody
+
+// RenewOfflineAuthorizationJSONRequestBody defines body for RenewOfflineAuthorization for application/json ContentType.
+type RenewOfflineAuthorizationJSONRequestBody RenewOfflineAuthorizationJSONBody
+
+// RevokeOfflineAuthorizationJSONRequestBody defines body for RevokeOfflineAuthorization for application/json ContentType.
+type RevokeOfflineAuthorizationJSONRequestBody RevokeOfflineAuthorizationJSONBody
+
 // CreateRepositoryJSONRequestBody defines body for CreateRepository for application/json ContentType.
 type CreateRepositoryJSONRequestBody = RepositoryCreate
 
@@ -929,6 +1065,9 @@ type CreateStorageCredentialJSONRequestBody = StorageCredentialCreate
 
 // ReplaceStorageCredentialJSONRequestBody defines body for ReplaceStorageCredential for application/json ContentType.
 type ReplaceStorageCredentialJSONRequestBody = StorageCredentialReplace
+
+// SubmitWritebackRecordJSONRequestBody defines body for SubmitWritebackRecord for application/json ContentType.
+type SubmitWritebackRecordJSONRequestBody SubmitWritebackRecordJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -992,6 +1131,15 @@ type ServerInterface interface {
 
 	// (GET /api/v1/hosts/{host_id}/inventory)
 	GetHostInventory(w http.ResponseWriter, r *http.Request, hostId HostId)
+	// IssueOfflineAuthorization Issue offline authorization for a Gateway instance.
+	// (POST /api/v1/offline-authorizations)
+	IssueOfflineAuthorization(w http.ResponseWriter, r *http.Request, params IssueOfflineAuthorizationParams)
+	// RenewOfflineAuthorization Renew an existing offline authorization.
+	// (POST /api/v1/offline-authorizations/{auth_id}/renew)
+	RenewOfflineAuthorization(w http.ResponseWriter, r *http.Request, authId openapi_types.UUID, params RenewOfflineAuthorizationParams)
+	// RevokeOfflineAuthorization Revoke an offline authorization.
+	// (POST /api/v1/offline-authorizations/{auth_id}/revoke)
+	RevokeOfflineAuthorization(w http.ResponseWriter, r *http.Request, authId openapi_types.UUID, params RevokeOfflineAuthorizationParams)
 
 	// (GET /api/v1/operations/{operation_id})
 	GetOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID)
@@ -1028,6 +1176,9 @@ type ServerInterface interface {
 
 	// (GET /api/v1/version)
 	Version(w http.ResponseWriter, r *http.Request)
+	// SubmitWritebackRecord Submit a write-back record from an authorized Gateway.
+	// (POST /api/v1/writeback-records)
+	SubmitWritebackRecord(w http.ResponseWriter, r *http.Request)
 
 	// (GET /health/live)
 	HealthLive(w http.ResponseWriter, r *http.Request)
@@ -1810,6 +1961,159 @@ func (siw *ServerInterfaceWrapper) GetHostInventory(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// IssueOfflineAuthorization operation middleware
+func (siw *ServerInterfaceWrapper) IssueOfflineAuthorization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params IssueOfflineAuthorizationParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssueOfflineAuthorization(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenewOfflineAuthorization operation middleware
+func (siw *ServerInterfaceWrapper) RenewOfflineAuthorization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "auth_id" -------------
+	var authId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "auth_id", r.PathValue("auth_id"), &authId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "auth_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RenewOfflineAuthorizationParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenewOfflineAuthorization(w, r, authId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeOfflineAuthorization operation middleware
+func (siw *ServerInterfaceWrapper) RevokeOfflineAuthorization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "auth_id" -------------
+	var authId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "auth_id", r.PathValue("auth_id"), &authId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "auth_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RevokeOfflineAuthorizationParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeOfflineAuthorization(w, r, authId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetOperation operation middleware
 func (siw *ServerInterfaceWrapper) GetOperation(w http.ResponseWriter, r *http.Request) {
 
@@ -2392,6 +2696,20 @@ func (siw *ServerInterfaceWrapper) Version(w http.ResponseWriter, r *http.Reques
 	handler.ServeHTTP(w, r)
 }
 
+// SubmitWritebackRecord operation middleware
+func (siw *ServerInterfaceWrapper) SubmitWritebackRecord(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitWritebackRecord(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // HealthLive operation middleware
 func (siw *ServerInterfaceWrapper) HealthLive(w http.ResponseWriter, r *http.Request) {
 
@@ -2574,6 +2892,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}/test", wrapper.TestStorageCredential)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/repositories/{repository_id}/initialize", wrapper.InitializeRepository)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/operations/{operation_id}", wrapper.GetOperation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/offline-authorizations", wrapper.IssueOfflineAuthorization)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/offline-authorizations/{auth_id}/renew", wrapper.RenewOfflineAuthorization)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/offline-authorizations/{auth_id}/revoke", wrapper.RevokeOfflineAuthorization)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/writeback-records", wrapper.SubmitWritebackRecord)
 
 	return m
 }

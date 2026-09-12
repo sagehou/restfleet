@@ -84,6 +84,15 @@ type Store interface {
 	RefreshCredentialJob(context.Context, uuid.UUID, uuid.UUID, int64, domain.SecretEnvelope) (domain.StorageCredential, error)
 	CompleteCredentialJob(context.Context, uuid.UUID, uuid.UUID, string) error
 	CompleteRepositoryJob(context.Context, uuid.UUID, uuid.UUID, string, string, int) error
+	IssueOfflineAuthorization(context.Context, domain.OfflineAuthorizationRequest) (domain.OfflineAuthorization, error)
+	RenewOfflineAuthorization(context.Context, domain.OfflineRenewalRequest) (domain.OfflineAuthorization, error)
+	RevokeOfflineAuthorization(context.Context, uuid.UUID, uuid.UUID) error
+	DisableOfflineAuthorization(context.Context, uuid.UUID, uuid.UUID) error
+	VerifyOfflineAuthorization(context.Context, uuid.UUID, uuid.UUID, int64) (domain.OfflineAuthorization, error)
+	OfflineAuthorizationForGateway(context.Context, uuid.UUID) (domain.OfflineAuthorization, error)
+	SubmitWritebackRecord(context.Context, domain.WritebackSubmission) (domain.WritebackRecord, error)
+	ConfirmWritebackRecord(context.Context, uuid.UUID) error
+	PendingWritebackRecords(context.Context, uuid.UUID, int) ([]domain.WritebackRecord, error)
 }
 
 // Settings controls security policy. Production defaults are applied to zero values.

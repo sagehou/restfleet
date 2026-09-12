@@ -503,6 +503,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/offline-authorizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue offline authorization for a Gateway instance. */
+        post: operations["issueOfflineAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/offline-authorizations/{auth_id}/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Renew an existing offline authorization. */
+        post: operations["renewOfflineAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/offline-authorizations/{auth_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke an offline authorization. */
+        post: operations["revokeOfflineAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/writeback-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit a write-back record from an authorized Gateway. */
+        post: operations["submitWritebackRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -874,6 +942,59 @@ export interface components {
             /** Format: uuid */
             request_id: string;
             errors?: components["schemas"]["FieldError"][];
+        };
+        OfflineAuthorization: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            owner: string;
+            /** Format: uuid */
+            gateway_instance_id: string;
+            /** Format: uuid */
+            agent_id: string;
+            /** Format: uuid */
+            host_id: string;
+            /** Format: uuid */
+            repository_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: uuid */
+            storage_credential_id: string;
+            /** Format: uuid */
+            delivery_id: string;
+            configuration_hash: string;
+            /** Format: date-time */
+            authorized_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: int64 */
+            authorization_sequence: number;
+            /** Format: date-time */
+            renewed_at?: string | null;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: date-time */
+            disabled_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        WritebackRecord: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            authorization_id: string;
+            /** Format: uuid */
+            owner: string;
+            /** Format: uuid */
+            gateway_instance_id: string;
+            /** Format: int64 */
+            sequence: number;
+            /** @enum {string} */
+            record_type: "AUDIT_EVENT" | "TOKEN_REFRESH" | "ADMISSION_CHANGE";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            confirmed_at?: string | null;
         };
         FieldError: {
             field: string;
@@ -1894,6 +2015,159 @@ export interface operations {
             404: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
+        };
+    };
+    issueOfflineAuthorization: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    agent_id: string;
+                    /** Format: uuid */
+                    gateway_instance_id: string;
+                    lifetime_hours: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Authorization issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflineAuthorization"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    renewOfflineAuthorization: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                auth_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    owner: string;
+                    current_sequence: number;
+                    new_lifetime_hours: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Authorization renewed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflineAuthorization"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    revokeOfflineAuthorization: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                auth_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    owner: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Authorization revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    submitWritebackRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    record_id: string;
+                    /** Format: uuid */
+                    authorization_id: string;
+                    /** Format: uuid */
+                    owner: string;
+                    /** Format: uuid */
+                    gateway_instance_id: string;
+                    sequence: number;
+                    /** @enum {string} */
+                    record_type: "AUDIT_EVENT" | "TOKEN_REFRESH" | "ADMISSION_CHANGE";
+                    /** Format: byte */
+                    payload_base64: string;
+                    checksum_hex: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Write-back record accepted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WritebackRecord"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
         };
     };
 }

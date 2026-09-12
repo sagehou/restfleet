@@ -755,6 +755,132 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/offline-authorizations:
+    post:
+      tags: [Gateway]
+      summary: Issue offline authorization for a Gateway instance.
+      operationId: issueOfflineAuthorization
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_id, gateway_instance_id, lifetime_hours]
+              properties:
+                agent_id: { type: string, format: uuid }
+                gateway_instance_id: { type: string, format: uuid }
+                lifetime_hours: { type: number, minimum: 1, maximum: 12 }
+      responses:
+        "201":
+          description: Authorization issued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OfflineAuthorization" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/offline-authorizations/{auth_id}/renew:
+    post:
+      tags: [Gateway]
+      summary: Renew an existing offline authorization.
+      operationId: renewOfflineAuthorization
+      parameters:
+        - name: auth_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner, current_sequence, new_lifetime_hours]
+              properties:
+                owner: { type: string, format: uuid }
+                current_sequence: { type: integer, minimum: 1 }
+                new_lifetime_hours: { type: number, minimum: 1, maximum: 12 }
+      responses:
+        "200":
+          description: Authorization renewed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OfflineAuthorization" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/offline-authorizations/{auth_id}/revoke:
+    post:
+      tags: [Gateway]
+      summary: Revoke an offline authorization.
+      operationId: revokeOfflineAuthorization
+      parameters:
+        - name: auth_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner]
+              properties:
+                owner: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Authorization revoked.
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/writeback-records:
+    post:
+      tags: [Gateway]
+      summary: Submit a write-back record from an authorized Gateway.
+      operationId: submitWritebackRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [record_id, authorization_id, owner, gateway_instance_id, sequence, record_type, payload_base64, checksum_hex]
+              properties:
+                record_id: { type: string, format: uuid }
+                authorization_id: { type: string, format: uuid }
+                owner: { type: string, format: uuid }
+                gateway_instance_id: { type: string, format: uuid }
+                sequence: { type: integer, minimum: 1 }
+                record_type: { type: string, enum: [AUDIT_EVENT, TOKEN_REFRESH, ADMISSION_CHANGE] }
+                payload_base64: { type: string, format: byte }
+                checksum_hex: { type: string }
+      responses:
+        "201":
+          description: Write-back record accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WritebackRecord" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+
 components:
   securitySchemes:
     sessionCookie:
@@ -1261,6 +1387,41 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FieldError"
+
+    OfflineAuthorization:
+      type: object
+      required: [id, owner, gateway_instance_id, agent_id, host_id, repository_id, gateway_id, storage_credential_id, delivery_id, configuration_hash, authorized_at, expires_at, authorization_sequence, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        owner: { type: string, format: uuid }
+        gateway_instance_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        host_id: { type: string, format: uuid }
+        repository_id: { type: string, format: uuid }
+        gateway_id: { type: string, format: uuid }
+        storage_credential_id: { type: string, format: uuid }
+        delivery_id: { type: string, format: uuid }
+        configuration_hash: { type: string }
+        authorized_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        authorization_sequence: { type: integer, format: int64 }
+        renewed_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        disabled_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    WritebackRecord:
+      type: object
+      required: [id, authorization_id, owner, gateway_instance_id, sequence, record_type, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        authorization_id: { type: string, format: uuid }
+        owner: { type: string, format: uuid }
+        gateway_instance_id: { type: string, format: uuid }
+        sequence: { type: integer, format: int64 }
+        record_type: { type: string, enum: [AUDIT_EVENT, TOKEN_REFRESH, ADMISSION_CHANGE] }
+        created_at: { type: string, format: date-time }
+        confirmed_at: { type: string, format: date-time, nullable: true }
     FieldError:
       type: object
       additionalProperties: false

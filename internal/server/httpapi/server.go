@@ -436,7 +436,7 @@ func (a *API) generatedError(w http.ResponseWriter, r *http.Request, _ error) {
 		a.problem(w, r, http.StatusForbidden, "CSRF_INVALID", "Request denied", "The CSRF token is missing or invalid.", nil)
 	default:
 		if r.Method != http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/") &&
-			r.Header.Get("X-CSRF-Token") == "" && r.URL.Path != "/api/v1/agent-enrollment" {
+			r.Header.Get("X-CSRF-Token") == "" && r.URL.Path != "/api/v1/agent-enrollment" && r.URL.Path != "/api/v1/writeback-records" {
 			if err := a.control.RecordDenied(r.Context(), "AUTHORIZATION", "SESSION", "CSRF_MISSING", requestMeta(r)); err != nil {
 				a.internalProblem(w, r)
 				return
@@ -566,6 +566,18 @@ func routeLabel(path string) string {
 	}
 	if strings.HasPrefix(path, "/api/") {
 		return "api_unknown"
+	}
+	if strings.HasPrefix(path, "/api/v1/offline-authorizations") {
+		if strings.HasSuffix(path, "/renew") {
+			return "/api/v1/offline-authorizations/{auth_id}/renew"
+		}
+		if strings.HasSuffix(path, "/revoke") {
+			return "/api/v1/offline-authorizations/{auth_id}/revoke"
+		}
+		return "/api/v1/offline-authorizations"
+	}
+	if strings.HasPrefix(path, "/api/v1/writeback-records") {
+		return "/api/v1/writeback-records"
 	}
 	return "static"
 }
