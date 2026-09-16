@@ -256,6 +256,18 @@ ACK MUST 重验 ACTIVE Agent/Host、未禁用的仓库/存储凭据、当前交�
 
 占用 owner 的云端材料读取和 token-only 刷新 MUST 复用同一在线校验/锁顺序；材料只返回当前 StorageCredential revision 对应的密文，MUST 与秘密访问审计提交后才借出解密结果。刷新 MUST 在中心重新解析配置、拒绝目标/Crypt/client/非 token 变化，以预期 secret revision 做 CAS，密文版本、metadata、last_refreshed_at 和脱敏审计原子提交。此 owner 专用入口不绕过其他 writer 的占用 fence；到期/释放/撤销/禁用/ACK 或配置变化 MUST 拒绝。审计等待后 MUST 再检查 DB 截止时间，失败不返回材料、不留下部分版本。无新增 schema 或公开协议。
 
+### 5.4.5 Gateway 授权决定（schema 12，ADR-0019）
+
+`gateway_authorization_decisions` MUST 以 (admission_id, revision) 为主键，保存全局唯一 request_id、runtime_id、请求期限、签发/到期时间和明确吊销标志；仅保存 metadata，不保存签名私钥或运行配置。占用提供不可变的资源/凭据引用，运行角色只获 SELECT/INSERT；已有决定历史时 Down MUST 拒绝删除。
+
+普通签发/续期 MUST 复用 §5.4.4 的身份、凭据、精确 ACK 和占用锁，之后读取最新决定；同一占用的 runtime_id 不得改变。ExpectedRevision 必须等于最新 revision，首次为 0；同 request_id 只允许重放仍为最新的完整相同决定，不追加审计/outbox，不更新时间。其他旧键、跨绑定、同版本改参、签发时钟倒退及吊销后的普通续期 MUST 拒绝。
+
+新决定 MUST 使用 DB UTC 整秒时间；普通请求期限 1s..12h，实际到期时间为签发时间加请求期限与原占用截止时间（向下取整秒）的较早者。MUST NOT 延长 schema 11 的占用期限，不释放再申请；原占用仍然连续排斥维护、凭据替换及其他 owner。审计等待后 MUST 复查占用和授权剩余期限，任何错误全部回滚；服务仅在事务提交并再次验证返回绑定、版本和期限后签名。
+
+明确吊销使用相同 ID/owner/运行绑定及 revision CAS，但不要求 Agent/凭据仍启用或原占用未过期。吊销必须 expires_at=NULL、请求期限=0，wire 对应 expires_at=0；它是终态，不表示清理完成。已知吊销 MUST 同时阻止在线 Check、材料借用与 token 刷新。任一尚有效且未被明确吊销的历史签名授权 MUST 阻止直接释放；吊销或所有授权到期后，仍只有可信清理确认才能释放。
+
+MUST 停止旧中心 writer 后迁移并升级至 schema 12；旧代码不会检查新授权记录，不能混跑。本批不消费授权 outbox、不提供新的公共 API，不证明独立 Gateway 投递、恢复或持久化回写已经完成。
+
 ### 5.5 template_revisions / plan_revisions
 
 每次变更保存不可变 snapshot：

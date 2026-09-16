@@ -225,6 +225,9 @@ func lockBackupAdmission(ctx context.Context, tx pgx.Tx, id, owner uuid.UUID, co
 	if r.Status == "LOCKED" || !admissionMatches(a, r, d, configurationHash) {
 		return domain.BackupAdmission{}, domain.ErrBackupAdmission
 	}
+	if err = ensureGatewayAuthorizationNotRevoked(ctx, tx, a.ID); err != nil {
+		return domain.BackupAdmission{}, err
+	}
 	return a, nil
 }
 
@@ -247,6 +250,12 @@ func (s *Store) ReleaseBackupAdmission(ctx context.Context, id, owner uuid.UUID)
 	}
 	if a.ReleasedAt != nil {
 		return tx.Commit(ctx)
+	}
+	if err = ensureGatewayAuthorizationReleasable(ctx, tx, id); errors.Is(err, domain.ErrGatewayDecision) {
+		return rejectBackupAdmission(ctx, tx, id, a.RepositoryID, err)
+	}
+	if err != nil {
+		return err
 	}
 	if _, err = tx.Exec(ctx, "update gateway_backup_admissions set released_at=clock_timestamp() where id=$1 and owner=$2", id, owner); err != nil {
 		return err

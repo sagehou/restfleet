@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"regexp"
@@ -99,6 +100,7 @@ type Settings struct {
 	RunCredentialTest    CredentialTestRunner
 	InitializeRepository RepositoryInitializer
 	GatewayPublicURL     string
+	GatewaySigningKey    ed25519.PrivateKey
 }
 
 // RequestMeta contains only non-secret request correlation data.
@@ -138,9 +140,13 @@ type ControlPlane struct {
 	runCredentialTest    CredentialTestRunner
 	initializeRepository RepositoryInitializer
 	gatewayPublicURL     string
+	gatewaySigningKey    ed25519.PrivateKey
 }
 
 func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
+	if len(settings.GatewaySigningKey) != 0 && (!validGatewaySigningKey(settings.GatewaySigningKey) || settings.GatewayPublicURL == "") {
+		return nil, domain.ErrGatewayDecision
+	}
 	if len(settings.MasterKey) != 0 && len(settings.MasterKey) != 32 {
 		return nil, domain.ErrStorageUnavailable
 	}
@@ -186,6 +192,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		runCredentialTest:    settings.RunCredentialTest,
 		initializeRepository: settings.InitializeRepository,
 		gatewayPublicURL:     settings.GatewayPublicURL,
+		gatewaySigningKey:    append(ed25519.PrivateKey(nil), settings.GatewaySigningKey...),
 	}, nil
 }
 
