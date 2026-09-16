@@ -247,6 +247,20 @@ schema 11 的持久化备份占用原语已接入现有中心写入口互斥，�
 
 AGT-005 的 12h 离线备份要求保持未完成：MUST 明确记录实验的签发、续期、失联和备份时间，不得把“授权最多 12h”当成“任意时刻失联后还剩 12h”。若完整可用性要求与撤销上限无法同时满足，MUST 报告取舍并请求决定，不得静默改动验收或通过重置离线计时掩盖差异。真实三后端刷新/认证/恢复仍需安全环境验收；上述设计与模拟测试均不替代人工证据。
 
+### 7.11 签名授权决定与本地状态（内部 v1 契约）
+
+ADR-0018 交付 security 签名编解码与 Gateway 本地状态原语；MUST NOT 替换 §7.8 的在线核验后直接开放生产 command。没有新增公共 HTTP/gRPC 接口、DB schema、中心签发服务或持久化回写区。
+
+wire MUST 为规范 JSON payload 后直接拼接 64-byte Ed25519 签名，总长最多 2048 bytes；签名内容为 ASCII 前缀 `restfleet:gateway-authorization:v1`、一个 NUL 字节和 payload。使用独立中心签名密钥，验证公钥 MUST 经受保护配置交付；wire 没有公钥、算法或可自选版本。payload MUST 精确匹配 `security.GatewayStatement` 的字段顺序和 Go encoding/json 紧凑编码，未知/重复字段、额外空白、替代 UUID 表示及非规范数字 MUST 拒绝，不进行宽松归一化。
+
+字段顺序为 binding、revision、issued_at、expires_at、revoked。binding 内字段依序为 admission_id、owner、runtime_id、agent_id、host_id、repository_id、gateway_id、storage_credential_id、delivery_id、gateway_secret_ref、restic_secret_ref、configuration_hash；ID 均为规范 UUIDv7，hash 为 64 位小写 hex 的现有 Gateway origin/CA 指纹。revision 为 1..MaxInt64 的无损十进制整数；时间为 UTC Unix 整秒，issued_at 必须为正且不晚于 9999 年末。普通授权要求 issued_at < expires_at <= issued_at + 12h 且不晚于 9999 年末；明确吊销必须 revoked=true、expires_at=0。绑定只含引用，不含秘密；云端材料及版本仍须由后续受保护交付与连续占用检查保证，签名 metadata 本身不是材料校验。
+
+Gateway MUST 从可信配置构造唯一运行绑定并复制验证公钥，不信任 wire 提供的新绑定。只有验签、精确绑定和时间检查通过的单调 revision 才能更新状态；相同 revision 仅允许完整相同内容的幂等重放，重放不重置截止时间。旧 revision、同版本改参、签发时间倒退、未来签发及初次收到已过期授权 MUST 拒绝；普通续期不得复活已知吊销的同一绑定。中心 MUST 只签发已经提交的、经过当前身份/ACK/占用核验的决定，签名工具函数不代替事务授权。
+
+本地状态为 UNKNOWN、VALID、EXPIRED、REVOKED、CLOCK_UNSAFE，连接状态由 transport 单独维护。离线时无新决定不改变已有授权；到期仍停止使用但不是吊销，重连本身也不能续期。Status MUST 使用可信本机时钟，按签发截止时间及接收时建立的单调 deadline 双重检查；发现墙钟回拨或无效时钟后禁止自恢复。已有明确吊销即使遇到时钟异常仍保持 REVOKED。Accept 的幂等成功仅表示已接收，不代替每次使用前的 Status 与数据面其他安全检查。
+
+此本地状态不持久化，不证明进程清理、不释放 fence，也不自动取消/恢复生产会话。调用方 MUST NOT 重建它来清除防回滚/吊销记录；Gateway 重启必须使用新的 runtime_id 并经中心恢复协调，不能离线重放旧授权。中心事务签发/续期、可信吊销分发、连续 fence、可靠回写及完整离线验收仍待完成；现有在线流程继续 fail closed。
+
 ## 8. Native Agent 安装
 
 目标目录：

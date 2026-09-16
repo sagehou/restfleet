@@ -170,11 +170,13 @@ V1 MUST 使用受限的 OneDrive、Google Drive 或 HTTPS WebDAV 后端加 Crypt
 
 WebDAV URL MUST 拒绝非 HTTPS、userinfo、query/fragment、异常路径、私网/loopback/link-local/metadata/保留 IP。runtime MUST 在每次启动时校验全部 DNS 结果，并通过私有 Unix socket 将子进程连接固定到已验证 IP:port，防止 DNS 重绑定和重定向选择其他网络地址。TLS MUST 继续由 rclone 验证；生成 socket 选项 MUST 不进入持久化密文或 API，且不得由输入配置指定。内网/NAS 访问本批不开放，不得以 insecure TLS 绕过。具体允许字段和替换边界见 [ADR-0012](../adr/0012-rclone-multiple-backends.md)。
 
-### 8.3 Gateway 有界离线授权（已接受，待实现）
+### 8.3 Gateway 有界离线授权（已接受，生产接线待完成）
 
 [ADR-0017](../adr/0017-bounded-offline-gateway-authority.md) 允许独立 Gateway 在控制面失联时使用中心预先签发的有限授权与本地加密待回写区。授权 MUST 绑定可信 owner、运行实例、Agent/Host/Repository/Gateway/StorageCredential、当前凭据交付及配置版本；验证信任 MUST 来自受保护中心配置/通道，不能信任授权携带的自选公钥。Gateway MUST NOT 获得 Server master key、Restic password、Server DB 凭据或中心签名私钥。
 
 控制面失联时撤销/禁用最多延迟 12h 生效；授权 MUST NOT 晚于中心签发后 12h 仍可使用，重放、传输延迟、时钟回拨或离线重启 MUST NOT 延长期限。只有中心重新检查当前授权状态并提交续期后，才 MAY 下发新授权；单次备份会话的 24h 上限不授予额外离线时间。
+
+连接状态与授权状态 MUST 分开：连接失败不产生吊销决定，重连不产生新授权，授权到期不写成已吊销。Gateway 只能把通过可信签名验证且匹配当前运行绑定的明确撤回决定视为已知吊销；收到后该绑定 MUST NOT 被旧授权或更高版本的普通续期复活。失联期间中心的最新状态可能未知，不能显示为“中心确认有效”；上述 12h 上限不因状态分离而取消。
 
 Gateway 的审计与 token 刷新 MUST 在确认持久化前完成受保护的可靠写入；仅内存或 tmpfs 不算离线持久化。待回写区 MUST 有明确字节数/记录数上限，数据加密且来源可验证；空间不足、记录损坏、刷新无法安全保存、授权失效或计时可信度丢失时 MUST 停止授权使用，保留未释放占用。明文 config 仍只允许受限 tmpfs；不得以离线为由保存普通磁盘明文或跳过 token-only、provider 与出站校验。
 
