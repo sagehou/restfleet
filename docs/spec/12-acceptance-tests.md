@@ -140,6 +140,14 @@ Gateway 加密回写验收（ADR-0020，不替代生产接线、REP-016 或 AGT-
 | REP-033 | P0 | 三后端中央有序幂等接收；并发重复只有一个 effect，冲突/跳序/旧 ID/非 token 改写/CAS 失败拒绝；审计失败不产生历史、秘密版本或 ACK；旧有效记录可在过期/禁用/吊销后回放，不能借回写恢复授权或释放 fence。 |
 | REP-034 | P0 | Unix 回写通道双向 UID + 实例签名认证，拒绝版本/大小/不安全 socket/错误 UID，取消等待 handler；重启只验证回放、缺失/损坏阻塞、不恢复数据面；未精确封存来源不能释放占用，历史 migration Down 拒绝删除。 |
 
+Gateway 本地签名授权会话验收（ADR-0021；不替代生产材料交付、REP-016 或 AGT-005）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-035 | P0 | owner 核验完整占用/运行绑定、有效签名授权、注册来源/确认公钥及期限；跨绑定、已释放/封存/过期、第二 owner、已有历史/重开来源拒绝，排空不能重置 token revision 或恢复 owner。 |
+| REP-036 | P0 | 每次路由及 backend 转发前核验本地授权和待回写容量，HEAD 成功/上传开始不授予后续写权限；吊销、到期、时钟回拨、冻结/耗尽/写入不确定取消并 join 所有进程/请求/持久化工作，失败 owner 不重新启动，原在线准入保持核验。 |
+| REP-037 | P0 | 同一本地 owner 无中心调用连续两次备份，维持刷新后的配置与 expected revision；新会话拒绝旧 capability，审计在对应独立来源内持久化；固定 Restic/rclone 的 TLS 备份、读回及临时锁归属负向套件通过。返回/Close 只冻结清理本地，不自动释放中心 fence。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

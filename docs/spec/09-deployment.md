@@ -267,7 +267,7 @@ schema 12 / ADR-0019 将授权决定追加持久化，原占用 ID/owner、释�
 
 `ControlPlane.DecideGatewayAuthorization` 只向可信中心运行协调器开放，无新 HTTP/gRPC 路由；调用方 MUST 控制运行实例身份，并串行化签发投递与最终清理/释放。服务使用最多 3s 的上下文，事务提交后重验请求/绑定/版本/期限，再使用独立 Ed25519 key 签名；DB 失败、取消或过期不返回签名。重放同一最新决定不延寿；旧决定被后续版本取代后不再重新签发。
 
-`Settings.GatewaySigningKey` 默认留空禁用签发；启用时必须为一致的 64-byte Ed25519 私钥并配置有效 Gateway origin/CA。中心复制密钥，仅保留在中心服务中；密钥 MUST 经受保护配置加载，不进入日志、argv、审计、API 或 Gateway runner。当前命令尚未提供该密钥的文件装载和生产运行协调，MUST NOT 把测试注入配置当作部署开关。
+`Settings.GatewaySigningKey` 默认留空禁用签发；启用时必须为一致的 64-byte Ed25519 私钥并配置有效 Gateway origin/CA。中心复制密钥，仅保留在中心服务中；密钥 MUST 经受保护配置加载，不进入日志、argv、审计、API 或 Gateway runner。命令文件装载见 §7.13；生产运行协调尚未完成，MUST NOT 把测试注入配置当作部署开关。
 
 已知吊销阻止在线材料使用，但不自动结束远程进程或完成审计回写。释放检查覆盖所有历史未过期授权，显式吊销/全部到期只满足释放的一项前提；仍 MUST 证明请求、子进程和持久化工作退出。升级必须停旧 writer、运行迁移并启用 schema 12 的新代码，不能混跑。独立 Gateway 通道、吊销投递/恢复、回写区、生产 command/readiness 与 AGT-005 仍待验收。
 
@@ -288,6 +288,16 @@ header 顺序 MUST 为 binding（同 §7.11）、record_id、sequence、previous
 回放通道 MUST 使用服务所有 0700 目录内新建的 0600 Unix socket，拒绝接管现有 socket；双方核验 SO_PEERCRED 的服务 UID，来源/确认签名仍不可省略。当前局限于同 UID 的可信本地服务配置，不能据此声称 UID 隔离或交付材料的通道已完成。帧依序为 ASCII `RFGR`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire；未知版本和超长/空帧 MUST 拒绝分配/执行。四并发连接、每连接最多 5s、一次请求/确认，中心事务最多 3s；取消 MUST 关闭连接并等待 handler 退出。没有 TCP、HTTP 或 Agent 路由。身份/帧或来源/绑定拒绝 MUST 写固定的无资源 GATEWAY_PENDING_REPLAY_DENIED / REJECTED 审计，不能记录未认证 header、UID、原始错误或配置；DB/审计不可用时不接受原操作。
 
 Server 内部回放 listener 默认禁用。`RESTFLEET_GATEWAY_SIGNING_KEY_FILE` MUST 包含 base64 32-byte Ed25519 seed，`RESTFLEET_GATEWAY_PENDING_KEY_FILE` MUST 包含 base64 32-byte X25519 私钥；文件 MUST canonical、服务所有、0400/0600、regular、非 hardlink，两种私钥都禁止直接环境变量。pending key 要求 signing key，签名要求有效 Gateway/enrollment 配置；设置 `RESTFLEET_GATEWAY_REPLAY_SOCKET` 才启用内部 listener。中心密钥 MUST 持久复用，不得在队列未排空时直接替换/丢弃旧密钥；本批不提供中心密钥 overlap。私钥 MUST 不交给 Gateway，升级前 MUST 停旧 writer、迁移至 schema 13；历史记录存在时 Down 拒绝。来源注册和封存没有公网接口，不能靠设置 listener 宣称 Gateway 可部署或 Repository READY。
+
+### 7.14 本地签名授权会话 owner（ADR-0021）
+
+`gateway.NewAuthorizedBackup` 是尚未接入 command 的内部数据面入口，MUST NOT 接受 Agent 选择的 origin/material，也不替代 §7.8 的在线入口。可信协调器 MUST 先完成当前占用、来源注册与材料匹配，经过受保护认证交付后才构造 owner；本批未交付该通道。constructor MUST 比对完整 binding、来源/确认公钥、有效授权和原占用上限，只从无追加历史的新 Queue 认领一次来源；恢复、排空或重新构造不得重置 owner 的 token/replay 状态。
+
+同一 admission/runtime 的连续备份 MUST 复用唯一 owner、Authorization 和 token recorder，使用已可靠接受的最新配置和单调 expected revision；每次使用新 operation ID 与随机 session capability，仍受全局 supervisor 的容量和 Host/Repository/Gateway/Credential 冲突限制。会话审计 MUST 写向本绑定 Queue，未路由与全局限流审计仍由 supervisor 的独立全局 recorder 处理，不得猜测来源。
+
+每次路由和每次向 backend 转发（含上传完成后的 HEAD/POST 与锁 DELETE）前 MUST 检查本地签名授权、原占用期限及 Queue 可写性；watchdog 每 100ms 核验，取消空闲/已开始工作并等待全部清理。生产者可写性保守要求剩余一个最大 512 KiB wire 与一个记录位置，Append 仍执行真实大小校验；关闭、冻结、写入不确定或空间不足 MUST 停止。吊销、到期、时钟不安全或审计/刷新失败 MUST 取消，运行失败后 owner 永久停止启动；新授权、重连或排空不能恢复失败 owner。取消不能撤销已在外部后端提交的请求，不保证反向回滚数据。
+
+运行失败或 Close MUST 在取消/join 会话与 watchdog 后关闭 token recorder、清除当前明文并冻结来源；Queue 仅保留给可信回放。成功返回与 Close 均不是中心封存、崩溃清理证明或 fence release，MUST NOT 自动调用 ReleaseBackupAdmission。固定二进制 TLS 连续两次备份及负向测试只证明内部生命周期，不替代 production delivery、scheduler、可信恢复、READY、REP-016 或 AGT-005。
 
 ## 8. Native Agent 安装
 

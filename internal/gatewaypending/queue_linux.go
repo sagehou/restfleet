@@ -51,6 +51,7 @@ type Queue struct {
 	hash                   string
 	receipt                security.GatewayPendingReceipt
 	failed, frozen, closed bool
+	producerClaimed        bool
 	syncFile               func(*os.File) error // Fault injection; defaults to fsync.
 }
 
@@ -325,6 +326,37 @@ func (q *Queue) Next() ([]byte, error) {
 		return nil, ErrQueue
 	}
 	return wire, nil
+}
+
+// CheckProducer verifies the exact immutable registration and enough room for
+// one maximum-sized record. Recovery, freeze and an uncertain write never
+// authorize a producer, even after the queue drains. This is local readiness,
+// not proof of central registration, process cleanup or fence ownership.
+func (q *Queue) CheckProducer(binding security.GatewayAuthorizationBinding, source, confirmation ed25519.PublicKey) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.checkProducer(binding, source, confirmation)
+}
+
+// ClaimProducer attaches one local lifecycle owner to a fresh source, exactly
+// once. Draining does not permit a new owner to reset material/token revision.
+func (q *Queue) ClaimProducer(binding security.GatewayAuthorizationBinding, source, confirmation ed25519.PublicKey) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.producerClaimed || q.sequence != 0 || q.checkProducer(binding, source, confirmation) != nil {
+		return ErrQueue
+	}
+	q.producerClaimed = true
+	return nil
+}
+
+func (q *Queue) checkProducer(binding security.GatewayAuthorizationBinding, source, confirmation ed25519.PublicKey) error {
+	if q.closed || q.failed || q.frozen || len(q.key) != ed25519.PrivateKeySize ||
+		q.identity.Binding != binding || !bytes.Equal(q.identity.Source, source) || !bytes.Equal(q.identity.Confirmation, confirmation) ||
+		len(q.files) >= q.identity.Limits.MaxRecords || q.bytes+reservedBytes+security.MaxGatewayPendingSize > q.identity.Limits.MaxBytes {
+		return ErrQueue
+	}
+	return nil
 }
 
 func receiptHash(r security.GatewayPendingReceipt) string {

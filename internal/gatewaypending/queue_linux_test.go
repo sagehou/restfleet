@@ -65,6 +65,44 @@ func pendingAudit() security.GatewayPendingRecord {
 	return security.GatewayPendingRecord{Header: security.GatewayPendingHeader{AuthorizationRevision: 1, CreatedAt: time.Now().Unix()}, Kind: "audit", Event: &domain.GatewayEvent{Action: "denied", Reason: "route_unavailable"}}
 }
 
+func TestQueueProducerCannotResetAfterDrainRecoveryOrFailure(t *testing.T) {
+	f := newQueueFixture(t)
+	q := f.create(t)
+	confirmation := f.confirmation.Public().(ed25519.PublicKey)
+	foreign := f.binding
+	foreign.RuntimeID = uuid.Must(uuid.NewV7())
+	if q.ClaimProducer(foreign, f.public, confirmation) != ErrQueue || q.CheckProducer(f.binding, confirmation, confirmation) != ErrQueue ||
+		q.CheckProducer(f.binding, f.public, f.public) != ErrQueue {
+		t.Fatal("foreign producer identity accepted")
+	}
+	if q.ClaimProducer(f.binding, f.public, confirmation) != nil || q.CheckProducer(f.binding, f.public, confirmation) != nil {
+		t.Fatal("fresh producer rejected")
+	}
+	if q.Append(pendingAudit()) != nil {
+		t.Fatal("append")
+	}
+	wire, err := q.Next()
+	if err != nil || q.Acknowledge(f.receipt(t, wire)) != nil {
+		t.Fatal("drain")
+	}
+	if q.ClaimProducer(f.binding, f.public, confirmation) != ErrQueue {
+		t.Fatal("drain permitted a new material owner")
+	}
+	if q.Close() != nil {
+		t.Fatal("close")
+	}
+	recovered := f.recover(t)
+	if recovered.CheckProducer(f.binding, f.public, confirmation) != ErrQueue || recovered.ClaimProducer(f.binding, f.public, confirmation) != ErrQueue {
+		t.Fatal("recovered source authorized data plane")
+	}
+	other := newQueueFixture(t)
+	failed := other.create(t)
+	failed.syncFile = func(*os.File) error { return errors.New("fsync failure") }
+	if failed.Append(pendingAudit()) != ErrQueue || failed.CheckProducer(other.binding, other.public, other.confirmation.Public().(ed25519.PublicKey)) != ErrQueue {
+		t.Fatal("uncertain persistence still authorized producer")
+	}
+}
+
 func (f queueFixture) receipt(t *testing.T, wire []byte) []byte {
 	t.Helper()
 	h, err := security.InspectGatewayPending(wire, f.public)

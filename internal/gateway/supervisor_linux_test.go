@@ -169,8 +169,11 @@ func TestGatewayBackendChild(t *testing.T) {
 				os.Exit(92)
 			}
 			if !updated && (mode == "refresh" || mode == "change-target") {
-				if _, err := os.Stat(filepath.Join(state, "update-"+parts[1])); err == nil {
+				if trigger, err := os.ReadFile(filepath.Join(state, "update-"+parts[1])); err == nil {
 					next := bytes.ReplaceAll(raw, []byte("fixture-refresh"), []byte("refreshed-token"))
+					if string(trigger) == "second" {
+						next = bytes.ReplaceAll(next, []byte("refreshed-token"), []byte("refreshed-token-second"))
+					}
 					if mode == "change-target" {
 						next = bytes.ReplaceAll(raw, []byte("cloud:backups"), []byte("cloud:changed"))
 					}

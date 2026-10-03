@@ -7,6 +7,7 @@
 | M0–M3 | 计划标记完成，代码已合并：骨架/CI、认证、Host/enrollment/mTLS、心跳/inventory/基础 DesiredState。 |
 | M4 | 进行中。存储凭据、三后端显式校验、初始化任务、Agent 仓库凭据 ACK、安全 Gateway 会话/supervisor/TLS、占用 fence、在线材料/审计、签名授权历史已合并。 |
 | 本批 M4 开发分支 | 加密有界待回写区、独立来源认证、可靠精确确认、中央有序幂等审计/token CAS、内部 Unix 回放 listener 与文件密钥加载；schema 13 / ADR-0020 / REP-031–034。进入完成进度前仍需审查合并。 |
+| 后续本地 M4 开发 | 将签名授权/待回写接入 supervisor 的唯一 owner 生命周期；连续备份维持 token revision、逐次转发核验、吊销/到期/容量取消及 join；ADR-0021 / REP-035–037。固定真实二进制走在线与本地签名两条测试路径，生产交付通道仍未完成，不计入已合并进度。 |
 | M5–M6 | Template/Plan、本地 scheduler 和实际 Agent backup 执行主链路尚未交付；基础消息/Operation/jobs 能复用，不能据此算作备份可用。 |
 | M7–M11 | Backup Health、Snapshot browser、下载、staging restore、中央 retention/maintenance 的完整业务链路尚未交付。 |
 | M12 | CI、日志脱敏和审计链有基础；通知、诊断、灾备/升级和正式发布的全量验收尚未完成。 |

@@ -166,6 +166,8 @@
 
 第十八批（本分支，待审查）实现独立来源签名、公钥加密与有界 fsync 待回写区，以及中央有序幂等审计/token-only 加密 CAS（schema 13 / ADR-0020）。受保护本地回写 listener 和中心私钥文件装载已接入 Server；Gateway 审计/运行 watcher 经现有 supervisor 测试验证。重启只回放、不恢复授权/数据面，未封存来源保留 fence；新增 REP-031–034。授权/材料及 Agent 会话能力的生产通道、可信清理恢复、command/readiness、rotation/READY 与 AGT-005 仍未完成。
 
+第十九批（本地开发，待审查）连接签名授权、待回写 Queue 与既有 supervisor 的内部会话生命周期（ADR-0021 / REP-035–037）：同一唯一来源 owner 连续备份并保留已接受 token/revision，每次转发前检查授权及容量，吊销/到期/时钟/持久化失败取消并等待清理。失败不恢复、Close 不释放中心 fence，原在线入口不变。固定二进制 TLS 套件同时覆盖在线和本地签名授权两条路径；来源/材料交付仍用明确夹具，不代表生产通道、可信恢复、READY 或 AGT-005 完成。
+
 ### Goal
 
 在中心安全接入 OneDrive / Google Drive / HTTPS WebDAV + rclone crypt，创建 per-Host append-only Repository。
@@ -189,7 +191,7 @@
 
 ### Tests/Exit
 
-- REP-001–034；
+- REP-001–037；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

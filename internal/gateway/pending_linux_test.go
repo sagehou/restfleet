@@ -20,13 +20,16 @@ import (
 	"golang.org/x/crypto/nacl/box"
 )
 
-func pendingGatewayFixture(t *testing.T, limits gatewaypending.Limits) (*gatewaypending.Queue, *Authorization, security.GatewayStatement, ed25519.PrivateKey, ed25519.PublicKey, []byte) {
+func pendingGatewayFixture(t *testing.T, limits gatewaypending.Limits, routes ...Binding) (*gatewaypending.Queue, *Authorization, security.GatewayStatement, ed25519.PrivateKey, ed25519.PublicKey, []byte) {
 	t.Helper()
 	public, central, _ := ed25519.GenerateKey(rand.Reader)
 	sourcePublic, source, _ := ed25519.GenerateKey(rand.Reader)
 	recipient, private, _ := box.GenerateKey(rand.Reader)
 	id := uuid.Must(uuid.NewV7())
 	route := bindingFixture()
+	if len(routes) != 0 {
+		route = routes[0]
+	}
 	b := security.GatewayAuthorizationBinding{AdmissionID: id, Owner: id, RuntimeID: id, AgentID: id, HostID: route.HostID, RepositoryID: route.RepositoryID, GatewayID: route.GatewayID, StorageCredentialID: id, DeliveryID: id, GatewaySecretRef: id, ResticSecretRef: id, ConfigurationHash: strings.Repeat("a", 64)}
 	a, err := NewAuthorization(public, b)
 	if err != nil {

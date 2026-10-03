@@ -57,6 +57,7 @@ type BackupSession struct {
 	cancel    context.CancelFunc
 	transport *http.Transport
 	audit     func(context.Context, Event) error
+	guard     func() bool // Optional local signed authority, fixed before publishing.
 	lifecycle sync.RWMutex
 	requests  chan struct{}
 	writes    chan struct{}
@@ -150,7 +151,7 @@ func (s *BackupSession) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer s.lifecycle.RUnlock()
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if s.ctx.Err() != nil {
+	if s.ctx.Err() != nil || (s.guard != nil && !s.guard()) {
 		s.deny(w, r, false, "session_inactive", http.StatusForbidden)
 		return
 	}
@@ -245,6 +246,9 @@ func (s *BackupSession) objectPath(r *http.Request) (string, bool) {
 }
 
 func (s *BackupSession) request(ctx context.Context, method, path string, body []byte, headers http.Header) (*http.Response, error) {
+	if s.guard != nil && !s.guard() {
+		return nil, ErrAuthorization
+	}
 	u := &url.URL{Scheme: "http", Host: "gateway-backend.invalid", Path: "/" + path}
 	r, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(body))
 	if err != nil {

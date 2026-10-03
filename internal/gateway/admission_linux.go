@@ -42,7 +42,7 @@ func (s *Supervisor) WithAdmittedBackup(ctx context.Context, store AdmissionStor
 			return ErrAdmissionUnavailable
 		}
 	}
-	return s.withBackup(ctx, request, persist, run, &admittedBackup{store: store, id: id, owner: owner, hash: configurationHash})
+	return s.withBackup(ctx, request, persist, run, &admittedBackup{store: store, id: id, owner: owner, hash: configurationHash}, nil)
 }
 
 func (a *admittedBackup) check(ctx context.Context, request BackupRequest) (domain.BackupAdmission, error) {
