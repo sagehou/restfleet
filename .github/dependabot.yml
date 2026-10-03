@@ -12,6 +12,13 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
     # Coordinate toolchain majors explicitly; security updates are not ignored.
     ignore:
       - dependency-name: "@types/node"
