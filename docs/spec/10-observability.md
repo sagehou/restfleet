@@ -250,6 +250,10 @@ ADR-0017 允许 Gateway 在中心暂不可用时以受保护、可靠落盘的�
 
 待回写区写入失败、满额、来源或完整性校验失败 MUST fail closed；危险清理意图仍 MUST 先于后端 DELETE 可靠保存。审计内容 MUST NOT 混入 token/config 明文，即便刷新记录使用同一受保护存储。重放与中央提交/确认丢失 MUST 有负向与幂等测试；不得把本地保存显示成“已写入中心审计链”。schema 13 / ADR-0020 实现同一白名单的有界加密队列与幂等中央回放，细节见 09 §7.13；生产运行协调和 AGT-005 仍待完成。非法原始输入 MUST 先归一为无资源的内部固定 event_rejected/invalid_event 记录再落盘，并拒绝原操作；不得把原字符串放入刷新或审计记录。授权终止后的清理观察 MUST 引用最后一次普通授权，不能引用吊销决定获得新权限。
 
+### 13.3 Gateway 材料初始化审计
+
+单次交付意图与 `GATEWAY_MATERIAL_DELIVERY / SECRET_ACCESS` MUST 同事务提交，之后才解密及生成 encrypted wire；审计失败不提交意图、不返回材料。服务/通道拒绝 MUST 使用无资源的固定 `GATEWAY_MATERIAL_DELIVERY_DENIED / REJECTED`，MUST NOT 记录未认证 binding、挑战、nonce、公钥、UID、hash、配置或底层错误。交换取消或审计不可用仍拒绝原操作；无法提交拒绝审计不代表交付成功。访问事件仅证明中心许可的一次材料读取，不证明 socket 交付、初始化回执、READY 或清理。
+
 ## 14. Diagnostics bundle
 
 管理员可创建 TTL-bound bundle：

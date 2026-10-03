@@ -291,13 +291,29 @@ Server 内部回放 listener 默认禁用。`RESTFLEET_GATEWAY_SIGNING_KEY_FILE`
 
 ### 7.14 本地签名授权会话 owner（ADR-0021）
 
-`gateway.NewAuthorizedBackup` 是尚未接入 command 的内部数据面入口，MUST NOT 接受 Agent 选择的 origin/material，也不替代 §7.8 的在线入口。可信协调器 MUST 先完成当前占用、来源注册与材料匹配，经过受保护认证交付后才构造 owner；本批未交付该通道。constructor MUST 比对完整 binding、来源/确认公钥、有效授权和原占用上限，只从无追加历史的新 Queue 认领一次来源；恢复、排空或重新构造不得重置 owner 的 token/replay 状态。
+`gateway.NewAuthorizedBackup` 是尚未接入 command 的内部数据面入口，MUST NOT 接受 Agent 选择的 origin/material，也不替代 §7.8 的在线入口。可信协调器 MUST 先完成当前占用、来源注册与材料匹配，经过受保护认证交付后才构造 owner；内部单次材料通道见 §7.15，生产协调仍未接线。constructor MUST 比对完整 binding、来源/确认公钥、有效授权和原占用上限，只从无追加历史的新 Queue 认领一次来源；恢复、排空或重新构造不得重置 owner 的 token/replay 状态。
 
 同一 admission/runtime 的连续备份 MUST 复用唯一 owner、Authorization 和 token recorder，使用已可靠接受的最新配置和单调 expected revision；每次使用新 operation ID 与随机 session capability，仍受全局 supervisor 的容量和 Host/Repository/Gateway/Credential 冲突限制。会话审计 MUST 写向本绑定 Queue，未路由与全局限流审计仍由 supervisor 的独立全局 recorder 处理，不得猜测来源。
 
 每次路由和每次向 backend 转发（含上传完成后的 HEAD/POST 与锁 DELETE）前 MUST 检查本地签名授权、原占用期限及 Queue 可写性；watchdog 每 100ms 核验，取消空闲/已开始工作并等待全部清理。生产者可写性保守要求剩余一个最大 512 KiB wire 与一个记录位置，Append 仍执行真实大小校验；关闭、冻结、写入不确定或空间不足 MUST 停止。吊销、到期、时钟不安全或审计/刷新失败 MUST 取消，运行失败后 owner 永久停止启动；新授权、重连或排空不能恢复失败 owner。取消不能撤销已在外部后端提交的请求，不保证反向回滚数据。
 
 运行失败或 Close MUST 在取消/join 会话与 watchdog 后关闭 token recorder、清除当前明文并冻结来源；Queue 仅保留给可信回放。成功返回与 Close 均不是中心封存、崩溃清理证明或 fence release，MUST NOT 自动调用 ReleaseBackupAdmission。固定二进制 TLS 连续两次备份及负向测试只证明内部生命周期，不替代 production delivery、scheduler、可信恢复、READY、REP-016 或 AGT-005。
+
+### 7.15 单次加密材料初始化（schema 14 / ADR-0022）
+
+`ControlPlane.GatewayMaterialDelivery` 仅供可信中心协调器使用，不是公共 API。协调器 MUST 提供独立可信 binding/来源 pin，并串行化交付、授权投递及清理；来源私钥与中心验证公钥 MUST 从 Gateway 受保护本地配置取得，不信任 Agent 输入。中心事务最多 3s；交换最多 5s，先验证来源挑战，再提交当前状态核验、单次交付意图与访问审计，最后短时解密并签名加密。失败不回显底层错误或配置。
+
+Gateway 监听新建的服务所有 0700 目录内 0600 Unix socket，中心主动连接；双方 MUST 核验预期 SO_PEERCRED UID，中心还 MUST 验证预注册来源签名。当前正向测试为同 UID；root 中心可能访问不同 UID socket，不构成完整生产 UID 隔离或非 root 跨 UID 部署。没有进程启动器、独立 pin/source 受保护配置接线或 command 启用选项。
+
+帧 MUST 为 ASCII `RFGM`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire，与回放的 `RFGR` 隔离。挑战与回执最多 2048 bytes，材料 wire 最多 512 KiB，config 最多 256 KiB；空帧、错误 runtime、版本或超长帧 MUST 拒绝。
+
+三个 wire MUST 为 Go encoding/json 规范紧凑 JSON 后拼接 64-byte Ed25519 签名。签名域分别为 `restfleet:gateway-material-challenge:v1`、`restfleet:gateway-material:v1`、`restfleet:gateway-material-receipt:v1`，各加 NUL 后接 payload。未知/重复字段、非规范数字、空白、替代 UUID 表示 MUST 拒绝，不归一化。
+
+挑战字段顺序 MUST 为 binding（§7.11）、nonce、recipient；nonce 是 fresh 32-byte 随机值，recipient 是 Gateway 临时 X25519 公钥。二者 MUST 编码为 32 个 0..255 整数的 JSON 数组。材料外层顺序为 challenge、source、ciphertext；source 与 ciphertext 使用标准 base64。ciphertext 使用 `nacl/box.SealAnonymous`，接收私钥仅在 Gateway。中心签名验证后解密，内层顺序 MUST 为 challenge、source、pending_recipient、statement、admission_created_at、admission_expires_at、secret_revision、remote、config_hash、config；pending_recipient 是中心待回写 X25519 公钥，以 32 整数数组编码，statement/config 为标准 base64。MUST 比对内外挑战及可信 source，检查原占用 UTC Unix 整秒期限、初始 secret revision、普通有效授权和 config SHA-256（64 位小写 hex）。材料 MUST NOT 含 DB/master/signing/中心 recipient 私钥、Restic password 或 Agent capability。
+
+`MaterialReceiver` MUST 单次使用。无效交换也消费接收者，取消关闭 socket；Close MUST 消费未开始实例或取消/join 正在执行的交换，并清零来源私钥副本和临时接收私钥。install/rollback/denied 回调 MUST NOT 调用等待自己的 Close。安装只 MAY 通过 `InstallGatewayMaterial` 构造 fresh Queue/唯一 owner，config 借用后清零；回调 MUST 返回 rollback，安装或回执发送失败时取消并 join owner，保留 Queue 供回放。
+
+回执字段顺序 MUST 为 challenge、wire_hash，来源签名验证精确材料 wire SHA-256。它只确认初始化，不是 Agent ACK、READY、清理或释放。中心提交单次意图后 MUST NOT 重新交付，包括精确重试、新挑战、丢失回执和无已回写记录；未知结果保留 fence，等待可信恢复。升级 MUST 停旧 writer 后迁移 schema 14，已有交付历史时 Down 拒绝；不新增公共 API、自动注册来源或授权签发。
 
 ## 8. Native Agent 安装
 

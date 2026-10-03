@@ -148,6 +148,14 @@ Gateway 本地签名授权会话验收（ADR-0021；不替代生产材料交付�
 | REP-036 | P0 | 每次路由及 backend 转发前核验本地授权和待回写容量，HEAD 成功/上传开始不授予后续写权限；吊销、到期、时钟回拨、冻结/耗尽/写入不确定取消并 join 所有进程/请求/持久化工作，失败 owner 不重新启动，原在线准入保持核验。 |
 | REP-037 | P0 | 同一本地 owner 无中心调用连续两次备份，维持刷新后的配置与 expected revision；新会话拒绝旧 capability，审计在对应独立来源内持久化；固定 Restic/rclone 的 TLS 备份、读回及临时锁归属负向套件通过。返回/Close 只冻结清理本地，不自动释放中心 fence。 |
 
+Gateway 单次加密材料初始化验收（ADR-0022；同 UID 内部通道，不替代生产隔离、REP-016 或 AGT-005）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-038 | P0 | 来源签名 fresh nonce/临时接收公钥/完整 binding；独立中心验签加密；错误 pin、绑定、签名、密文、hash、未知/重复/非规范字段和大小拒绝；中心私钥与 Restic password 不交给 Gateway，借用 config/临时私钥清零。 |
+| REP-039 | P0 | 三后端真实 DB 核验当前身份、owner、ACK、来源、revision、期限与最新普通授权；禁用/吊销/封存/已回写/审计失败拒绝；意图和访问审计原子提交，并发仅一次，提交后新挑战或无回执不再发，不释放 fence；应用角色不能改删历史，Down 拒绝。 |
+| REP-040 | P0 | 单次 Unix RFGM 交换拒绝错误 UID/版本/runtime/帧上限；安装失败、取消或回执发送丢失 rollback/join，Close 消费未使用或取消/join 接收者；已安装 fresh owner 连续两次固定二进制 TLS 备份及读回，旧初始化不能复活 owner。回执不代表 READY/ACK/释放。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

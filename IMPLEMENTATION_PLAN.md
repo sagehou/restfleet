@@ -168,6 +168,8 @@
 
 第十九批（本地开发，待审查）连接签名授权、待回写 Queue 与既有 supervisor 的内部会话生命周期（ADR-0021 / REP-035–037）：同一唯一来源 owner 连续备份并保留已接受 token/revision，每次转发前检查授权及容量，吊销/到期/时钟/持久化失败取消并等待清理。失败不恢复、Close 不释放中心 fence，原在线入口不变。固定二进制 TLS 套件同时覆盖在线和本地签名授权两条路径；来源/材料交付仍用明确夹具，不代表生产通道、可信恢复、READY 或 AGT-005 完成。
 
+第二十批（本地开发，待审查）增加来源签名 fresh challenge、中心加密材料、单次 Unix 初始化与 owner 安装（schema 14 / ADR-0022 / REP-038–040）。当前身份/ACK/来源/revision/最新授权与单次意图及访问审计原子提交；提交后失败或回执丢失不重发、不释放 fence。固定真实引擎的本地授权路径经此通道初始化，三后端事务用真实 PostgreSQL 验证。同 UID 测试不代表生产 UID 隔离、受保护 pin/source 装载或 command 完成；生产协调、续期/吊销、全局离线审计、Agent 能力、可信恢复、rotation/READY、真实云和 AGT-005 仍待完成。
+
 ### Goal
 
 在中心安全接入 OneDrive / Google Drive / HTTPS WebDAV + rclone crypt，创建 per-Host append-only Repository。
@@ -191,7 +193,7 @@
 
 ### Tests/Exit
 
-- REP-001–037；
+- REP-001–040；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

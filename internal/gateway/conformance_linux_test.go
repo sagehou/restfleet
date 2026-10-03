@@ -97,16 +97,16 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 	var pendingPrivate []byte
 	cleanupSessions := make(map[uuid.UUID]bool)
 	if policy == "signed-local" {
-		var authorization *Authorization
 		var grant security.GatewayStatement
-		queue, authorization, grant, central, pendingSource, pendingPrivate = pendingGatewayFixture(t, gatewaypending.Limits{MaxBytes: 2 << 20, MaxRecords: 64})
-		local, err = NewAuthorizedBackup(s, authorization, queue, authorizedOrigin(grant, pendingSource), backupFixture().Config, "encrypted")
-		if err != nil {
-			t.Fatal(err)
+		_, _, grant, central, _, pendingPrivate = pendingGatewayFixture(t, gatewaypending.Limits{MaxBytes: 2 << 20, MaxRecords: 64})
+		pendingRecipient, deriveErr := security.GatewayPendingPublicKey(pendingPrivate)
+		if deriveErr != nil {
+			t.Fatal(deriveErr)
 		}
+		local, queue, pendingSource = deliverGatewayOwner(t, s, grant, central, pendingRecipient)
 		t.Cleanup(local.Close)
-		// No live central audit/admission/material port participates. Local
-		// provisioning here is a fixture, not authenticated production delivery.
+		// The authenticated Unix material channel initialized this owner. Its
+		// central transaction is a fixture here; no central port is used by backup.
 		s.audit = func(context.Context, Event) error { return ErrGatewayAudit }
 	}
 	server := startPublicFixture(t, s, nil)

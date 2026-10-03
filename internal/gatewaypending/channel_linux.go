@@ -137,8 +137,12 @@ func ServeReplay(ctx context.Context, listener *net.UnixListener, expectedUID ui
 }
 
 func writeFrame(w io.Writer, runtime uuid.UUID, body []byte) error {
+	return writeChannelFrame(w, "RFGR", runtime, body)
+}
+
+func writeChannelFrame(w io.Writer, magic string, runtime uuid.UUID, body []byte) error {
 	var header [28]byte
-	copy(header[:4], "RFGR")
+	copy(header[:4], magic)
 	binary.BigEndian.PutUint32(header[4:8], 1)
 	copy(header[8:24], runtime[:])
 	binary.BigEndian.PutUint32(header[24:], uint32(len(body)))
@@ -147,9 +151,13 @@ func writeFrame(w io.Writer, runtime uuid.UUID, body []byte) error {
 }
 
 func readFrame(r io.Reader, max uint32) (uuid.UUID, []byte, error) {
+	return readChannelFrame(r, "RFGR", max)
+}
+
+func readChannelFrame(r io.Reader, magic string, max uint32) (uuid.UUID, []byte, error) {
 	var header [28]byte
 	var runtime uuid.UUID
-	if _, err := io.ReadFull(r, header[:]); err != nil || string(header[:4]) != "RFGR" || binary.BigEndian.Uint32(header[4:8]) != 1 {
+	if _, err := io.ReadFull(r, header[:]); err != nil || string(header[:4]) != magic || binary.BigEndian.Uint32(header[4:8]) != 1 {
 		return runtime, nil, ErrChannel
 	}
 	copy(runtime[:], header[8:24])
