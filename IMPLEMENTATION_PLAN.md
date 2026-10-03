@@ -164,6 +164,8 @@
 
 第十七批接入中心授权决定事务与提交后签名（schema 12 / ADR-0019）：追加历史、精确幂等/revision CAS、原占用期限内续期、明确吊销与在线材料拒绝，保留连续 fence。三后端、并发、绑定/状态、审计回滚/到期与迁移负向测试交 CI 验证。密钥生产装载、独立通道、可信恢复/回写、command/readiness 与 AGT-005 仍待完成。
 
+第十八批（本分支，待审查）实现独立来源签名、公钥加密与有界 fsync 待回写区，以及中央有序幂等审计/token-only 加密 CAS（schema 13 / ADR-0020）。受保护本地回写 listener 和中心私钥文件装载已接入 Server；Gateway 审计/运行 watcher 经现有 supervisor 测试验证。重启只回放、不恢复授权/数据面，未封存来源保留 fence；新增 REP-031–034。授权/材料及 Agent 会话能力的生产通道、可信清理恢复、command/readiness、rotation/READY 与 AGT-005 仍未完成。
+
 ### Goal
 
 在中心安全接入 OneDrive / Google Drive / HTTPS WebDAV + rclone crypt，创建 per-Host append-only Repository。
@@ -187,7 +189,7 @@
 
 ### Tests/Exit
 
-- REP-001–030；
+- REP-001–034；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

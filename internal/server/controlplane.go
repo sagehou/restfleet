@@ -89,18 +89,19 @@ type Store interface {
 
 // Settings controls security policy. Production defaults are applied to zero values.
 type Settings struct {
-	BootstrapToken       string
-	IdleTTL              time.Duration
-	AbsoluteTTL          time.Duration
-	PasswordParams       security.Argon2Params
-	ExpectedSchema       int
-	Clock                func() time.Time
-	Enrollment           EnrollmentSettings
-	MasterKey            []byte
-	RunCredentialTest    CredentialTestRunner
-	InitializeRepository RepositoryInitializer
-	GatewayPublicURL     string
-	GatewaySigningKey    ed25519.PrivateKey
+	BootstrapToken              string
+	IdleTTL                     time.Duration
+	AbsoluteTTL                 time.Duration
+	PasswordParams              security.Argon2Params
+	ExpectedSchema              int
+	Clock                       func() time.Time
+	Enrollment                  EnrollmentSettings
+	MasterKey                   []byte
+	RunCredentialTest           CredentialTestRunner
+	InitializeRepository        RepositoryInitializer
+	GatewayPublicURL            string
+	GatewaySigningKey           ed25519.PrivateKey
+	GatewayPendingDecryptionKey []byte
 }
 
 // RequestMeta contains only non-secret request correlation data.
@@ -141,11 +142,15 @@ type ControlPlane struct {
 	initializeRepository RepositoryInitializer
 	gatewayPublicURL     string
 	gatewaySigningKey    ed25519.PrivateKey
+	gatewayPendingKey    []byte
 }
 
 func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 	if len(settings.GatewaySigningKey) != 0 && (!validGatewaySigningKey(settings.GatewaySigningKey) || settings.GatewayPublicURL == "") {
 		return nil, domain.ErrGatewayDecision
+	}
+	if len(settings.GatewayPendingDecryptionKey) != 0 && (len(settings.GatewayPendingDecryptionKey) != 32 || len(settings.GatewaySigningKey) != 64 || len(settings.MasterKey) != 32) {
+		return nil, domain.ErrGatewayPending
 	}
 	if len(settings.MasterKey) != 0 && len(settings.MasterKey) != 32 {
 		return nil, domain.ErrStorageUnavailable
@@ -192,6 +197,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		runCredentialTest:    settings.RunCredentialTest,
 		initializeRepository: settings.InitializeRepository,
 		gatewayPublicURL:     settings.GatewayPublicURL,
+		gatewayPendingKey:    append([]byte(nil), settings.GatewayPendingDecryptionKey...),
 		gatewaySigningKey:    append(ed25519.PrivateKey(nil), settings.GatewaySigningKey...),
 	}, nil
 }

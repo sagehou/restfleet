@@ -257,6 +257,9 @@ func (s *Store) ReleaseBackupAdmission(ctx context.Context, id, owner uuid.UUID)
 	if err != nil {
 		return err
 	}
+	if err = ensureGatewayPendingReleasable(ctx, tx, id); err != nil {
+		return rejectBackupAdmission(ctx, tx, id, a.RepositoryID, err)
+	}
 	if _, err = tx.Exec(ctx, "update gateway_backup_admissions set released_at=clock_timestamp() where id=$1 and owner=$2", id, owner); err != nil {
 		return err
 	}

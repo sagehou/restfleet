@@ -131,6 +131,15 @@ Gateway TLS transport 验收（不等于 command 可公网部署）：
 | REP-029 | P0 | 三种后端均只从认证 Agent 的当前已 ACK 仓库申请占用；重复/并发重放不延长期限、无新任务；跨 Host、错误 owner、失效 ACK、禁用/撤销及不安全期限拒绝，原始秘密不进入记录/outbox。 |
 | REP-030 | P0 | 同凭据的备份占用与 test/init/replace、有效 repository lease 互斥；过期仍排斥新 owner/维护，只有可信 owner 清理确认才释放；claim 不能旁路，禁用不自动释放，审计失败回滚占用/outbox/释放，Down 不能抹去历史。 |
 
+Gateway 加密回写验收（ADR-0020，不替代生产接线、REP-016 或 AGT-005）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-031 | P0 | 中心当前授权与 fence 核验后注册不可替换的来源；Gateway 仅持接收公钥，来源签名与加密独立；伪造来源、密文/header 移植、跨实例/Host、非规范或超长记录拒绝，磁盘无配置明文。 |
+| REP-032 | P0 | 文件和目录 fsync 后才接受；字节/记录数硬上限不丢旧记录；空间耗尽/写入不确定使 watcher/supervisor 停止；精确签名确认先保存再回收，确认丢失重放同 wire，错误确认不删文件。 |
+| REP-033 | P0 | 三后端中央有序幂等接收；并发重复只有一个 effect，冲突/跳序/旧 ID/非 token 改写/CAS 失败拒绝；审计失败不产生历史、秘密版本或 ACK；旧有效记录可在过期/禁用/吊销后回放，不能借回写恢复授权或释放 fence。 |
+| REP-034 | P0 | Unix 回写通道双向 UID + 实例签名认证，拒绝版本/大小/不安全 socket/错误 UID，取消等待 handler；重启只验证回放、缺失/损坏阻塞、不恢复数据面；未精确封存来源不能释放占用，历史 migration Down 拒绝删除。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

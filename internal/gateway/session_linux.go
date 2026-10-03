@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/security"
 )
 
@@ -39,18 +40,11 @@ var objectName = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // Binding comes from the trusted session owner, never a request payload. The
 // owner MUST admit/fence the durable backup lease and exclude central writes
 // and other sessions on this repository for the entire session lifetime.
-type Binding struct {
-	HostID, RepositoryID, GatewayID, OperationID uuid.UUID
-}
+type Binding = domain.GatewayBinding
 
 // Event contains only trusted route context and fixed classifications. Never add a
 // URL, supplied username, Authorization, backend error or object content here.
-type Event struct {
-	Binding       Binding
-	Authenticated bool
-	Action        string
-	Reason        string
-}
+type Event = domain.GatewayEvent
 
 // BackupSession is a single-use capability: it cannot be resumed after restart.
 // It owns no provider credentials, Restic password, listeners or subprocesses.

@@ -268,6 +268,12 @@ ACK MUST 重验 ACTIVE Agent/Host、未禁用的仓库/存储凭据、当前交�
 
 MUST 停止旧中心 writer 后迁移并升级至 schema 12；旧代码不会检查新授权记录，不能混跑。本批不消费授权 outbox、不提供新的公共 API，不证明独立 Gateway 投递、恢复或持久化回写已经完成。
 
+### 5.4.6 Gateway 回写来源与接收历史（schema 13，ADR-0020）
+
+`gateway_pending_origins` MUST 绑定唯一 admission_id 及其 runtime_id，保存经可信协调注册的 32-byte Ed25519 来源公钥及初始 secret revision；同运行实例的多个占用 MUST 分别隔离来源、sequence 和封存，只有 closed_at 可由中心显式封存。角色不得重写来源/绑定、删除来源或重新派发旧实例。
+
+`gateway_pending_records` MUST 仅追加，以 (admission_id, runtime_id, sequence) 为主键，record_id 全局唯一；仅存 wire SHA-256、历史 authorization revision、固定 kind、发生/提交时间，不存明文 token/config 或私钥。审计或加密 token CAS 与接收记录同事务提交；精确旧 wire 幂等返回，冲突、跳序和跨绑定拒绝。中心提交后才能签名确认，接收完毕不证明进程清理。来源未封存时占用 MUST 保持，包括已到期/已吊销的情形；来源存在时 Down MUST 拒绝抹除历史。旧 writer MUST 停止后再迁移和启用 schema 13，不能混跑。
+
 ### 5.5 template_revisions / plan_revisions
 
 每次变更保存不可变 snapshot：

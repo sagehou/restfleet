@@ -271,6 +271,24 @@ schema 12 / ADR-0019 将授权决定追加持久化，原占用 ID/owner、释�
 
 已知吊销阻止在线材料使用，但不自动结束远程进程或完成审计回写。释放检查覆盖所有历史未过期授权，显式吊销/全部到期只满足释放的一项前提；仍 MUST 证明请求、子进程和持久化工作退出。升级必须停旧 writer、运行迁移并启用 schema 12 的新代码，不能混跑。独立 Gateway 通道、吊销投递/恢复、回写区、生产 command/readiness 与 AGT-005 仍待验收。
 
+### 7.13 加密待回写与本地回放（schema 13 / ADR-0020）
+
+本批实现回写链路，尚未交付授权/云端材料或 Agent 会话能力的生产通道，在线 §7.8/7.9 MUST 保持原检查。Gateway command、可信清理恢复和 AGT-005 仍待完成。
+
+记录 MUST 为 `security.GatewayPendingRecord` 的规范紧凑 JSON，外层为 header、ciphertext（标准 base64）后拼接 64-byte Ed25519 签名，总长最多 512 KiB。签名域为 `restfleet:gateway-pending:v1` 加 NUL；来源公钥 MUST 从中心注册查得，不能接受 wire 提供的公钥。未验签 header 只 MAY 用 admission_id/runtime_id 查询可信来源，不能用于授权或效果；验签后 MUST 比对完整绑定。同一运行实例的多个占用独立注册、排序和封存。ciphertext 使用 `nacl/box.SealAnonymous`（X25519 / XSalsa20-Poly1305），接收私钥仅在中心；解密后 MUST 验证内外 header 完全相同和规范重编码，不归一化未知/重复字段。
+
+header 顺序 MUST 为 binding（同 §7.11）、record_id、sequence、previous_hash、authorization_revision、created_at；ID 为 UUIDv7，sequence 为 1..MaxInt64-1，authorization_revision 为正 bigint，hash 为 64 位小写 hex，首次 previous_hash 为全零。created_at 为正 UTC Unix 整秒且不超过 9999 年末。内层其余字段依序为 kind、event、expected_secret_revision、config。audit 仅携带同一白名单 event，config MUST 为 null、expected_secret_revision=0；refresh 要求 event=null、合法 expected_secret_revision 和最多 256 KiB config，只在中心解密并再次执行 token-only 验证。event 顺序为 binding（host_id、repository_id、gateway_id、session_id）、authenticated、action、reason；未绑定拒绝事件的 ID 均为 nil，不能按请求推断身份。
+
+待回写目录 MUST 是 canonical、服务所有、0700 的持久目录；普通文件 MUST 0600、无 symlink/hardlink。一个目录只容纳一个完整 binding，独占 flock；记录原子写入前 MUST 检查记录数 1–4096 和总文件字节上限（至少 512 KiB +16 KiB、最多 64 MiB，预留 16 KiB 给 identity/确认及临时文件；不计算文件系统目录块）。fsync/rename/目录 fsync 任一步失败 MUST 停止本实例追加，禁止丢弃未确认记录。损坏、缺失前缀或不确定临时文件 MUST 保留并阻塞恢复；不得自动删掉未提交文件来启动数据面。重开只可回放，不可追加或复活授权。
+
+确认 MUST 为 admission_id、runtime_id、sequence、record_id、wire_hash 的规范 JSON +64-byte 中心 Ed25519 签名（域 `restfleet:gateway-pending-receipt:v1` 加 NUL，最多 1024 bytes）。中心 MUST 在同事务提交 effect 和接收历史后才签名；Gateway MUST 核验精确首条记录、可靠保存确认后再删对应文件。确认丢失 MUST 重发相同 wire，不重新加密。同 sequence 改参、跳序、前 hash 不符、唯一 ID 重用及跨 binding MUST 拒绝。
+
+回放 MUST 保留原占用并使用 credential → admission → origin 锁顺序；过期/禁用/已吊销不丢弃旧记录。refresh MUST 引用原运行实例的非吊销历史授权，发生于其签发至到期区间，并满足中心加密 revision CAS；不能以历史回写授予新访问。audit 清理观察 MAY 晚于授权到期，仍不构成进程退出证明。已注册来源 MUST 独占刷新，原同步刷新接口不得旁路。来源封存 MUST 由可信中心在数据面与追加者退出、全部回写后提交精确 tail；未封存来源阻止占用释放，封存自身也不证明清理。
+
+回放通道 MUST 使用服务所有 0700 目录内新建的 0600 Unix socket，拒绝接管现有 socket；双方核验 SO_PEERCRED 的服务 UID，来源/确认签名仍不可省略。当前局限于同 UID 的可信本地服务配置，不能据此声称 UID 隔离或交付材料的通道已完成。帧依序为 ASCII `RFGR`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire；未知版本和超长/空帧 MUST 拒绝分配/执行。四并发连接、每连接最多 5s、一次请求/确认，中心事务最多 3s；取消 MUST 关闭连接并等待 handler 退出。没有 TCP、HTTP 或 Agent 路由。身份/帧或来源/绑定拒绝 MUST 写固定的无资源 GATEWAY_PENDING_REPLAY_DENIED / REJECTED 审计，不能记录未认证 header、UID、原始错误或配置；DB/审计不可用时不接受原操作。
+
+Server 内部回放 listener 默认禁用。`RESTFLEET_GATEWAY_SIGNING_KEY_FILE` MUST 包含 base64 32-byte Ed25519 seed，`RESTFLEET_GATEWAY_PENDING_KEY_FILE` MUST 包含 base64 32-byte X25519 私钥；文件 MUST canonical、服务所有、0400/0600、regular、非 hardlink，两种私钥都禁止直接环境变量。pending key 要求 signing key，签名要求有效 Gateway/enrollment 配置；设置 `RESTFLEET_GATEWAY_REPLAY_SOCKET` 才启用内部 listener。中心密钥 MUST 持久复用，不得在队列未排空时直接替换/丢弃旧密钥；本批不提供中心密钥 overlap。私钥 MUST 不交给 Gateway，升级前 MUST 停旧 writer、迁移至 schema 13；历史记录存在时 Down 拒绝。来源注册和封存没有公网接口，不能靠设置 listener 宣称 Gateway 可部署或 Repository READY。
+
 ## 8. Native Agent 安装
 
 目标目录：

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -9,30 +10,34 @@ import (
 	"strings"
 
 	"github.com/sagehou/restfleet/internal/domain"
+	"github.com/sagehou/restfleet/internal/security"
 )
 
 type RuntimeConfig struct {
-	Environment          string
-	DatabaseURL          string
-	BootstrapToken       string
-	HTTPAddress          string
-	MetricsAddress       string
-	WebDirectory         string
-	SecureCookies        bool
-	EnrollmentEnabled    bool
-	MasterKey            []byte
-	PublicURL            string
-	GRPCAddress          string
-	GRPCEndpoint         string
-	GRPCServerName       string
-	GRPCTLSCertFile      string
-	GRPCTLSKeyFile       string
-	ServerCABundlePEM    []byte
-	Warnings             []string
-	CredentialRuntimeDir string
-	RcloneBinary         string
-	ResticBinary         string
-	GatewayPublicURL     string
+	Environment                 string
+	DatabaseURL                 string
+	BootstrapToken              string
+	HTTPAddress                 string
+	MetricsAddress              string
+	WebDirectory                string
+	SecureCookies               bool
+	EnrollmentEnabled           bool
+	MasterKey                   []byte
+	PublicURL                   string
+	GRPCAddress                 string
+	GRPCEndpoint                string
+	GRPCServerName              string
+	GRPCTLSCertFile             string
+	GRPCTLSKeyFile              string
+	ServerCABundlePEM           []byte
+	Warnings                    []string
+	CredentialRuntimeDir        string
+	RcloneBinary                string
+	ResticBinary                string
+	GatewayPublicURL            string
+	GatewaySigningKey           ed25519.PrivateKey
+	GatewayPendingDecryptionKey []byte
+	GatewayReplaySocket         string
 }
 
 func LoadRuntimeConfig() (RuntimeConfig, error) {
@@ -112,6 +117,34 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 
 	if config.GatewayPublicURL != "" && (!config.EnrollmentEnabled || !domain.ValidGatewayOrigin(config.GatewayPublicURL)) {
 		return RuntimeConfig{}, errors.New("gateway origin requires HTTPS and complete enrollment configuration")
+	}
+
+	for _, name := range []string{"RESTFLEET_GATEWAY_SIGNING_KEY", "RESTFLEET_GATEWAY_PENDING_KEY"} {
+		if _, present := os.LookupEnv(name); present {
+			return RuntimeConfig{}, errors.New("gateway private keys require protected files")
+		}
+	}
+	if file := os.Getenv("RESTFLEET_GATEWAY_SIGNING_KEY_FILE"); file != "" {
+		seed, err := security.ReadProtectedKey(file, ed25519.SeedSize)
+		if err != nil || config.GatewayPublicURL == "" {
+			clear(seed)
+			return RuntimeConfig{}, errors.New("invalid gateway signing key configuration")
+		}
+		config.GatewaySigningKey = ed25519.NewKeyFromSeed(seed)
+		clear(seed)
+	}
+	if file := os.Getenv("RESTFLEET_GATEWAY_PENDING_KEY_FILE"); file != "" {
+		if len(config.GatewaySigningKey) == 0 {
+			return RuntimeConfig{}, errors.New("gateway pending key requires signing key")
+		}
+		config.GatewayPendingDecryptionKey, err = security.ReadProtectedKey(file, 32)
+		if err != nil {
+			return RuntimeConfig{}, errors.New("invalid gateway pending key configuration")
+		}
+	}
+	config.GatewayReplaySocket = os.Getenv("RESTFLEET_GATEWAY_REPLAY_SOCKET")
+	if config.GatewayReplaySocket != "" && len(config.GatewayPendingDecryptionKey) != 32 {
+		return RuntimeConfig{}, errors.New("gateway replay socket requires pending and signing keys")
 	}
 
 	if value := os.Getenv("RESTFLEET_SECURE_COOKIES"); value != "" {
