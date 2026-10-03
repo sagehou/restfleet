@@ -19,26 +19,48 @@ import (
 
 var ErrChannel = errors.New("gateway replay channel unavailable")
 
-// ListenReplay binds only a NEW socket in a canonical service-owned 0700
-// directory. It never removes an existing socket or takes over another owner.
-func ListenReplay(path string) (*net.UnixListener, error) {
-	if !privateReplayPath(path, uint32(os.Geteuid()), false) {
+// ListenReplay binds only a NEW socket. Omitted/zero group keeps the original
+// 0700 directory/0600 socket policy. An explicit nonzero dedicated shared group
+// requires a service-owned 0710 directory and creates a 0660 socket. The peer
+// can connect but cannot list/write the directory or replace the socket. This
+// group MUST NOT be used for keys, pending queues or materialized configuration.
+func ListenReplay(path string, sharedGroup ...uint32) (*net.UnixListener, error) {
+	if !privateReplayPath(path, uint32(os.Geteuid()), false, sharedGroup...) {
 		return nil, ErrChannel
 	}
 	l, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 	if err != nil {
 		return nil, ErrChannel
 	}
-	if os.Chmod(path, 0600) != nil {
+	mode := os.FileMode(0600)
+	if len(sharedGroup) == 1 && sharedGroup[0] != 0 {
+		if os.Chown(path, -1, int(sharedGroup[0])) != nil {
+			_ = l.Close()
+			return nil, ErrChannel
+		}
+		mode = 0660
+	}
+	if os.Chmod(path, mode) != nil || !privateReplayPath(path, uint32(os.Geteuid()), true, sharedGroup...) {
 		_ = l.Close()
 		return nil, ErrChannel
 	}
 	return l, nil
 }
 
-func privateReplayPath(path string, owner uint32, existing bool) bool {
-	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+func privateReplayPath(path string, owner uint32, existing bool, sharedGroup ...uint32) bool {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path || len(sharedGroup) > 1 {
 		return false
+	}
+	var group uint32
+	if len(sharedGroup) == 1 {
+		group = sharedGroup[0]
+		if group == ^uint32(0) {
+			return false
+		}
+	}
+	dirMode, socketMode := os.FileMode(0700), os.FileMode(0600)
+	if group != 0 {
+		dirMode, socketMode = 0710, 0660
 	}
 	dir := filepath.Dir(path)
 	canonical, err := filepath.EvalSymlinks(dir)
@@ -46,22 +68,22 @@ func privateReplayPath(path string, owner uint32, existing bool) bool {
 		return false
 	}
 	info, err := os.Lstat(dir)
-	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
+	if err != nil || !info.IsDir() || info.Mode().Perm() != dirMode || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
 		return false
 	}
 	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || st.Uid != owner {
+	if !ok || st.Uid != owner || (group != 0 && st.Gid != group) {
 		return false
 	}
 	if !existing {
 		return true
 	}
 	info, err = os.Lstat(path)
-	if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0600 {
+	if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != socketMode || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
 		return false
 	}
 	st, ok = info.Sys().(*syscall.Stat_t)
-	return ok && st.Uid == owner
+	return ok && st.Uid == owner && (group == 0 || st.Gid == group)
 }
 
 func peerUID(conn *net.UnixConn, expected uint32) bool {
@@ -82,10 +104,11 @@ func peerUID(conn *net.UnixConn, expected uint32) bool {
 // ServeReplay is a replay-only channel; it carries no plaintext material or
 // unsigned ACK. The handler MUST verify the registered source and commit before
 // signing its receipt. Four connections, five seconds each; no request logs.
-func ServeReplay(ctx context.Context, listener *net.UnixListener, expectedUID uint32, handler func(context.Context, uuid.UUID, []byte) ([]byte, error), denied func(context.Context) error) error {
-	if listener == nil || handler == nil || denied == nil {
+func ServeReplay(ctx context.Context, listener *net.UnixListener, expectedUID uint32, handler func(context.Context, uuid.UUID, []byte) ([]byte, error), denied func(context.Context) error, sharedGroup ...uint32) error {
+	if listener == nil || handler == nil || denied == nil || !privateReplayPath(listener.Addr().String(), uint32(os.Geteuid()), true, sharedGroup...) {
 		return ErrChannel
 	}
+	defer listener.Close()
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(work, func() { _ = listener.Close() })
@@ -172,8 +195,8 @@ func readChannelFrame(r io.Reader, magic string, max uint32) (uuid.UUID, []byte,
 	return runtime, body, nil
 }
 
-func Replay(ctx context.Context, path string, serverUID uint32, runtime uuid.UUID, wire []byte) ([]byte, error) {
-	if len(wire) == 0 || len(wire) > security.MaxGatewayPendingSize || !privateReplayPath(path, serverUID, true) {
+func Replay(ctx context.Context, path string, serverUID uint32, runtime uuid.UUID, wire []byte, sharedGroup ...uint32) ([]byte, error) {
+	if len(wire) == 0 || len(wire) > security.MaxGatewayPendingSize || !privateReplayPath(path, serverUID, true, sharedGroup...) {
 		return nil, ErrChannel
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -202,7 +225,7 @@ func Replay(ctx context.Context, path string, serverUID uint32, runtime uuid.UUI
 	return ack, nil
 }
 
-func Drain(ctx context.Context, queue *Queue, path string, serverUID uint32, runtime uuid.UUID) error {
+func Drain(ctx context.Context, queue *Queue, path string, serverUID uint32, runtime uuid.UUID, sharedGroup ...uint32) error {
 	if queue == nil {
 		return ErrChannel
 	}
@@ -217,7 +240,7 @@ func Drain(ctx context.Context, queue *Queue, path string, serverUID uint32, run
 		if wire == nil {
 			return nil
 		}
-		ack, err := Replay(ctx, path, serverUID, runtime, wire)
+		ack, err := Replay(ctx, path, serverUID, runtime, wire, sharedGroup...)
 		if err != nil {
 			return ErrChannel
 		}

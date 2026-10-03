@@ -165,3 +165,45 @@ func TestReplayChannelCancellationJoinsPartialAndBusyConnections(t *testing.T) {
 		t.Fatal("partial connections block shutdown")
 	}
 }
+
+func TestSharedSocketPolicyRejectsPermissionsGroupOwnerAndDowngrade(t *testing.T) {
+	group := uint32(os.Getegid())
+	if group == 0 {
+		t.Skip("shared-group mode requires a non-root group; Actions also runs the cross-UID test")
+	}
+	path := replaySocket(t)
+	dir := filepath.Dir(path)
+	if os.Chown(dir, -1, int(group)) != nil || os.Chmod(dir, 0710) != nil {
+		t.Fatal("shared directory fixture")
+	}
+	listener, err := ListenReplay(path, group)
+	if err != nil {
+		t.Fatal("shared socket refused")
+	}
+	defer listener.Close()
+	uid := uint32(os.Geteuid())
+	if !privateReplayPath(path, uid, true, group) || privateReplayPath(path, uid, true) ||
+		privateReplayPath(path, uid+1, true, group) || privateReplayPath(path, uid, true, group+1) ||
+		privateReplayPath(path, uid, true, group, group) || privateReplayPath(path, uid, true, ^uint32(0)) {
+		t.Fatal("shared group or owner validation failed")
+	}
+	for _, mode := range []os.FileMode{0700, 0750, 0730, 0770, 0711, 0755, 0777, 0710 | os.ModeSetgid, 0710 | os.ModeSticky} {
+		if os.Chmod(dir, mode) != nil {
+			t.Fatal("directory permissions fixture")
+		}
+		if privateReplayPath(path, uid, true, group) {
+			t.Fatal("unsafe directory accepted")
+		}
+	}
+	if os.Chmod(dir, 0710) != nil {
+		t.Fatal("directory reset")
+	}
+	for _, mode := range []os.FileMode{0600, 0666, 0770, 0660 | os.ModeSetgid} {
+		if os.Chmod(path, mode) != nil {
+			t.Fatal("socket permissions fixture")
+		}
+		if privateReplayPath(path, uid, true, group) {
+			t.Fatal("unsafe socket accepted")
+		}
+	}
+}

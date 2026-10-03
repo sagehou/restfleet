@@ -38,6 +38,8 @@ type RuntimeConfig struct {
 	GatewaySigningKey           ed25519.PrivateKey
 	GatewayPendingDecryptionKey []byte
 	GatewayReplaySocket         string
+	GatewayReplayPeerUID        uint32
+	GatewayReplayGroup         uint32
 }
 
 func LoadRuntimeConfig() (RuntimeConfig, error) {
@@ -51,6 +53,7 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 		CredentialRuntimeDir: envOrDefault("RESTFLEET_CREDENTIAL_RUNTIME_DIR", "/run/restfleet/credentials"),
 		RcloneBinary:         envOrDefault("RESTFLEET_RCLONE_BINARY", "/usr/local/bin/rclone"),
 		ResticBinary:         envOrDefault("RESTFLEET_RESTIC_BINARY", "/usr/local/bin/restic"),
+		GatewayReplayPeerUID:  uint32(os.Geteuid()),
 	}
 	if config.Environment != "production" && config.Environment != "development" && config.Environment != "test" {
 		return RuntimeConfig{}, errors.New("RESTFLEET_ENV must be production, development, or test")
@@ -145,6 +148,17 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 	config.GatewayReplaySocket = os.Getenv("RESTFLEET_GATEWAY_REPLAY_SOCKET")
 	if config.GatewayReplaySocket != "" && len(config.GatewayPendingDecryptionKey) != 32 {
 		return RuntimeConfig{}, errors.New("gateway replay socket requires pending and signing keys")
+	}
+	peer, group := os.Getenv("RESTFLEET_GATEWAY_REPLAY_PEER_UID"), os.Getenv("RESTFLEET_GATEWAY_REPLAY_GROUP")
+	if peer != "" || group != "" {
+		uid, uidErr := strconv.ParseUint(peer, 10, 32)
+		gid, gidErr := strconv.ParseUint(group, 10, 32)
+		if uidErr != nil || gidErr != nil || uid == 0 || gid == 0 || uid == 1<<32-1 || gid == 1<<32-1 ||
+			uid == uint64(os.Geteuid()) || config.GatewayReplaySocket == "" ||
+			strconv.FormatUint(uid, 10) != peer || strconv.FormatUint(gid, 10) != group {
+			return RuntimeConfig{}, errors.New("gateway shared replay requires socket, distinct non-root peer UID and dedicated group")
+		}
+		config.GatewayReplayPeerUID, config.GatewayReplayGroup = uint32(uid), uint32(gid)
 	}
 
 	if value := os.Getenv("RESTFLEET_SECURE_COOKIES"); value != "" {

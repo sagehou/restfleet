@@ -9,6 +9,7 @@
 | 本批 M4 开发分支 | 加密有界待回写区、独立来源认证、可靠精确确认、中央有序幂等审计/token CAS、内部 Unix 回放 listener 与文件密钥加载；schema 13 / ADR-0020 / REP-031–034。进入完成进度前仍需审查合并。 |
 | 后续本地 M4 开发 | 将签名授权/待回写接入 supervisor 的唯一 owner 生命周期；连续备份维持 token revision、逐次转发核验、吊销/到期/容量取消及 join；ADR-0021 / REP-035–037。固定真实二进制走在线与本地签名两条测试路径，生产交付通道仍未完成，不计入已合并进度。 |
 | 最新本地 M4 开发 | 来源签名挑战、中心加密材料与单次 Unix owner 安装；schema 14 / ADR-0022 / REP-038–040。事务提交后不重发，回执未知保留 fence，Close/失败清理；真实 DB 与引擎覆盖内部通道。生产 pin/source 配置与 UID 隔离、运行协调、command 尚未完成，不计入已合并进度。 |
+| 跨 UID 接线（源码待 CI） | 显式共享组、精确 peer UID、0710/0660 socket 策略及 Server replay 配置；ADR-0023 / REP-041–042。新增 Actions 非 root 双进程及同组第三 UID 负向验收，尚未运行，不计入验收完成。生产身份/启动协调仍待接线。 |
 | M5–M6 | Template/Plan、本地 scheduler 和实际 Agent backup 执行主链路尚未交付；基础消息/Operation/jobs 能复用，不能据此算作备份可用。 |
 | M7–M11 | Backup Health、Snapshot browser、下载、staging restore、中央 retention/maintenance 的完整业务链路尚未交付。 |
 | M12 | CI、日志脱敏和审计链有基础；通知、诊断、灾备/升级和正式发布的全量验收尚未完成。 |
@@ -24,3 +25,5 @@
 AGT-005 仍未通过。实验 MUST 分别记录中心签发、续期、失联和备份时刻：签发后最多 12h 的授权不等于任意失联时刻后仍剩完整 12h。发现要求冲突时必须报告取舍并取得明确决定，不能用重放或重置接收时间延寿。
 
 本批验证使用本机临时 PostgreSQL 16 和从 CI 固定 OCI digest 提取的 Restic 0.19.1/rclone 1.75.1。验收重点是三后端回放、确认丢失、并发重复/跨绑定/跳序、非 token 配置和 CAS 拒绝、审计回滚、容量/fsync 故障、重启只回放、多占用隔离，以及现有真实 TLS 备份/读回回归；没有使用真实云凭据。最终检查结果以关联 PR 的当前提交 CI 为准。
+
+验证环境调整：根据用户要求，后续编译、测试、认证及其他运行验证 MUST 仅在 GitHub Actions 执行，开发工作区仅用于源码/文档编辑和只读检查。本任务临时 PostgreSQL 已停止，数据库、引擎、下载工具链、编译缓存和构建产物已清理；上述本地结果保留为历史证据。CI 的 cross-build 同时直接编译 Gateway/queue/security 包，覆盖尚未接入 command 的生产代码；新变更仍须以 Actions 结果验证。

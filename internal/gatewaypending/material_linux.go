@@ -67,13 +67,14 @@ func (r *MaterialReceiver) Close() {
 }
 
 // Receive owns and closes listener. The caller MUST use a freshly bound socket
-// in a service-owned 0700 directory (ListenReplay enforces the same local path
-// policy). This protocol has separate RFGM magic and cannot parse RFGR frames.
+// with ListenReplay's private or explicitly selected shared-group policy.
+// This protocol has separate RFGM magic and cannot parse RFGR frames.
 // install MUST honor ctx and return a rollback that cancels/joins any owner if
 // the receipt cannot be sent. Config is cleared after the borrowed callback.
 // Successful receipt means initialization only, never READY, Agent ACK or cleanup.
 func (r *MaterialReceiver) Receive(ctx context.Context, listener *net.UnixListener, centerUID uint32,
 	install func(context.Context, security.GatewayMaterial) (func(), error), denied func(context.Context) error,
+	sharedGroup ...uint32,
 ) (failure error) {
 	r.mu.Lock()
 	if r.used {
@@ -91,7 +92,7 @@ func (r *MaterialReceiver) Receive(ctx context.Context, listener *net.UnixListen
 	if listener != nil {
 		defer listener.Close()
 	}
-	if listener == nil || install == nil || denied == nil || !privateReplayPath(listener.Addr().String(), uint32(os.Geteuid()), true) {
+	if listener == nil || install == nil || denied == nil || !privateReplayPath(listener.Addr().String(), uint32(os.Geteuid()), true, sharedGroup...) {
 		return ErrChannel
 	}
 	defer func() {
@@ -155,8 +156,9 @@ func (r *MaterialReceiver) Receive(ctx context.Context, listener *net.UnixListen
 // do not resend material to reset an owner or release its fence.
 func SendMaterial(ctx context.Context, path string, gatewayUID uint32, binding security.GatewayAuthorizationBinding, source ed25519.PublicKey,
 	deliver func(context.Context, []byte) ([]byte, error), denied func(context.Context) error,
+	sharedGroup ...uint32,
 ) (failure error) {
-	if binding.Validate() != nil || len(source) != 32 || deliver == nil || denied == nil || !privateReplayPath(path, gatewayUID, true) {
+	if binding.Validate() != nil || len(source) != 32 || deliver == nil || denied == nil || !privateReplayPath(path, gatewayUID, true, sharedGroup...) {
 		return ErrChannel
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

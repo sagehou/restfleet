@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -31,6 +32,8 @@ func clearEnvironment(t *testing.T) {
 		"RESTFLEET_GATEWAY_PENDING_KEY",
 		"RESTFLEET_GATEWAY_PENDING_KEY_FILE",
 		"RESTFLEET_GATEWAY_REPLAY_SOCKET",
+		"RESTFLEET_GATEWAY_REPLAY_PEER_UID",
+		"RESTFLEET_GATEWAY_REPLAY_GROUP",
 		"RESTFLEET_GRPC_ADDRESS",
 		"RESTFLEET_GRPC_ENDPOINT",
 		"RESTFLEET_GRPC_SERVER_NAME",
@@ -181,6 +184,39 @@ func TestGatewayKeysAreFileOnlyAndReplayRequiresBothKeys(t *testing.T) {
 	if err != nil || !bytes.Equal(config.GatewaySigningKey, ed25519.NewKeyFromSeed(seed)) || len(config.GatewayPendingDecryptionKey) != 32 || config.GatewayReplaySocket == "" {
 		t.Fatal("valid protected configuration")
 	}
+	if config.GatewayReplayPeerUID != uint32(os.Geteuid()) || config.GatewayReplayGroup != 0 {
+		t.Fatal("private replay default changed")
+	}
+	for _, invalid := range []struct{ peer, group string }{
+		{"", "65530"}, {"65532", ""}, {"0", "65530"}, {"65532", "0"},
+		{"-1", "65530"}, {"65532", "4294967295"}, {"4294967296", "65530"},
+		{"065532", "65530"}, {"65532", "+65530"},
+		{strconv.Itoa(os.Geteuid()), "65530"}, {"uid-secret-canary", "65530"},
+	} {
+		t.Run("invalid shared replay "+invalid.peer+"/"+invalid.group, func(t *testing.T) {
+			t.Setenv("RESTFLEET_GATEWAY_REPLAY_PEER_UID", invalid.peer)
+			t.Setenv("RESTFLEET_GATEWAY_REPLAY_GROUP", invalid.group)
+			if _, err := LoadRuntimeConfig(); err == nil || strings.Contains(err.Error(), "canary") {
+				t.Fatal("invalid shared replay accepted or echoed")
+			}
+		})
+	}
+	t.Run("explicit shared replay", func(t *testing.T) {
+		peer := uint32(65532)
+		if peer == uint32(os.Geteuid()) {
+			peer++
+		}
+		t.Setenv("RESTFLEET_GATEWAY_REPLAY_PEER_UID", strconv.FormatUint(uint64(peer), 10))
+		t.Setenv("RESTFLEET_GATEWAY_REPLAY_GROUP", "65530")
+		shared, err := LoadRuntimeConfig()
+		if err != nil || shared.GatewayReplayPeerUID != peer || shared.GatewayReplayGroup != 65530 {
+			t.Fatal("explicit shared replay configuration rejected")
+		}
+		t.Setenv("RESTFLEET_GATEWAY_REPLAY_SOCKET", "")
+		if _, err := LoadRuntimeConfig(); err == nil {
+			t.Fatal("shared replay without socket accepted")
+		}
+	})
 	for _, name := range []string{"RESTFLEET_GATEWAY_SIGNING_KEY", "RESTFLEET_GATEWAY_PENDING_KEY"} {
 		t.Setenv(name, "key-secret-canary")
 		if _, err := LoadRuntimeConfig(); err == nil || strings.Contains(err.Error(), "canary") {

@@ -285,7 +285,7 @@ header 顺序 MUST 为 binding（同 §7.11）、record_id、sequence、previous
 
 回放 MUST 保留原占用并使用 credential → admission → origin 锁顺序；过期/禁用/已吊销不丢弃旧记录。refresh MUST 引用原运行实例的非吊销历史授权，发生于其签发至到期区间，并满足中心加密 revision CAS；不能以历史回写授予新访问。audit 清理观察 MAY 晚于授权到期，仍不构成进程退出证明。已注册来源 MUST 独占刷新，原同步刷新接口不得旁路。来源封存 MUST 由可信中心在数据面与追加者退出、全部回写后提交精确 tail；未封存来源阻止占用释放，封存自身也不证明清理。
 
-回放通道 MUST 使用服务所有 0700 目录内新建的 0600 Unix socket，拒绝接管现有 socket；双方核验 SO_PEERCRED 的服务 UID，来源/确认签名仍不可省略。当前局限于同 UID 的可信本地服务配置，不能据此声称 UID 隔离或交付材料的通道已完成。帧依序为 ASCII `RFGR`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire；未知版本和超长/空帧 MUST 拒绝分配/执行。四并发连接、每连接最多 5s、一次请求/确认，中心事务最多 3s；取消 MUST 关闭连接并等待 handler 退出。没有 TCP、HTTP 或 Agent 路由。身份/帧或来源/绑定拒绝 MUST 写固定的无资源 GATEWAY_PENDING_REPLAY_DENIED / REJECTED 审计，不能记录未认证 header、UID、原始错误或配置；DB/审计不可用时不接受原操作。
+回放通道默认 MUST 使用服务所有 0700 目录内新建的 0600 Unix socket，拒绝接管现有 socket；显式跨 UID 模式见 §7.16。双方核验 SO_PEERCRED 的服务 UID，来源/确认签名仍不可省略。原同 UID 测试不能据此声称 UID 隔离或生产材料交付已经完成。帧依序为 ASCII `RFGR`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire；未知版本和超长/空帧 MUST 拒绝分配/执行。四并发连接、每连接最多 5s、一次请求/确认，中心事务最多 3s；取消 MUST 关闭连接并等待 handler 退出。没有 TCP、HTTP 或 Agent 路由。身份/帧或来源/绑定拒绝 MUST 写固定的无资源 GATEWAY_PENDING_REPLAY_DENIED / REJECTED 审计，不能记录未认证 header、UID、原始错误或配置；DB/审计不可用时不接受原操作。
 
 Server 内部回放 listener 默认禁用。`RESTFLEET_GATEWAY_SIGNING_KEY_FILE` MUST 包含 base64 32-byte Ed25519 seed，`RESTFLEET_GATEWAY_PENDING_KEY_FILE` MUST 包含 base64 32-byte X25519 私钥；文件 MUST canonical、服务所有、0400/0600、regular、非 hardlink，两种私钥都禁止直接环境变量。pending key 要求 signing key，签名要求有效 Gateway/enrollment 配置；设置 `RESTFLEET_GATEWAY_REPLAY_SOCKET` 才启用内部 listener。中心密钥 MUST 持久复用，不得在队列未排空时直接替换/丢弃旧密钥；本批不提供中心密钥 overlap。私钥 MUST 不交给 Gateway，升级前 MUST 停旧 writer、迁移至 schema 13；历史记录存在时 Down 拒绝。来源注册和封存没有公网接口，不能靠设置 listener 宣称 Gateway 可部署或 Repository READY。
 
@@ -303,7 +303,7 @@ Server 内部回放 listener 默认禁用。`RESTFLEET_GATEWAY_SIGNING_KEY_FILE`
 
 `ControlPlane.GatewayMaterialDelivery` 仅供可信中心协调器使用，不是公共 API。协调器 MUST 提供独立可信 binding/来源 pin，并串行化交付、授权投递及清理；来源私钥与中心验证公钥 MUST 从 Gateway 受保护本地配置取得，不信任 Agent 输入。中心事务最多 3s；交换最多 5s，先验证来源挑战，再提交当前状态核验、单次交付意图与访问审计，最后短时解密并签名加密。失败不回显底层错误或配置。
 
-Gateway 监听新建的服务所有 0700 目录内 0600 Unix socket，中心主动连接；双方 MUST 核验预期 SO_PEERCRED UID，中心还 MUST 验证预注册来源签名。当前正向测试为同 UID；root 中心可能访问不同 UID socket，不构成完整生产 UID 隔离或非 root 跨 UID 部署。没有进程启动器、独立 pin/source 受保护配置接线或 command 启用选项。
+Gateway 默认监听新建的服务所有 0700 目录内 0600 Unix socket，中心主动连接；双方 MUST 核验预期 SO_PEERCRED UID，中心还 MUST 验证预注册来源签名。原正向测试为同 UID；显式跨 UID 访问见 §7.16，不能据此声称完整生产 UID 隔离。没有进程启动器、独立 pin/source 受保护配置接线或 command 启用选项。
 
 帧 MUST 为 ASCII `RFGM`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire，与回放的 `RFGR` 隔离。挑战与回执最多 2048 bytes，材料 wire 最多 512 KiB，config 最多 256 KiB；空帧、错误 runtime、版本或超长帧 MUST 拒绝。
 
@@ -314,6 +314,18 @@ Gateway 监听新建的服务所有 0700 目录内 0600 Unix socket，中心主�
 `MaterialReceiver` MUST 单次使用。无效交换也消费接收者，取消关闭 socket；Close MUST 消费未开始实例或取消/join 正在执行的交换，并清零来源私钥副本和临时接收私钥。install/rollback/denied 回调 MUST NOT 调用等待自己的 Close。安装只 MAY 通过 `InstallGatewayMaterial` 构造 fresh Queue/唯一 owner，config 借用后清零；回调 MUST 返回 rollback，安装或回执发送失败时取消并 join owner，保留 Queue 供回放。
 
 回执字段顺序 MUST 为 challenge、wire_hash，来源签名验证精确材料 wire SHA-256。它只确认初始化，不是 Agent ACK、READY、清理或释放。中心提交单次意图后 MUST NOT 重新交付，包括精确重试、新挑战、丢失回执和无已回写记录；未知结果保留 fence，等待可信恢复。升级 MUST 停旧 writer 后迁移 schema 14，已有交付历史时 Down 拒绝；不新增公共 API、自动注册来源或授权签发。
+
+### 7.16 独立 UID 与显式共享组通道（ADR-0023）
+
+Server/Gateway SHOULD 使用不同的固定非 root UID，管理员 MUST 将两者加入专用非 root GID。监听方 MUST 独占拥有对应通道目录，mode 精确为 0710、GID 与配置一致；新建 socket MUST 为监听方 UID、配置 GID、mode 0660。不接受额外特殊权限、组/其他用户写目录、symlink、非规范路径或旧 socket 接管。组只授予已知路径的遍历与 socket 连接，不能列目录、修改目录或替换 socket；祖先路径 MUST 由可信管理员维护，不接受不可信写入者。
+
+`ListenReplay`、`ServeReplay`、`Replay`、`Drain`、`MaterialReceiver.Receive`、`SendMaterial` 的可选 sharedGroup MUST 从可信配置显式传入，不从路径推断。省略/零 GID 保持 0700/0600 原模式；多个 GID 或保留值 4294967295 MUST 拒绝。组成员身份不代替 SO_PEERCRED 精确 peer UID、来源/中心签名或加密。共享组误加第三用户允许其干扰连接，MUST 仍拒绝其操作；被干扰的单次初始化保留 fence，不自动重试。
+
+中心设置 `RESTFLEET_GATEWAY_REPLAY_PEER_UID` 与 `RESTFLEET_GATEWAY_REPLAY_GROUP` 时 MUST 同时配置两项、回放 socket 和既有有效中心密钥。值 MUST 为规范十进制 uint32，均非零且非保留值，peer UID MUST 不同于本中心 UID。不设置两项保持同 UID 私有模式。该配置仅接入中心回放 listener，不生成生产 Gateway 身份、启动进程、注册来源或授予 READY。
+
+共享组 MUST NOT 用于中心 DB/master/signing/接收私钥、Gateway 来源私钥、明文配置和待回写 Queue；它们仍 MUST 在各自服务所有的 0700 私有目录内，以 0400/0600 文件或已有 tmpfs 规则保护。独立挂载中心 secrets，Gateway 不持有中心秘密。没有新的 wire、公共 API、DB schema 或部署服务依赖。
+
+GitHub Actions `gateway-isolation` job 编译 race-enabled 测试二进制并运行 REP-042。root 仅是测试进程启动/权限协调器，三个实际协议进程均为不同非 root UID；Gateway 在自身进程产生来源私钥，中心只获公钥，中心私钥经匿名 stdin 管道单独交给中心。测试核验加密材料/签名回放与确认、借用明文清零、跨服务私钥读取拒绝、socket 替换拒绝和同组第三 UID 拒绝；准入/DB 事务仍由既有集成测试覆盖。开发工作区 MUST NOT 执行该 job 的编译或进程测试。新增验收待 Actions 结果，生产身份装载/运行协调、续期/吊销、恢复、command/readiness、rotation/READY、真实云端和 AGT-005 仍未完成。
 
 ## 8. Native Agent 安装
 

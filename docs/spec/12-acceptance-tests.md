@@ -156,6 +156,13 @@ Gateway 单次加密材料初始化验收（ADR-0022；同 UID 内部通道，�
 | REP-039 | P0 | 三后端真实 DB 核验当前身份、owner、ACK、来源、revision、期限与最新普通授权；禁用/吊销/封存/已回写/审计失败拒绝；意图和访问审计原子提交，并发仅一次，提交后新挑战或无回执不再发，不释放 fence；应用角色不能改删历史，Down 拒绝。 |
 | REP-040 | P0 | 单次 Unix RFGM 交换拒绝错误 UID/版本/runtime/帧上限；安装失败、取消或回执发送丢失 rollback/join，Close 消费未使用或取消/join 接收者；已安装 fresh owner 连续两次固定二进制 TLS 备份及读回，旧初始化不能复活 owner。回执不代表 READY/ACK/释放。 |
 
+跨 UID 通道验收（ADR-0023，GitHub Actions 执行；不替代完整生产接线）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-041 | P0 | 共享组仅显式启用；精确 0710 owner/group 目录与 0660 socket；错误 owner/group、权限、特殊位、多个 GID 和非规范 UID 配置拒绝；私有默认不接受共享目录，已有 socket 不接管，peer UID 验证与签名不削弱。 |
+| REP-042 | P0 | Actions 运行不同非 root UID 的中心/Gateway 实际进程，Gateway 本地产生来源私钥、中心仅获公钥；独立 pin 下加密初始化及可靠签名回放/确认成功，借用明文清零；两个服务不能读取另一服务私钥或替换其 socket，同组第三 UID 不触发回写 handler。进程取消/失败必须等待退出再清理测试文件。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

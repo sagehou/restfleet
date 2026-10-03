@@ -78,6 +78,7 @@ docs/
 
 ## Coding and testing
 
+- 编译、测试、认证及其他运行验证 MUST 仅在 GitHub Actions 中执行。开发工作区 MUST 保持干净，只用于源码/文档编辑和只读检查；MUST NOT 在此启动数据库、应用服务、测试进程或本地编译工具链。
 - Go code must pass `go test ./...`, `go vet ./...`, race tests for concurrency-sensitive packages, and the configured linter.
 - Web code must pass type-checking, unit tests, linting, and production build.
 - Every state transition, authorization boundary, secret-redaction path, and subprocess adapter needs tests.

@@ -170,6 +170,8 @@
 
 第二十批（本地开发，待审查）增加来源签名 fresh challenge、中心加密材料、单次 Unix 初始化与 owner 安装（schema 14 / ADR-0022 / REP-038–040）。当前身份/ACK/来源/revision/最新授权与单次意图及访问审计原子提交；提交后失败或回执丢失不重发、不释放 fence。固定真实引擎的本地授权路径经此通道初始化，三后端事务用真实 PostgreSQL 验证。同 UID 测试不代表生产 UID 隔离、受保护 pin/source 装载或 command 完成；生产协调、续期/吊销、全局离线审计、Agent 能力、可信恢复、rotation/READY、真实云和 AGT-005 仍待完成。
 
+第二十一批（源码待 CI 验证）增加显式共享组的跨 UID 材料/回写通道（ADR-0023 / REP-041–042），中心 replay 配置精确 peer UID/GID；私有默认与签名/加密协议保持。GitHub Actions 独立 job 使用两个非 root 服务及同组第三用户，验证私钥/目录/socket 隔离；开发环境只编辑源码。尚无该批 Actions 成功证据，不计入验收完成；生产身份装载、启动协调及 M4 其他退出条件继续待完成。
+
 ### Goal
 
 在中心安全接入 OneDrive / Google Drive / HTTPS WebDAV + rclone crypt，创建 per-Host append-only Repository。
@@ -193,7 +195,7 @@
 
 ### Tests/Exit
 
-- REP-001–040；
+- REP-001–042；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

@@ -167,13 +167,13 @@ func run(logger *slog.Logger) error {
 	serverErrors := make(chan error, 5)
 	replayDone := make(chan struct{})
 	if config.GatewayReplaySocket != "" {
-		listener, err := gatewaypending.ListenReplay(config.GatewayReplaySocket)
+		listener, err := gatewaypending.ListenReplay(config.GatewayReplaySocket, config.GatewayReplayGroup)
 		if err != nil {
 			return err
 		}
 		go func() {
 			defer close(replayDone)
-			if err := gatewaypending.ServeReplay(ctx, listener, uint32(os.Geteuid()), controlPlane.ReplayGatewayPending, controlPlane.RecordGatewayReplayDenied); err != nil {
+			if err := gatewaypending.ServeReplay(ctx, listener, config.GatewayReplayPeerUID, controlPlane.ReplayGatewayPending, controlPlane.RecordGatewayReplayDenied, config.GatewayReplayGroup); err != nil {
 				serverErrors <- err
 			}
 		}()
