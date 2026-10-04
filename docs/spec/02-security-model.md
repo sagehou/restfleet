@@ -196,6 +196,12 @@ ADR-0027 / 09 §7.20 的全局来源 MUST 仅绑定可信 origin/runtime 和独�
 
 中心显式注册命令见 ADR-0030 / 09 §7.22。MUST 只读取中心服务受保护的公开来源元数据，生产禁止 root；核验 DB/schema/审计链后复用原注册事务，结果仅含公开 binding、公钥和原注册时刻。命令/输出失败不撤销既有来源，不能通过未认证请求、重读 metadata 或注册结果授予备份授权、材料、清理或 READY。
 
+### 8.7 Gateway 单次启动生命周期
+
+ADR-0031 / 09 §7.23 的内部 `Service` MUST 从受保护 metadata、独立 pin/source/TLS 文件建立唯一 runtime/supervisor、全局审计 producer 和每仓库 owner。持久 Queue MUST 与 tmpfs 明文、IPC、私钥分离，MUST 拒绝 tmpfs/ramfs Queue。每份来源公钥 MUST 独立；配置不证明来源注册、占用或进程新鲜性，旧 Queue/socket/材料 MUST NOT 用于接管。
+
+公网 TLS MUST 仅在全部单次材料交换与 owner/global 可用性核验成功后绑定；部分初始化失败 MUST 取消/join 全部回调和 rollback，保留已创建 Queue/fence。RFGA 更新原 owner，RFGR 丢失确认重试原密文；非法确认、不可可靠读写、全局 producer 或任一 owner 永久失效 MUST 停止整次运行。退出 MUST 在所有入口、会话、子进程组、回写及最终审计 join 后清零材料、冻结/关闭 Queue；Close 不封存来源或释放占用。可信进程内 WithBackup 不得由 Agent 选择云端配置或任意 callback；生产会话协议、可部署 daemon 与 READY 仍待完成。
+
 ## 9. Web 安全
 
 - 首个管理员只可通过一次性 bootstrap secret 创建；使用后删除/作废；

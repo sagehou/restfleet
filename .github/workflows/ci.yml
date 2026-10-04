@@ -42,6 +42,15 @@ jobs:
           chmod 755 "$test_dir"
           install -m 755 "${RUNNER_TEMP}/gatewaypending.test" "$test_dir/gatewaypending.test"
           sudo env RESTFLEET_TEST_CROSS_UID=1 "$test_dir/gatewaypending.test" -test.run='^TestCrossUIDMaterialReplayIsolation$' -test.v -test.count=1 -test.timeout=60s
+      - name: Compile race-enabled Gateway service tests
+        run: go test -race -c -o "${RUNNER_TEMP}/gateway.test" ./internal/gateway
+      - name: Test production Gateway lifecycle across non-root service UIDs and reject root
+        run: |
+          test_dir=$(mktemp -d /tmp/restfleet-service-isolation.XXXXXX)
+          trap 'sudo rm -rf "$test_dir"' EXIT
+          chmod 755 "$test_dir"
+          install -m 755 "${RUNNER_TEMP}/gateway.test" "$test_dir/gateway.test"
+          sudo env RESTFLEET_TEST_SERVICE_ISOLATION=1 "$test_dir/gateway.test" -test.run='^(TestCrossUIDServiceLifecycle|TestServiceStartupRejectsVolatileQueueAndBadTLSWithoutBindingChannels)$' -test.v -test.count=1 -test.timeout=90s
 
   quality:
     runs-on: ubuntu-latest
@@ -104,6 +113,8 @@ jobs:
           docker cp restfleet-restic-conformance:/usr/bin/restic "${RUNNER_TEMP}/restic"
           docker rm restfleet-restic-conformance
           "${RUNNER_TEMP}/restic" version
+      - name: Verify Gateway service formatting
+        run: test -z "$(gofmt -l internal/gateway/service*_linux*.go internal/gateway/conformance_linux_test.go)"
       - run: make generate
       - run: git diff --exit-code
       - run: make lint

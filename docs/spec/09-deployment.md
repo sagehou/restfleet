@@ -433,6 +433,28 @@ metadata MUST 在中心服务所有 canonical 0700 私有目录内，0400/0600 r
 
 REP-056–057 MUST 在 Actions 执行，包含实际命令入口、保护文件/生产运行配置及真实 PostgreSQL；专门的 root 负向步骤只用于验证生产命令拒绝该身份。完整 Gateway daemon、自动续期/吊销、Agent 会话能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
 
+### 7.23 Gateway 单次启动生命周期（ADR-0031）
+
+`gateway.LoadServiceConfig` / `StartService` 是可信进程内的 Linux 启动组件。MUST 使用一个 runtime/supervisor、一个独立全局来源和 1–32 个仓库 owner；完整 binding 和各来源注册 MUST 由可信中心另行确认。配置文件读取不能证明进程新鲜性，服务管理器 MUST NOT 用旧 metadata/Queue/socket 自动重启或接管。生产 MUST 使用不同非 root Server/Gateway UID 与显式专用共享组。
+
+metadata MUST 位于 Gateway 所有 canonical 0700 私有目录内，以单链接 0400/0600 regular file 保存，最多 64 KiB；特殊权限、symlink/hardlink/pending、未知/重复/遗漏/null/大小写替代及非规范编码 MUST 拒绝。MAY 有排版空白；其他编码 MUST 与 Go encoding/json 规范重编码相同。字段及顺序 MUST 为：
+
+`version`、`environment`、`central_pin_file`、`audit_origin`、`audit_source_file`、`recipient_public`、`audit_queue_directory`、`max_bytes`、`max_records`、`runtime_directory`、`rclone_binary`、`certificate_file`、`tls_key_file`、`listen_address`、`max_sessions`、`server_uid`、`shared_group`、`replay_socket`、`startup_wait_seconds`、`repositories`。
+
+version MUST 为 1；environment MUST 为 production/development/test；audit_origin 为 §7.20 的完整来源，recipient_public 为标准 base64 的非全零 32-byte 中心 X25519 公钥，独立 Ed25519 pin 继续从 central_pin_file 加载。max_bytes/max_records 沿用 §7.13，各 Queue 上限相同；max_sessions 为 1–32，startup_wait_seconds 为 1–300，每次 Accept 后交换仍最多 5s。私有/共享 server_uid/shared_group 规则沿用 §7.16，保留值拒绝。listen_address MUST 为 literal IP 与规范十进制端口，不能使用 DNS；生产端口 MUST 非零。
+
+repositories MUST 为 1–32 项，字段依序为 `binding`、`source_file`、`queue_directory`、`material_socket`、`authority_socket`。binding 沿用 §7.11 且 runtime_id MUST 与全局来源相同；各仓库的 admission_id、host_id、repository_id、gateway_id MUST 分别唯一。source_file MUST 使用独立 seed，各仓库与全局来源公钥不得复用。配置中不能携带云端明文、中心私钥、DB/master key、Restic password 或 Agent session capability。
+
+路径 MUST canonical absolute、无控制字符且不重复，Unix socket 最多 107 bytes。Queue 与 runtime MUST 相互独立且不嵌套，与私钥/metadata/IPC 目录分离；私钥/metadata MUST 与共享 IPC 分离。Queue 目录 MUST 服务所有、0700、无特殊权限且位于持久介质，启动显式拒绝 tmpfs/ramfs；管理员仍 MUST 保证持久挂载及可信祖先。runtime 继续只允许 0700 tmpfs。TLS PEM 与私钥 MUST 经既有 protected reader 加载，单文件最多 32 KiB，先验证匹配/当前有效期；rclone binary/runtime 仍经原 runtime 校验。
+
+启动 MUST 先加载全部独立来源/pin、runtime、fresh 全局 Queue/producer 和 TLS 材料，再建立所有材料 listener 并行执行 ReceiveWaiting。材料 MUST 匹配配置 recipient，install 只 MAY 认领 fresh 仓库 Queue/原 owner。任一初始化失败 MUST 取消/join 全部交换与 rollback，保留 Queue 和 fence。只有全部交换完成且 owner/global 可用后，才 MAY 建立 RFGA listener 并绑定公网 TLS；失败不开放残缺数据面。
+
+运行 MUST 维持原 owner 的授权 listener 和失效监视，以及一个有界回写 worker。每轮每 Queue 最多发送一条原 wire，轮次后等待 1s；每交换最多 5s，轮次耗时包含交换。连接/回执丢失继续保留原密文，下一轮重试；收到非法/不匹配的确认或 Next/Acknowledge 失败 MUST 永久停止运行。重连不续期/吊销，不创建新材料或重加密。任一 owner/global 失效 MUST 停止全部本地授权，不因排空或高版本 grant 复活。
+
+关闭 MUST 取消/关闭入口，等待材料/授权回调、会话、TLS 请求、后端进程组和回写 worker；最终审计 join 后清零来源/云端明文，冻结/关闭两类 Queue，最后关闭 runtime。重复/并发 Close MUST join 同一退出，MUST NOT 删除证据、封存来源、释放占用或自动重启。WithBackup 仅供可信进程内调用方使用，不能把云端材料/config/callback 暴露给 Agent 请求。
+
+REP-058–060 MUST 仅在 Actions 执行。跨 UID job 从 protected production config 经 Service 完成材料、RFGA、TLS、两类回写及吊销清理，第三 UID 仍无 effect；固定引擎验收增加 Service 路径并保留原两种路径。Agent 长期 gateway password 与每次 session password 的生产交付协议未连接，本批不提供可部署 daemon command。自动授权分发、Agent 会话能力、可信恢复/readiness、rotation/READY、真实三后端与 AGT-005 继续待完成，12h 取舍不得推定或改写。
+
 ## 8. Native Agent 安装
 
 目标目录：

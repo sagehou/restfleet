@@ -213,6 +213,14 @@ Gateway 启动等待与拒绝审计验收（ADR-0029）：
 | REP-056 | P0 | 中心公开 metadata 仅从服务所有 canonical 0700 私有目录的单链接 0400/0600 文件装载；1024 bytes、版本、完整 origin/runtime UUIDv7 和非全零 32-byte 来源公钥严格检查，拒绝未知/重复/遗漏/大小写/null/非规范 JSON、权限、symlink/hardlink/pending 和 64-byte 私钥输入。非法 CLI 参数/输出返回固定错误，无秘密或原始路径/错误。 |
 | REP-057 | P0 | 实际 CLI 经保护 metadata/中心运行配置→DB/schema/审计链核验→原注册事务→仅公开 metadata/接收公钥输出；输出失败保留 committed 来源，精确显式重试不重复审计/改变注册时刻。换来源/runtime、同 runtime 新 origin、封存、无效 schema/审计链/DB 不注册；生产 root 拒绝且不产生 effect。三后端完整数据库从无 grant/material 开始，经生产元数据入口验证 audit-only 注册→Queue→回放，无授权/材料或 fence release。 |
 
+Gateway 单次启动生命周期验收（ADR-0031）：
+
+| ID | 优先级 | 场景与预期 |
+|---|---|---|
+| REP-058 | P0 | 保护版本 metadata/source/pin/TLS 文件严格装载，明确上限、完整绑定/独立来源/路径分离/UID；拒绝非规范配置、tmpfs/ramfs Queue、权限、坏 TLS/来源、旧 Queue/socket 和生产 root。全部单次初始化完成前不绑定公网，部分取消/错误 recipient 清理并保留已创建 Queue，不能接管旧来源。 |
+| REP-059 | P0 | 一个 Service 支持两个隔离仓库、连续会话和 verified TLS；控制面失联保留两类加密审计，恢复后丢 ACK 精确 wire 重试。非法 ACK、全局容量与 RFGA 吊销停止全部 owner，取消/join 活动 callback/请求/后端进程组，清零来源及云端材料，重复 Close 等待同一退出。原 Queue 可恢复回放，运行失败或排空不复活，不封存/释放 fence。 |
+| REP-060 | P0 | 跨非 root UID 的 protected production config→Service→材料/RFGA/TLS/两类回写→活动吊销与清理；Gateway 本地产生独立来源/TLS 私钥，中心秘密仅匿名 stdin 到中心，第三 UID/私钥读取/socket 替换拒绝且无 effect。固定 Restic/rclone 保留 online/signed-local 并增加 Service，连续两次备份及读回、各 session 锁清理、wrong CA、删除/覆盖/预存锁拒绝全部通过；不据此宣称 Agent 会话协议、READY、真实云或 AGT-005 完成。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |
