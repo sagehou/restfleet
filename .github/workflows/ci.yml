@@ -92,6 +92,17 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
+      - name: Prepare Gateway audit registration formatting patch
+        run: |
+          gofmt -w cmd/restfleet-server/gateway_startup_linux.go cmd/restfleet-server/main.go cmd/restfleet-server/gateway_startup_linux_test.go cmd/restfleet-server/gateway_audit_linux_integration_test.go internal/server/gateway_audit_registration_linux.go internal/server/gateway_audit_registration_linux_test.go internal/server/httpapi/gateway_global_audit_linux_integration_test.go
+          git diff -- cmd/restfleet-server internal/server/gateway_audit_registration_linux.go internal/server/gateway_audit_registration_linux_test.go internal/server/httpapi/gateway_global_audit_linux_integration_test.go > "${RUNNER_TEMP}/gateway-registration-format.patch"
+          if test -s "${RUNNER_TEMP}/gateway-registration-format.patch"; then
+            git apply --reverse "${RUNNER_TEMP}/gateway-registration-format.patch"
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gateway-registration-format
+          path: ${{ runner.temp }}/gateway-registration-format.patch
       - name: Extract pinned central rclone for offline conformance tests
         run: |
           docker create --name restfleet-rclone-conformance rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
@@ -112,6 +123,10 @@ jobs:
         env:
           RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
           RESTFLEET_TEST_RESTIC_BINARY: ${{ runner.temp }}/restic
+      - name: Verify production Gateway audit registration rejects root
+        run: |
+          go test -race -c -o "${RUNNER_TEMP}/gateway-command.test" ./cmd/restfleet-server
+          sudo env RESTFLEET_TEST_DATABASE_URL="$RESTFLEET_TEST_DATABASE_URL" "${RUNNER_TEMP}/gateway-command.test" -test.run='^TestGatewayAuditCommandProductionRootRejected$' -test.v -test.count=1 -test.timeout=60s
       - run: go test -race ./...
         env:
           RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone

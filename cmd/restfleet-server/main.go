@@ -37,7 +37,7 @@ func main() {
 
 func run(logger *slog.Logger) error {
 	if len(os.Args) > 1 {
-		return runGatewayStartup(os.Args[1:])
+		return runGatewayCommand(os.Args[1:], os.Stdout)
 	}
 	config, err := control.LoadRuntimeConfig()
 	if err != nil {

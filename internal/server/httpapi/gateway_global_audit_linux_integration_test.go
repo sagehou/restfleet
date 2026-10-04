@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -19,21 +20,35 @@ import (
 	"github.com/sagehou/restfleet/internal/gateway"
 	"github.com/sagehou/restfleet/internal/gatewaypending"
 	"github.com/sagehou/restfleet/internal/security"
+	control "github.com/sagehou/restfleet/internal/server"
 )
 
 func globalAuditIntegrationFixture(t *testing.T, backend string) (pendingIntegration, domain.GatewayAuditBinding, *gatewaypending.Queue, *gateway.GlobalAuditRecorder) {
 	t.Helper()
 	f, startup := startupIntegrationFixture(t, backend) // No repository grant/source/material.
 	b := domain.GatewayAuditBinding{OriginID: uuid.Must(uuid.NewV7()), RuntimeID: startup.Binding.RuntimeID}
-	o, recipient, err := f.control.RegisterGatewayGlobalAudit(context.Background(), b, f.sourcePublic)
-	if err != nil || o.Binding != b || !bytes.Equal(o.PublicKey, f.sourcePublic) {
+	metadataDir := t.TempDir()
+	if os.Chmod(metadataDir, 0700) != nil {
+		t.Fatal("global registration private directory")
+	}
+	path := filepath.Join(metadataDir, "registration.json")
+	raw, err := json.Marshal(control.GatewayAuditRegistrationConfig{Version: 1, AuditOrigin: b, SourcePublic: f.sourcePublic})
+	if err != nil || os.WriteFile(path, raw, 0600) != nil {
+		t.Fatal("global registration metadata")
+	}
+	config, err := control.LoadGatewayAuditRegistrationConfig(path)
+	if err != nil {
+		t.Fatal("protected global registration metadata")
+	}
+	o, err := f.control.RegisterGatewayAuditFromConfig(context.Background(), config)
+	if err != nil || o.AuditOrigin != b || !bytes.Equal(o.SourcePublic, f.sourcePublic) || !bytes.Equal(o.RecipientPublic, f.recipient[:]) || o.CreatedAt.IsZero() {
 		t.Fatal("global audit registration")
 	}
 	dir := t.TempDir()
 	if os.Chmod(dir, 0700) != nil {
 		t.Fatal("global queue permissions")
 	}
-	q, err := gatewaypending.CreateGlobalAudit(dir, b, recipient, f.source, f.centralPublic, gatewaypending.Limits{MaxBytes: 2 << 20, MaxRecords: 16})
+	q, err := gatewaypending.CreateGlobalAudit(dir, b, [32]byte(o.RecipientPublic), f.source, f.centralPublic, gatewaypending.Limits{MaxBytes: 2 << 20, MaxRecords: 16})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +260,7 @@ func TestGlobalOriginRegistrationCannotReplaceKeyRuntimeOrClosedSource(t *testin
 		{domain.GatewayAuditBinding{OriginID: uuid.Must(uuid.NewV7()), RuntimeID: b.RuntimeID}, f.sourcePublic},
 		{b, make([]byte, 31)},
 	} {
-		if _, _, err := f.control.RegisterGatewayGlobalAudit(ctx, change.binding, change.source); err != domain.ErrGatewayGlobalAudit {
+		if _, err := f.control.RegisterGatewayAuditFromConfig(ctx, control.GatewayAuditRegistrationConfig{Version: 1, AuditOrigin: change.binding, SourcePublic: change.source}); err != control.ErrGatewayAuditRegistration {
 			t.Fatal("registration changed audit identity")
 		}
 	}
@@ -270,7 +285,7 @@ func TestGlobalRegistrationAuditFailureAndConflictingReplayAreAtomic(t *testing.
 			}
 		})
 		b := domain.GatewayAuditBinding{OriginID: uuid.Must(uuid.NewV7()), RuntimeID: startup.Binding.RuntimeID}
-		if _, _, err := f.control.RegisterGatewayGlobalAudit(ctx, b, f.sourcePublic); err != domain.ErrGatewayGlobalAudit {
+		if _, err := f.control.RegisterGatewayAuditFromConfig(ctx, control.GatewayAuditRegistrationConfig{Version: 1, AuditOrigin: b, SourcePublic: f.sourcePublic}); err != control.ErrGatewayAuditRegistration {
 			t.Fatal("failed registration returned a source")
 		}
 		var count int

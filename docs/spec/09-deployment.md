@@ -415,6 +415,24 @@ Recover/RecoverGlobalAudit MUST 比对完整 identity，保持 producer 冻结�
 
 tail MUST NOT 被当作旧进程/请求/追加者清理证明、来源封存、占用释放或 READY；上述决定继续由可信中心另行核验。REP-052–053 在 Actions 覆盖命令与跨 UID 恢复；生产 daemon、完整可信清理/恢复、自动续期/吊销、Agent 能力、readiness、rotation/READY、真实云和 AGT-005 继续待完成。
 
+### 7.22 中心显式全局审计注册（ADR-0030）
+
+管理员 MAY 在正式部署或 Actions 中以中心服务 UID 显式执行，开发工作区 MUST NOT 执行：
+
+```text
+restfleet-server gateway-audit-register --config-file /var/lib/restfleet/gateway-audit/registration.json
+```
+
+命令 MUST 复用既有完整中心运行配置及 master/signing/pending 文件，生产 MUST 使用非 root UID。普通 Server 启动 MUST NOT 自动注册；命令 MUST NOT 启动 listener、worker、CA、Gateway 或子进程。其总 context 最多 10s；DB/schema/审计链核验和现有注册事务共享最多 3s，不自动重试。既有中央密钥 MUST 按 §7.13 持久复用，不能在待回写记录未排空时直接换掉。
+
+metadata MUST 在中心服务所有 canonical 0700 私有目录内，0400/0600 regular file、单链接、无特殊权限/symlink/hardlink/pending，最多 1024 bytes。字段及顺序 MUST 为 `version`（整数 1）、`audit_origin`（§7.20 的 origin_id/runtime_id，规范 UUIDv7）、`source_public`（标准 base64 的非全零 32-byte Ed25519 公钥）。三个字段 MUST 全部显式给出，MAY 排版空白；其他编码 MUST 与 Go encoding/json 规范重新编码相同，未知/重复/遗漏/大小写替代/null/非规范 UUID 或数字 MUST 拒绝。元数据 MUST 不含来源私钥、仓库/占用、socket 或云端配置。
+
+管理员 MUST 独立从可信 Gateway 身份导出来源公钥及确认 origin/runtime，不能从 Agent 请求、初始化 peer 或回放 wire 选取来源。注册仅允许全局审计接收，不证明进程新鲜性。命令成功后只 MAY 输出 JSON，字段顺序为 `version`（1）、`audit_origin`、`source_public`、`recipient_public`（中心 X25519 接收公钥，标准 base64 32 bytes）、`created_at`（原注册 UTC RFC3339Nano 时刻）。独立中心 Ed25519 签名 pin 仍按 §7.17 配置；结果没有授权、材料、清理或 READY 语义。
+
+精确重复 MUST 保持原注册及时刻，不重复 effect；不同来源公钥/runtime、同 runtime 新 origin 或封存后重新注册 MUST 拒绝。输出失败、取消或提交结果不确定 MUST 保留已提交来源，不删除、回滚或自动重试；管理员 MAY 显式重试精确原 metadata。失败只返回固定分类 `gateway audit registration unavailable or inconsistent`，普通命令入口的 stderr 继续仅报告固定 SERVER_EXIT；MUST NOT 回显路径、原始 DB/输出错误、密钥或配置。不能通过注册获取 backup grant、云端材料、来源封存或 fence release。
+
+REP-056–057 MUST 在 Actions 执行，包含实际命令入口、保护文件/生产运行配置及真实 PostgreSQL；专门的 root 负向步骤只用于验证生产命令拒绝该身份。完整 Gateway daemon、自动续期/吊销、Agent 会话能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
+
 ## 8. Native Agent 安装
 
 目标目录：
