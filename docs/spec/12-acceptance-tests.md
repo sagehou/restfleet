@@ -206,6 +206,13 @@ Gateway 启动等待与拒绝审计验收（ADR-0029）：
 | REP-054 | P0 | 显式初始化等待大于零且最多 5min；延后超过原 5s 的中心连接仍完成原认证交换，Accept 后交换最多 5s，父取消/Close 同时约束两个阶段。非法参数、等待超时和交换失败消费接收器、关闭 listener、清零私钥；不自动重试、不释放 fence。原 Receive 继续总 5s 上限，UID/pin/帧/密文和单次意图负向边界不变。 |
 | REP-055 | P0 | 接收等待/交换超时、Close 和发送取消后已观察拒绝使用独立最多 3s 的有效审计 context；Close 和返回等待 callback/rollback 退出再清零，不因父 context 取消丢观察，不回显秘密或原始错误，不恢复数据面。 |
 
+中心全局审计注册命令验收（ADR-0030）：
+
+| ID | 优先级 | 场景与预期 |
+|---|---|---|
+| REP-056 | P0 | 中心公开 metadata 仅从服务所有 canonical 0700 私有目录的单链接 0400/0600 文件装载；1024 bytes、版本、完整 origin/runtime UUIDv7 和非全零 32-byte 来源公钥严格检查，拒绝未知/重复/遗漏/大小写/null/非规范 JSON、权限、symlink/hardlink/pending 和 64-byte 私钥输入。非法 CLI 参数/输出返回固定错误，无秘密或原始路径/错误。 |
+| REP-057 | P0 | 实际 CLI 经保护 metadata/中心运行配置→DB/schema/审计链核验→原注册事务→仅公开 metadata/接收公钥输出；输出失败保留 committed 来源，精确显式重试不重复审计/改变注册时刻。换来源/runtime、同 runtime 新 origin、封存、无效 schema/审计链/DB 不注册；生产 root 拒绝且不产生 effect。三后端完整数据库从无 grant/material 开始，经生产元数据入口验证 audit-only 注册→Queue→回放，无授权/材料或 fence release。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

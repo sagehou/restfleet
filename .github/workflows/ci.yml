@@ -112,6 +112,10 @@ jobs:
         env:
           RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
           RESTFLEET_TEST_RESTIC_BINARY: ${{ runner.temp }}/restic
+      - name: Verify production Gateway audit registration rejects root
+        run: |
+          go test -race -c -o "${RUNNER_TEMP}/gateway-command.test" ./cmd/restfleet-server
+          sudo env RESTFLEET_TEST_DATABASE_URL="$RESTFLEET_TEST_DATABASE_URL" "${RUNNER_TEMP}/gateway-command.test" -test.run='^TestGatewayAuditCommandProductionRootRejected$' -test.v -test.count=1 -test.timeout=60s
       - run: go test -race ./...
         env:
           RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone

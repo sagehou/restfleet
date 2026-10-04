@@ -194,6 +194,8 @@ ADR-0026 / 09 §7.19 的 `RFGA` 通道 MUST 仅交付中心签名 metadata，不
 
 ADR-0027 / 09 §7.20 的全局来源 MUST 仅绑定可信 origin/runtime 和独立来源公钥，MUST NOT 推断 Host/Repository、引用备份占用、授予数据访问或保存 config/token。无路由、限流和通道拒绝 MUST 只记录固定无身份事件，使用独立签名域与中心公钥加密、可靠有界 Queue。中心 MUST 验证注册来源、完整全局 binding、顺序/精确 wire 和时间后，原子提交观察与接收历史，再签名精确回执；全局记录或回执不得作为备份授权、Host 身份、清理证明或 fence release。全局 Queue/时钟/生产者失效 MUST 同时停止本地授权 owner，取消/join 后清零；排空不能复活。生产者恢复仅回放，可信清理后才能封存。
 
+中心显式注册命令见 ADR-0030 / 09 §7.22。MUST 只读取中心服务受保护的公开来源元数据，生产禁止 root；核验 DB/schema/审计链后复用原注册事务，结果仅含公开 binding、公钥和原注册时刻。命令/输出失败不撤销既有来源，不能通过未认证请求、重读 metadata 或注册结果授予备份授权、材料、清理或 READY。
+
 ## 9. Web 安全
 
 - 首个管理员只可通过一次性 bootstrap secret 创建；使用后删除/作废；
