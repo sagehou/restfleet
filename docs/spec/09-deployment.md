@@ -325,7 +325,7 @@ Server/Gateway SHOULD 使用不同的固定非 root UID，管理员 MUST 将两�
 
 共享组 MUST NOT 用于中心 DB/master/signing/接收私钥、Gateway 来源私钥、明文配置和待回写 Queue；它们仍 MUST 在各自服务所有的 0700 私有目录内，以 0400/0600 文件或已有 tmpfs 规则保护。独立挂载中心 secrets，Gateway 不持有中心秘密。没有新的 wire、公共 API、DB schema 或部署服务依赖。
 
-GitHub Actions `gateway-isolation` job 编译 race-enabled 测试二进制并运行 REP-042。root 仅是测试进程启动/权限协调器，三个实际协议进程均为不同非 root UID；Gateway 在自身进程产生来源私钥，中心只获公钥，中心私钥经匿名 stdin 管道单独交给中心。测试核验加密材料/签名回放与确认、借用明文清零、跨服务私钥读取拒绝、socket 替换拒绝和同组第三 UID 拒绝；准入/DB 事务仍由既有集成测试覆盖。开发工作区 MUST NOT 执行该 job 的编译或进程测试。新增验收待 Actions 结果，生产身份装载/运行协调、续期/吊销、恢复、command/readiness、rotation/READY、真实云端和 AGT-005 仍未完成。
+GitHub Actions `gateway-isolation` job 编译 race-enabled 测试二进制并运行 REP-042。root 仅是测试进程启动/权限协调器，三个实际协议进程均为不同非 root UID；Gateway 在自身进程产生来源私钥，中心只获公钥，中心私钥经匿名 stdin 管道单独交给中心。测试核验加密材料/签名回放与确认、借用明文清零、跨服务私钥读取拒绝、socket 替换拒绝和同组第三 UID 拒绝；准入/DB 事务仍由既有集成测试覆盖。开发工作区 MUST NOT 执行该 job 的编译或进程测试。`4c9285c` 的 Actions 验收已通过，后续 MUST 以当前 head 检查为准；生产身份装载/运行协调、续期/吊销、恢复、command/readiness、rotation/READY、真实云端和 AGT-005 仍未完成。
 
 ## 8. Native Agent 安装
 

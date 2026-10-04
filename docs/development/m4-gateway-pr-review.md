@@ -1,6 +1,6 @@
 # M4 Gateway 待审查分支
 
-目标分支为 `feat/m4-gateway-pending-replay`，基线 `da0d92f`。当前内容尚未合并，不计入 main 完成进度。
+目标分支为 `feat/m4-gateway-pending-replay`，基线 `da0d92f`，草稿 PR 为 [#51](https://github.com/sagehou/restfleet/pull/51)。当前内容尚未合并，不计入 main 完成进度。
 
 ## 拟用 PR 标题
 
@@ -15,12 +15,15 @@ Gateway 在中心已签发的有界授权内运行备份时，需要可靠保存
 - schema 14 每占用只提交一次材料意图及访问审计，之后才解密和签名加密；提交后失败、回执未知、精确重试及新挑战不重新交付。初始化回执不证明 Agent ACK、READY 或清理。
 - 默认 0700/0600 通道保持。显式共享组要求精确监听方 UID/GID、0710 目录和 0660 socket，同组用户不能改目录或替换 socket；SO_PEERCRED 仍绑定精确 peer UID。Server replay 新参数必须配对，不提供公网管理接口或自动 Gateway 启动。
 - ADR-0020–0023、REP-031–042，以及安全/数据库/部署规范与 M4 进度同步。没有新 REST/protobuf/Web 契约。
+- 原生 npm audit 增加 high/critical 门禁；修复 brace-expansion、js-yaml、undici 及 @redocly/openapi-core 的兼容传递依赖版本，不改变根依赖声明。
 
 ### 验证
 
-前三个本地提交在用户要求迁移验证环境之前已通过 Go/race、真实临时 PostgreSQL、固定 Restic 0.19.1/rclone 1.75.1、vet/staticcheck 与跨架构构建；这是历史证据，不证明后续变更通过。临时数据库、工具链、缓存和构建产物已清理。
+`4c9285c` 的 [Actions 首轮验收](https://github.com/sagehou/restfleet/actions/runs/37170709515) 九项全通过：quality、gateway-isolation、六项服务双架构镜像及 migrator 双架构镜像。覆盖真实 PostgreSQL 18.6、固定 Restic 0.19.1/rclone 1.75.1、完整 Go/race、vet/staticcheck、生成契约、Web lint/typecheck/23 tests/build、无 CGO 跨架构构建、gitleaks 与 SBOM。
 
-跨 UID 新变更未在开发环境编译或运行。Actions `gateway-isolation` 新增 race-enabled 实际双服务/第三用户验收；root 只用于测试协调，实际协议服务为不同非 root UID。Gateway 在自身进程生成来源私钥，中心只取得公钥；中心私钥通过匿名管道独立交付。测试包含加密初始化、持久队列/签名回写及确认、明文清零、私钥访问与 socket 替换拒绝、同组第三 UID 拒绝。既有 quality job 继续覆盖真实 DB/固定引擎/完整 race，cross-build 直接编译 Gateway/queue/security 包，覆盖未接入 command 的代码。最终以本 PR 当前提交的 Actions 为准；在成功之前保持草稿。
+`gateway-isolation` 的 race-enabled 实际双服务/第三用户验收已通过；root 只用于测试协调，实际协议服务为不同非 root UID。Gateway 在自身进程生成来源私钥，中心只取得公钥；中心私钥通过匿名管道独立交付。测试包含加密初始化、持久队列/签名回写及确认、明文清零、私钥访问与 socket 替换拒绝、同组第三 UID 拒绝。cross-build 直接编译 Gateway/queue/security 包，覆盖未接入 command 的代码。
+
+首轮 `npm ci` 报告四项高危依赖。新增 audit 门禁确认问题后，Actions 使用不带 force 的 `npm audit fix --package-lock-only --ignore-scripts` 生成修复，审查只改变五个传递依赖条目，生成结果 audit 为零漏洞。临时生成步骤已移除，最终 CI MUST 审计实际提交的锁文件，并重做完整回归；不能以临时生成结果代替当前 head 的检查。最终结果见 #51。本批所有新编译、测试、审计和运行验证均只在 Actions 执行，开发工作区不安装依赖或工具链。
 
 ### 升级与未完成边界
 
@@ -30,4 +33,4 @@ M4 仍进行中。生产 source/pin 装载、启动协调、授权续期/吊销�
 
 ## 发布前源码审查记录
 
-本批仅修改源码、测试、工作流和文档。测试密钥在 Actions 运行时随机生成，fixture 配置经匿名管道传递；不提交凭据、证书、数据库、引擎/工具链、日志或编译产物。配置示例使用已有 synthetic 占位值。发布仍需解决此前自动审批提出的公开发布授权；此记录不代替 Actions secret scanner 或运行验收。
+本批仅修改源码、测试、锁文件、工作流和文档。测试密钥在 Actions 运行时随机生成，fixture 配置经匿名管道传递；不提交凭据、证书、数据库、引擎/工具链、日志或编译产物。配置示例使用已有 synthetic 占位值。用户已明确授权公开推送并创建草稿 PR；此源码审查记录不代替 Actions secret scanner 或运行验收。

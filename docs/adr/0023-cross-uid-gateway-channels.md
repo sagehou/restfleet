@@ -16,4 +16,4 @@ ADR-0020/0022 的 0700 目录、0600 Unix socket 只能支持同 UID，或让中
 
 REP-041–042 的测试仅在 GitHub Actions 执行。新增 `gateway-isolation` job 编译 race-enabled 测试二进制，再以 root 测试协调器创建三个不同的非 root 子进程；它只负责 fixture 权限和进程启动。Gateway 在自身进程生成来源私钥，中心仅收到来源公钥；中心签名/接收私钥只通过匿名 stdin 管道交给中心子进程。测试包含加密初始化、可靠签名回放/确认、私钥不可跨服务读取、socket 不可替换及同组第三 UID 被拒绝。真实数据库的准入/单次事务由既有集成测试覆盖，不由此夹具证明。
 
-本批尚未获得 Actions 运行结果，不宣称验收通过。生产 source/pin 装载、进程启动与协调、授权续期/吊销、全局离线审计、Agent 会话能力、可信清理/恢复、command/readiness、rotation/READY、真实云端及 AGT-005 仍未完成。
+`4c9285c` 的 [Actions](https://github.com/sagehou/restfleet/actions/runs/37170709515) 九项检查全通过，含上述跨 UID 验收；后续改动 MUST 以当前 head 的检查为准。生产 source/pin 装载、进程启动与协调、授权续期/吊销、全局离线审计、Agent 会话能力、可信清理/恢复、command/readiness、rotation/READY、真实云端及 AGT-005 仍未完成。
