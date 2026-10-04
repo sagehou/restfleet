@@ -27,8 +27,11 @@ func run(arguments []string, output io.Writer) error {
 		}
 		return nil
 	}
-	usage := errors.New("gateway requires source-init or source-public with --source-key-file")
 	command := arguments[0]
+	if command == "replay" {
+		return runReplay(arguments[1:], output)
+	}
+	usage := errors.New("gateway requires source-init/source-public --source-key-file or replay --config-file")
 	if command != "source-init" && command != "source-public" {
 		return usage
 	}

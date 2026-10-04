@@ -192,6 +192,13 @@ Gateway 全局离线审计验收（ADR-0027）：
 | REP-050 | P0 | 固定全局 recorder 唯一认领，非法事件仅记录固定拒绝，不猜测身份。全局容量/时钟/关闭失效触发活动 owner watchdog 取消/join、清零/冻结，排空和高版本续期不能复活；未路由与限流观察可在中心离线时可靠保存。 |
 | REP-051 | P0 | 三后端真实 DB 独立注册、无授权的离线观察→有序回放、确认丢失/并发重复仅一次 effect、精确 tail 封存。错误公钥/runtime/来源、未来/旧时间、跳序/冲突、封存后新记录及审计失败拒绝，不写 grant/材料/Host 归属、不释放 fence；注册/历史权限及 Down 保留约束通过。 |
 
+Gateway 显式恢复回放验收（ADR-0028）：
+
+| ID | Priority | 验收 |
+|---|---|---|
+| REP-052 | P0 | 受保护版本配置严格核验规范编码/文件/peer/域/上限，私钥不存在仍能恢复两类既有 Queue；丢失确认保留原 wire，显式精确重放与空队列回放得到相同 tail，取消关闭交换/释放本地 lock 但不恢复 producer。活跃 producer、换 binding/来源/recipient/中心 pin/上限、损坏记录与不确定文件 MUST 拒绝并保留证据，不触发 effect、授权、材料、子进程或 fence release。 |
+| REP-053 | P0 | CLI 经保护配置→恢复→RFGR→精确回执，成功仅输出对应 binding 与已确认 tail；参数/配置/输出错误固定且不回显秘密，输出失败不重复 effect。跨非 root UID 对两个域装载生产配置并恢复回放，同组第三 UID 仍无 effect，私钥/配置/Queue/socket 隔离保持。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |
