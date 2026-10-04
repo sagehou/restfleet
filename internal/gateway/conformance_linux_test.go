@@ -103,12 +103,12 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 	lockCleanups := 0
 	if service == nil {
 		s.audit, err = NewAuditRecorder(auditStoreFunc(func(_ context.Context, e domain.AuditEvent) error {
-		mu.Lock()
-		defer mu.Unlock()
-		if e.Action == "GATEWAY_LOCK_CLEANUP_INTENT" {
-			lockCleanups++
-		}
-		return nil
+			mu.Lock()
+			defer mu.Unlock()
+			if e.Action == "GATEWAY_LOCK_CLEANUP_INTENT" {
+				lockCleanups++
+			}
+			return nil
 		}))
 		if err != nil {
 			t.Fatal(err)
@@ -317,11 +317,15 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 	if local != nil {
 		collectLocalAudits()
 		if service != nil {
-			if service.Close() != nil { t.Fatal("pinned service shutdown failed") }
+			if service.Close() != nil {
+				t.Fatal("pinned service shutdown failed")
+			}
 			r := serviceConfig.Repositories[0]
 			queue, err = gatewaypending.Recover(r.QueueDirectory, r.Binding, [32]byte(serviceConfig.RecipientPublic), pendingSource,
 				central.Public().(ed25519.PublicKey), gatewaypending.Limits{MaxBytes: serviceConfig.MaxBytes, MaxRecords: serviceConfig.MaxRecords})
-			if err != nil { t.Fatal("pinned service evidence recovery failed") }
+			if err != nil {
+				t.Fatal("pinned service evidence recovery failed")
+			}
 			defer queue.Close()
 		} else {
 			local.Close()

@@ -22,26 +22,26 @@ var ErrService = errors.New("gateway service unavailable or inconsistent")
 // It contains paths/public keys only; it cannot prove central registration or
 // process freshness, replace an admission, restore an owner or release a fence.
 type ServiceConfig struct {
-	Version              int                          `json:"version"`
-	Environment          string                       `json:"environment"`
-	CentralPinFile       string                       `json:"central_pin_file"`
-	AuditOrigin          security.GatewayAuditBinding  `json:"audit_origin"`
-	AuditSourceFile      string                       `json:"audit_source_file"`
-	RecipientPublic      []byte                       `json:"recipient_public"`
-	AuditQueueDirectory  string                       `json:"audit_queue_directory"`
-	MaxBytes             int64                        `json:"max_bytes"`
-	MaxRecords           int                          `json:"max_records"`
-	RuntimeDirectory     string                       `json:"runtime_directory"`
-	RcloneBinary         string                       `json:"rclone_binary"`
-	CertificateFile      string                       `json:"certificate_file"`
-	TLSKeyFile           string                       `json:"tls_key_file"`
-	ListenAddress        string                       `json:"listen_address"`
-	MaxSessions          int                          `json:"max_sessions"`
-	ServerUID            uint32                       `json:"server_uid"`
-	SharedGroup          uint32                       `json:"shared_group"`
-	ReplaySocket         string                       `json:"replay_socket"`
-	StartupWaitSeconds   int                          `json:"startup_wait_seconds"`
-	Repositories         []ServiceRepository          `json:"repositories"`
+	Version             int                          `json:"version"`
+	Environment         string                       `json:"environment"`
+	CentralPinFile      string                       `json:"central_pin_file"`
+	AuditOrigin         security.GatewayAuditBinding `json:"audit_origin"`
+	AuditSourceFile     string                       `json:"audit_source_file"`
+	RecipientPublic     []byte                       `json:"recipient_public"`
+	AuditQueueDirectory string                       `json:"audit_queue_directory"`
+	MaxBytes            int64                        `json:"max_bytes"`
+	MaxRecords          int                          `json:"max_records"`
+	RuntimeDirectory    string                       `json:"runtime_directory"`
+	RcloneBinary        string                       `json:"rclone_binary"`
+	CertificateFile     string                       `json:"certificate_file"`
+	TLSKeyFile          string                       `json:"tls_key_file"`
+	ListenAddress       string                       `json:"listen_address"`
+	MaxSessions         int                          `json:"max_sessions"`
+	ServerUID           uint32                       `json:"server_uid"`
+	SharedGroup         uint32                       `json:"shared_group"`
+	ReplaySocket        string                       `json:"replay_socket"`
+	StartupWaitSeconds  int                          `json:"startup_wait_seconds"`
+	Repositories        []ServiceRepository          `json:"repositories"`
 }
 
 type ServiceRepository struct {

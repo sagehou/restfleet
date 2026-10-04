@@ -15,13 +15,13 @@ import (
 )
 
 type serviceRepository struct {
-	config   ServiceRepository
-	source   ed25519.PrivateKey
-	receiver *gatewaypending.MaterialReceiver
-	material *net.UnixListener
+	config    ServiceRepository
+	source    ed25519.PrivateKey
+	receiver  *gatewaypending.MaterialReceiver
+	material  *net.UnixListener
 	authority *net.UnixListener
-	owner    *AuthorizedBackup
-	queue    *gatewaypending.Queue
+	owner     *AuthorizedBackup
+	queue     *gatewaypending.Queue
 }
 
 // Service owns one runtime/supervisor, global audit producer, TLS transport and
@@ -307,6 +307,9 @@ func (s *Service) cleanup() {
 		}
 	}
 	s.workers.Wait()
+	if s.global != nil && !s.global.Ready() {
+		s.fail()
+	}
 	for _, r := range s.repositories {
 		clear(r.source)
 		if r.queue != nil && r.queue.Close() != nil {

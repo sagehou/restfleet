@@ -113,19 +113,8 @@ jobs:
           docker cp restfleet-restic-conformance:/usr/bin/restic "${RUNNER_TEMP}/restic"
           docker rm restfleet-restic-conformance
           "${RUNNER_TEMP}/restic" version
-      - name: Produce Gateway service formatting patch
-        run: |
-          gofmt -w internal/gateway/service*_linux*.go internal/gateway/conformance_linux_test.go
-          git diff --binary -- internal/gateway/service*_linux*.go internal/gateway/conformance_linux_test.go > "${RUNNER_TEMP}/gateway-service-format.patch"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: gateway-service-format
-          path: ${{ runner.temp }}/gateway-service-format.patch
-      - name: Verify Gateway service lifecycle and pinned engines
-        run: go test -race ./internal/gateway -run '^(TestService|TestPinnedGatewayBackupAndReadback)' -count=1 -v
-        env:
-          RESTFLEET_TEST_RCLONE_BINARY: ${{ runner.temp }}/rclone
-          RESTFLEET_TEST_RESTIC_BINARY: ${{ runner.temp }}/restic
+      - name: Verify Gateway service formatting
+        run: test -z "$(gofmt -l internal/gateway/service*_linux*.go internal/gateway/conformance_linux_test.go)"
       - run: make generate
       - run: git diff --exit-code
       - run: make lint
