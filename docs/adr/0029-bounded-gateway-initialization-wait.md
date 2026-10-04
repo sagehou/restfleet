@@ -8,7 +8,7 @@
 
 ## 决定
 
-- 保留 `MaterialReceiver.Receive` 的总 5s 上限，避免改变既有调用者行为。
+- 保留 `MaterialReceiver.Receive` 的等待/交换合计 5s 上限；失败时另给拒绝审计最多 3s。
 - 新增内部 `ReceiveWaiting`，由可信启动者显式指定大于零且最多 5min 的连接等待时间；Accept 成功后另给最多 5s 的交换预算。父 context 及 Close MUST 同时约束两个阶段。
 - 超时、无效等待、取消或任何无效 peer/交换 MUST 消费接收器、关闭 listener 并清零私钥；MUST NOT 自动重试、重发材料或释放 fence。
 - 接收和发送失败的已观察拒绝 MUST 使用独立最多 3s 的审计 context，保留父 context 的值但不继承其取消。退出和 Close MUST 等待审计、rollback 和清零；回调仍 MUST 遵守 context，不能反向调用等待自己的 Close。

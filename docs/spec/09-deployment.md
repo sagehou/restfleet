@@ -313,7 +313,7 @@ Gateway 默认监听新建的服务所有 0700 目录内 0600 Unix socket，中�
 
 `MaterialReceiver` MUST 单次使用。无效交换也消费接收者，取消关闭 socket；Close MUST 消费未开始实例或取消/join 正在执行的交换，并清零来源私钥副本和临时接收私钥。install/rollback/denied 回调 MUST NOT 调用等待自己的 Close。安装只 MAY 通过 `InstallGatewayMaterial` 构造 fresh Queue/唯一 owner，config 借用后清零；回调 MUST 返回 rollback，安装或回执发送失败时取消并 join owner，保留 Queue 供回放。
 
-ADR-0029 将内部启动等待与交换分开：`Receive` MUST 保持包含 Accept 的总 5s 上限；可信启动者 MAY 显式使用 `ReceiveWaiting`，等待参数 MUST 大于零且最多 5min，Accept 后交换仍 MUST 最多 5s。父 context 或 Close MUST 取消等待和交换；无效参数/等待超时 MUST 消费接收器、关闭 listener 并清零，不能自动重试或接管旧 owner。等待不延长授权或占用。发送/接收失败的已观察拒绝 MUST 在独立最多 3s 的 context 内审计，不继承交换/父 context 取消，退出 MUST 等待该回调和 rollback；不能回显原始错误。REP-054–055 MUST 在 Actions 验证，本入口本身不提供 daemon 或 READY。
+ADR-0029 将内部启动等待与交换分开：`Receive` MUST 保持包含 Accept 的等待/交换合计 5s 上限（失败审计另给最多 3s）；可信启动者 MAY 显式使用 `ReceiveWaiting`，等待参数 MUST 大于零且最多 5min，Accept 后交换仍 MUST 最多 5s。父 context 或 Close MUST 取消等待和交换；无效参数/等待超时 MUST 消费接收器、关闭 listener 并清零，不能自动重试或接管旧 owner。等待不延长授权或占用。发送/接收失败的已观察拒绝 MUST 在独立最多 3s 的 context 内审计，不继承交换/父 context 取消，退出 MUST 等待该回调和 rollback；不能回显原始错误。REP-054–055 MUST 在 Actions 验证，本入口本身不提供 daemon 或 READY。
 
 回执字段顺序 MUST 为 challenge、wire_hash，来源签名验证精确材料 wire SHA-256。它只确认初始化，不是 Agent ACK、READY、清理或释放。中心提交单次意图后 MUST NOT 重新交付，包括精确重试、新挑战、丢失回执和无已回写记录；未知结果保留 fence，等待可信恢复。升级 MUST 停旧 writer 后迁移 schema 14，已有交付历史时 Down 拒绝；不新增公共 API、自动注册来源或授权签发。
 

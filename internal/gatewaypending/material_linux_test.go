@@ -292,14 +292,16 @@ func TestMaterialStartupWaitDoesNotConsumeExchangeDeadline(t *testing.T) {
 	case <-time.After(5100 * time.Millisecond):
 	}
 	if err := SendMaterial(ctx, path, uint32(os.Geteuid()), f.binding, f.public,
-		func(_ context.Context, challenge []byte) ([]byte, error) { return materialDelivery(t, f, challenge), nil },
+		func(_ context.Context, challenge []byte) ([]byte, error) {
+			return materialDelivery(t, f, challenge), nil
+		},
 		func(context.Context) error { return nil }); err != nil || <-done != nil {
 		t.Fatal("bounded startup wait did not preserve authenticated exchange")
 	}
 }
 
 func TestMaterialStartupWaitFailureConsumesAndClearsReceiver(t *testing.T) {
-	for _, wait := range []time.Duration{0, -time.Second, 5*time.Minute + 1, 20*time.Millisecond} {
+	for _, wait := range []time.Duration{0, -time.Second, 5*time.Minute + 1, 20 * time.Millisecond} {
 		t.Run(wait.String(), func(t *testing.T) {
 			f := newQueueFixture(t)
 			r, err := NewMaterialReceiver(f.binding, f.source, f.confirmation.Public().(ed25519.PublicKey))
@@ -311,7 +313,10 @@ func TestMaterialStartupWaitFailureConsumesAndClearsReceiver(t *testing.T) {
 				t.Fatal(err)
 			}
 			err = r.ReceiveWaiting(context.Background(), l, uint32(os.Geteuid()), wait,
-				func(context.Context, security.GatewayMaterial) (func(), error) { t.Error("unexpected install"); return nil, nil },
+				func(context.Context, security.GatewayMaterial) (func(), error) {
+					t.Error("unexpected install")
+					return nil, nil
+				},
 				func(audit context.Context) error {
 					deadline, ok := audit.Deadline()
 					if audit.Err() != nil || !ok || time.Until(deadline) > 3*time.Second {
@@ -347,7 +352,10 @@ func TestMaterialStartupWaitKeepsFiveSecondExchangeLimit(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- r.ReceiveWaiting(ctx, l, uint32(os.Geteuid()), 5*time.Minute,
-			func(context.Context, security.GatewayMaterial) (func(), error) { t.Error("stalled peer installed"); return nil, nil },
+			func(context.Context, security.GatewayMaterial) (func(), error) {
+				t.Error("stalled peer installed")
+				return nil, nil
+			},
 			func(audit context.Context) error {
 				if audit.Err() != nil {
 					t.Error("exchange deadline canceled audit")
@@ -391,7 +399,10 @@ func TestMaterialReceiverCloseJoinsIndependentDenialAudit(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- r.ReceiveWaiting(ctx, l, uint32(os.Geteuid()), 5*time.Minute,
-			func(context.Context, security.GatewayMaterial) (func(), error) { t.Error("unexpected install"); return nil, nil },
+			func(context.Context, security.GatewayMaterial) (func(), error) {
+				t.Error("unexpected install")
+				return nil, nil
+			},
 			func(audit context.Context) error {
 				deadline, ok := audit.Deadline()
 				if audit.Err() != nil || !ok || time.Until(deadline) > 3*time.Second {
@@ -466,7 +477,10 @@ func TestMaterialSenderCancellationPreservesDenialAudit(t *testing.T) {
 	}()
 	var audited bool
 	err = SendMaterial(ctx, path, uint32(os.Geteuid()), f.binding, f.public,
-		func(context.Context, []byte) ([]byte, error) { cancel(); return nil, errors.New("private-delivery-canary") },
+		func(context.Context, []byte) ([]byte, error) {
+			cancel()
+			return nil, errors.New("private-delivery-canary")
+		},
 		func(audit context.Context) error {
 			deadline, ok := audit.Deadline()
 			if audit.Err() != nil || !ok || time.Until(deadline) > 3*time.Second {
