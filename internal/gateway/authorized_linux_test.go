@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,10 +19,17 @@ import (
 	"github.com/sagehou/restfleet/internal/security"
 )
 
-func authorizedFixture(t *testing.T, mode string, capacity int) (*AuthorizedBackup, *Supervisor, *gatewaypending.Queue, security.GatewayStatement, ed25519.PrivateKey, ed25519.PublicKey, []byte, string, string) {
+func authorizedFixture(t *testing.T, mode string, capacity int, lifetime ...time.Duration) (*AuthorizedBackup, *Supervisor, *gatewaypending.Queue, security.GatewayStatement, ed25519.PrivateKey, ed25519.PublicKey, []byte, string, string) {
 	t.Helper()
 	q, a, statement, key, source, private := pendingGatewayFixture(t, gatewaypending.Limits{MaxBytes: 2 << 20, MaxRecords: capacity})
 	s, state, root := supervisorFixture(t, mode, 2)
+	if len(lifetime) == 1 {
+		statement.Revision++
+		statement.ExpiresAt = time.Now().Add(lifetime[0]).Unix()
+		if a.Accept(statementWire(t, statement, key)) != nil {
+			t.Fatal("fixture lifetime")
+		}
+	}
 	owner, err := NewAuthorizedBackup(s, a, q, authorizedOrigin(statement, source), backupFixture().Config, "encrypted")
 	if err != nil {
 		t.Fatal(err)
@@ -332,5 +340,97 @@ func TestAuthorizedFailureCannotRestartAfterSuccessfulDrain(t *testing.T) {
 	}
 	if owner.WithBackup(context.Background(), uuid.Must(uuid.NewV7()), func(context.Context, Access) error { return nil }) != ErrAuthorization {
 		t.Fatal("drain resurrected failed owner")
+	}
+}
+
+func TestAuthorizedIdleOwnerClearsMaterialWithoutStartingBackup(t *testing.T) {
+	for _, failure := range []string{"revoked", "expired", "admission_expired", "clock", "capacity", "frozen", "queue_closed", "owner_closed"} {
+		t.Run(failure, func(t *testing.T) {
+			capacity := 16
+			if failure == "capacity" {
+				capacity = 1
+			}
+			var lifetime []time.Duration
+			if failure == "admission_expired" {
+				lifetime = []time.Duration{2 * time.Second}
+			}
+			owner, _, queue, statement, key, source, private, state, root := authorizedFixture(t, "success", capacity, lifetime...)
+			// Borrow the existing buffer: nil alone would not prove secret erasure.
+			owner.material.Lock()
+			borrowed := owner.raw
+			owner.material.Unlock()
+			if len(borrowed) == 0 {
+				t.Fatal("missing idle material")
+			}
+			switch failure {
+			case "revoked":
+				statement.Revision++
+				statement.Revoked, statement.ExpiresAt = true, 0
+				if owner.authorization.Accept(statementWire(t, statement, key)) != nil {
+					t.Fatal("idle revocation")
+				}
+			case "expired":
+				// Let actual wall/monotonic time expire a short signed grant; no
+				// request or explicit Status call is permitted to trigger cleanup.
+				statement.Revision++
+				statement.ExpiresAt = time.Now().Unix() + 1
+				if owner.authorization.Accept(statementWire(t, statement, key)) != nil {
+					t.Fatal("short idle grant")
+				}
+			case "admission_expired":
+				statement.Revision++
+				statement.ExpiresAt = time.Now().Add(time.Minute).Unix()
+				if owner.authorization.Accept(statementWire(t, statement, key)) != nil {
+					t.Fatal("longer grant must not extend the original admission")
+				}
+			case "clock":
+				if owner.authorization.statusAt(time.Now().Add(-time.Minute)) != AuthorizationClockUnsafe {
+					t.Fatal("idle clock failure")
+				}
+			case "capacity":
+				if owner.record(context.Background(), Event{Action: "denied", Reason: "route_unavailable"}) != nil {
+					t.Fatal("fill idle queue")
+				}
+			case "frozen":
+				queue.Freeze()
+			case "queue_closed":
+				if queue.Close() != nil {
+					t.Fatal("close idle queue")
+				}
+			case "owner_closed":
+				var callers sync.WaitGroup
+				for range 4 {
+					callers.Go(owner.Close)
+				}
+				callers.Wait()
+			}
+			select {
+			case <-owner.watchDone:
+			case <-time.After(5 * time.Second):
+				t.Fatal("idle owner retained material until a backup request")
+			}
+			if len(owner.raw) != 0 || len(bytes.Trim(borrowed, "\x00")) != 0 ||
+				queue.CheckProducer(statement.Binding, source, owner.authorization.key) != gatewaypending.ErrQueue {
+				t.Fatal("idle cleanup did not erase/freeze runtime material")
+			}
+			assertSupervisorClean(t, state, root, backupFixture())
+			if failure == "capacity" {
+				if len(drainAuthorized(t, queue, key, source, private)) != 1 {
+					t.Fatal("idle cleanup discarded durable evidence")
+				}
+			}
+			// A higher signed grant or a successful drain cannot revive this
+			// failed owner. A revocation remains terminal in Authorization too.
+			if failure != "revoked" && failure != "clock" {
+				statement.Revision++
+				statement.ExpiresAt = time.Now().Add(time.Minute).Unix()
+				if owner.authorization.Accept(statementWire(t, statement, key)) != nil {
+					t.Fatal("renewal fixture")
+				}
+			}
+			if owner.WithBackup(context.Background(), uuid.Must(uuid.NewV7()), func(context.Context, Access) error { return nil }) != ErrAuthorization {
+				t.Fatal("failed idle owner revived")
+			}
+		})
 	}
 }
