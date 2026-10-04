@@ -170,6 +170,13 @@ Gateway 单次加密材料初始化验收（ADR-0022；同 UID 内部通道，�
 | REP-043 | P0 | source-init 仅在服务所有 canonical 0700 私有目录生成新 0600 seed，三处 fsync 后只输出公钥；并发只有一个身份，旧文件不覆盖；fsync/发布不确定保留证据并拒绝自动重建；source-public 只导出已有公钥。错误/stdout 不含 seed、原始路径/argv/IO 错误；拒绝特殊权限、symlink/hardlink/pending。 |
 | REP-044 | P0 | 来源 seed 与独立中心公钥 pin 从两个受保护文件装载，坏 pin 不返回私钥副本，不能从初始化 wire 选择信任；receiver 复制后临时来源副本清零。实际跨 UID 夹具由 Gateway 使用生产文件创建/装载 API，中心仅取得公钥；其他服务/第三 UID 不能读取 Gateway 私有 seed/pin，原加密初始化和持久签名回写全部通过。 |
 
+中心初始化协调验收（ADR-0025，GitHub Actions 执行；不替代 Gateway 生产 daemon/READY）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-045 | P0 | 中心元数据仅从服务所有 canonical 0700 私有目录的单链接 0400/0600 文件装载；版本/大小/完整 binding/公钥/期限/UID/GID/socket 路径有界验证，拒绝特殊权限、symlink/hardlink/pending 与重复/未知/遗漏/大小写/null/非规范 JSON。命令非法参数及路径仅返回固定错误，生产禁止 root/同 UID 私有协调。 |
+| REP-046 | P0 | 三后端真实 DB 从无授权/来源/意图开始，经来源签名与 peer 验证后首次授权→注册→单次加密交付，借用明文清零；错误来源/binding/UID、失效 ACK/禁用、审计与注册失败拒绝且不撤销先前 committed 阶段。安装失败 rollback 保留单次意图；新挑战不再交付，新 runtime 不能接管旧 admission，不释放 fence。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

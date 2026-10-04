@@ -172,7 +172,9 @@
 
 第二十一批（#51，已合并）增加显式共享组的跨 UID 材料/回写通道（ADR-0023 / REP-041–042），中心 replay 配置精确 peer UID/GID；私有默认与签名/加密协议保持。最终 head `08b1ebc` 的 Actions 十项全通过，独立 job 使用两个非 root 服务及同组第三用户验证私钥/目录/socket 隔离；开发环境只编辑源码。首轮发现的 Web 高危传递依赖已兼容修复，原生 npm audit 门禁报告零漏洞。合并 commit 为 `2fbe498`；完整生产信任配置、启动协调及 M4 其他退出条件继续待完成。
 
-第二十二批（本分支，待 Actions 验证）接入来源 seed 的本地无覆盖可靠创建、source-public 导出与独立中心公钥 pin 文件装载（ADR-0024 / REP-043–044）。复用 protected reader / MaterialReceiver，补充特殊权限拒绝和可清零解码；跨 UID 套件走生产文件 API。身份命令不启动数据面、不注册来源、不确认 binding 或释放 fence；完整运行配置/协调、续期/吊销、全局离线审计、Agent 能力、恢复、readiness、rotation/READY、真实云和 AGT-005 继续待完成。
+第二十二批（#52，已合并）接入来源 seed 的本地无覆盖可靠创建、source-public 导出与独立中心公钥 pin 文件装载（ADR-0024 / REP-043–044）。最终 head `ab11d1b` 与合并后的 `ea8921e` 均通过 Actions 十项检查。复用 protected reader / MaterialReceiver，补充特殊权限拒绝和可清零解码；跨 UID 套件走生产文件 API。身份命令不启动数据面、不注册来源、不确认 binding 或释放 fence。
+
+第二十三批（本分支，待 Actions 验证）加入中心受保护初始化元数据、来源/UID 认证后首授权→来源注册→单次材料交付的实际协调与显式 `gateway-start` 命令（ADR-0025 / REP-045–046）。复用既有通道/事务，失败保留部分提交与 fence，不自动重读文件或重试；三后端夹具从无授权/来源开始。Gateway 生产配置/daemon、多仓库数据面、续期/吊销、全局离线审计、Agent 能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
 
 ### Goal
 
@@ -197,7 +199,7 @@
 
 ### Tests/Exit
 
-- REP-001–044；
+- REP-001–046；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。
