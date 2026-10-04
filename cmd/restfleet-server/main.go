@@ -176,7 +176,7 @@ func run(logger *slog.Logger) error {
 		}
 		go func() {
 			defer close(replayDone)
-			if err := gatewaypending.ServeReplay(ctx, listener, config.GatewayReplayPeerUID, controlPlane.ReplayGatewayPending, controlPlane.RecordGatewayReplayDenied, config.GatewayReplayGroup); err != nil {
+			if err := gatewaypending.ServeReplay(ctx, listener, config.GatewayReplayPeerUID, controlPlane.ReplayGatewayRecord, controlPlane.RecordGatewayReplayDenied, config.GatewayReplayGroup); err != nil {
 				serverErrors <- err
 			}
 		}()

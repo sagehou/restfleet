@@ -59,20 +59,25 @@ type activeBackup struct {
 // job queue or lease authority. Use ONE supervisor per gateway runtime; close
 // the listener, then this supervisor, then the caller-owned credential runtime.
 type Supervisor struct {
-	mu      sync.Mutex
-	runtime *rclone.Runtime
-	limit   int
-	audit   func(context.Context, Event) error
-	active  map[uuid.UUID]*activeBackup
-	closed  bool
-	running sync.WaitGroup
+	mu         sync.Mutex
+	runtime    *rclone.Runtime
+	limit      int
+	audit      func(context.Context, Event) error
+	auditReady func() bool
+	active     map[uuid.UUID]*activeBackup
+	closed     bool
+	running    sync.WaitGroup
 }
 
-func NewSupervisor(runtime *rclone.Runtime, maxSessions int, audit func(context.Context, Event) error) (*Supervisor, error) {
-	if runtime == nil || maxSessions < 1 || maxSessions > 32 || audit == nil {
+func NewSupervisor(runtime *rclone.Runtime, maxSessions int, audit func(context.Context, Event) error, auditReady ...func() bool) (*Supervisor, error) {
+	if runtime == nil || maxSessions < 1 || maxSessions > 32 || audit == nil || len(auditReady) > 1 || (len(auditReady) == 1 && auditReady[0] == nil) {
 		return nil, ErrInvalidSession
 	}
-	return &Supervisor{runtime: runtime, limit: maxSessions, audit: audit, active: make(map[uuid.UUID]*activeBackup)}, nil
+	s := &Supervisor{runtime: runtime, limit: maxSessions, audit: audit, active: make(map[uuid.UUID]*activeBackup)}
+	if len(auditReady) == 1 {
+		s.auditReady = auditReady[0]
+	}
+	return s, nil
 }
 
 // WithBackup installs the route only after the private backend is ready, lends

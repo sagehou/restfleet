@@ -387,6 +387,20 @@ Gateway MUST 核验中心签名与完整 binding，再调用该 owner 的 `Accep
 
 本批不新增命令、自动续期调度器或 schema。Gateway daemon/生产配置、多仓库公网数据面、全局离线拒绝审计、Agent 会话能力交付、可信清理/恢复、readiness、rotation/READY、真实云端及 AGT-005 仍待完成。
 
+### 7.20 全局离线拒绝审计（schema 15 / ADR-0027）
+
+公网入口及本地通道的全局审计 MUST 使用独立 `GatewayAuditBinding`（origin_id、runtime_id，均 UUIDv7）和中心预注册来源，不从请求猜测 Host/Repository 或凭据。可信协调器通过 `RegisterGatewayGlobalAudit` 注册独立公钥，返回来源 metadata 和既有中心 X25519 接收**公钥**；不得把注册当作授权、材料交付或进程新鲜性证明。
+
+复用 §7.13 的受保护 Queue、硬上限、原子写/fsync 和 RFGR 交换；全局来源使用不同私有目录，MUST NOT 与仓库来源共用目录。header 字段保持 binding、record_id、sequence、previous_hash、authorization_revision、created_at 顺序，末尾增加 audit_origin（字段 origin_id、runtime_id）。binding MUST 是 `GatewayAuthorizationBinding` 的完整零值编码，authorization_revision MUST 为 0；kind MUST 为 `global_audit`，config=null、expected_secret_revision=0。event MUST 无 binding/认证身份，仅允许 `denied/route_unavailable`、`denied/rate_limited`、`event_rejected/invalid_event` 或 `channel_denied` 的 material_rejected/authority_rejected/session_rejected 固定分类。非法内部事件 MUST 仅落盘固定 event_rejected，不保存原值，再停止生产者。
+
+全局 wire 使用 `restfleet:gateway-global-audit:v1` 加 NUL 的来源签名，公钥加密机制/512 KiB 上限保持；回执使用 `restfleet:gateway-global-audit-receipt:v1` 加 NUL 的中心签名，字段 admission_id（nil UUID）、runtime_id、sequence、record_id、wire_hash 后增加 audit_origin_id（非 nil UUIDv7）。两个域 MUST NOT 相互授权、确认或选取错误来源；旧仓库域 MUST 省略零值新增字段，原规范编码不变。中心只用未验证 header 做正确注册表 lookup，之后 MUST 验来源签名、解密并精确核验内外 header、记录 kind、无资源固定事件及规范重新编码，不回退到其他授权域。
+
+`GlobalAuditRecorder` MUST 唯一认领 fresh 全局队列，Record 成功表示可靠落盘。生产协调器 MUST 向 Supervisor 同时提供 Record 与 Ready；已初始化 owner 的 constructor、每操作 guard 和每 100ms 生命周期 watchdog MUST 核验该 Ready。容量不足、磁盘/确认不确定、Queue 关闭/冻结、时钟回拨或生产者失效 MUST 永久停止该运行，取消/join、清零仓库材料；排空不能复活。同一次运行关闭全局 recorder MUST 在入口和所有 append callback 退出之后冻结队列，保留待回放证据。
+
+中心 replay listener 使用 `ReplayGatewayRecord` 区分两种严格域；不增加 TCP/HTTP/Agent 路由。全局接收 MUST 在来源锁下顺序、原子追加既有审计链及接收历史，提交后才确认；精确重复和封存后旧回执可幂等恢复，冲突/跳序/未注册/错误来源或 runtime/未来时间/早于注册/封存后新记录拒绝。中心不可达时本地持久化仍可接受观察，认证材料/授权仍由既有独立路径控制。
+
+回放完成不证明公网入口已停止。可信协调器 MUST 在所有入口、会话及全局生产者 join 后，以精确 tail 调用 `SealGatewayGlobalAudit`；此封存不封存仓库来源、不释放任何占用、不授予 READY。schema 15 的升级顺序和历史保留见数据库规范；REP-049–051 全部在 Actions 验证。生产配置/daemon、自动续期/吊销、Agent 能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
+
 ## 8. Native Agent 安装
 
 目标目录：

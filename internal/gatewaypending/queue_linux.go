@@ -35,6 +35,7 @@ type identity struct {
 	Recipient    [32]byte
 	Confirmation ed25519.PublicKey
 	Limits       Limits
+	AuditOrigin  security.GatewayAuditBinding `json:",omitzero"`
 }
 
 // Queue has ONE owner. After restart Recover permits replay only. Neither
@@ -56,6 +57,16 @@ type Queue struct {
 }
 
 func Create(path string, binding security.GatewayAuthorizationBinding, recipient [32]byte, source ed25519.PrivateKey, confirmation ed25519.PublicKey, limits Limits) (*Queue, error) {
+	return createQueue(path, identity{Binding: binding, Recipient: recipient, Confirmation: append(ed25519.PublicKey(nil), confirmation...), Limits: limits}, source)
+}
+
+// CreateGlobalAudit uses the same bounded, encrypted, fsynced store with a
+// process-only source. Its records/receipts have independent signature domains.
+func CreateGlobalAudit(path string, origin security.GatewayAuditBinding, recipient [32]byte, source ed25519.PrivateKey, confirmation ed25519.PublicKey, limits Limits) (*Queue, error) {
+	return createQueue(path, identity{AuditOrigin: origin, Recipient: recipient, Confirmation: append(ed25519.PublicKey(nil), confirmation...), Limits: limits}, source)
+}
+
+func createQueue(path string, id identity, source ed25519.PrivateKey) (*Queue, error) {
 	if len(source) != 64 {
 		return nil, ErrQueue
 	}
@@ -65,15 +76,22 @@ func Create(path string, binding security.GatewayAuthorizationBinding, recipient
 	if !bytes.Equal(derived, source) {
 		return nil, ErrQueue
 	}
-	return open(path, identity{binding, append(ed25519.PublicKey(nil), public...), recipient, append(ed25519.PublicKey(nil), confirmation...), limits}, source, true)
+	id.Source = append(ed25519.PublicKey(nil), public...)
+	return open(path, id, source, true)
 }
 
 func Recover(path string, binding security.GatewayAuthorizationBinding, recipient [32]byte, source, confirmation ed25519.PublicKey, limits Limits) (*Queue, error) {
-	return open(path, identity{binding, append(ed25519.PublicKey(nil), source...), recipient, append(ed25519.PublicKey(nil), confirmation...), limits}, nil, false)
+	return open(path, identity{Binding: binding, Source: append(ed25519.PublicKey(nil), source...), Recipient: recipient, Confirmation: append(ed25519.PublicKey(nil), confirmation...), Limits: limits}, nil, false)
+}
+
+func RecoverGlobalAudit(path string, origin security.GatewayAuditBinding, recipient [32]byte, source, confirmation ed25519.PublicKey, limits Limits) (*Queue, error) {
+	return open(path, identity{AuditOrigin: origin, Source: append(ed25519.PublicKey(nil), source...), Recipient: recipient, Confirmation: append(ed25519.PublicKey(nil), confirmation...), Limits: limits}, nil, false)
 }
 
 func open(path string, id identity, key ed25519.PrivateKey, create bool) (*Queue, error) {
-	if id.Binding.Validate() != nil || len(id.Source) != 32 || len(id.Confirmation) != 32 || id.Recipient == ([32]byte{}) ||
+	global := id.AuditOrigin != (security.GatewayAuditBinding{})
+	if (!global && id.Binding.Validate() != nil) || (global && (id.AuditOrigin.Validate() != nil || id.Binding != (security.GatewayAuthorizationBinding{}))) ||
+		len(id.Source) != 32 || len(id.Confirmation) != 32 || id.Recipient == ([32]byte{}) ||
 		id.Limits.MaxRecords < 1 || id.Limits.MaxRecords > 4096 || id.Limits.MaxBytes < security.MaxGatewayPendingSize+reservedBytes || id.Limits.MaxBytes > 64<<20 ||
 		!filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return nil, ErrQueue
@@ -142,7 +160,7 @@ func private(f *os.File, directory bool) bool {
 		return false
 	}
 	sys, ok := st.Sys().(*syscall.Stat_t)
-	if !ok || sys.Uid != uint32(os.Geteuid()) {
+	if !ok || sys.Uid != uint32(os.Geteuid()) || st.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
 		return false
 	}
 	if directory {
@@ -200,7 +218,7 @@ func (q *Queue) read(name string, max int64) ([]byte, error) {
 func (q *Queue) recover(names []string) error {
 	if raw, err := q.read("receipt", 1024); err == nil {
 		r, err := security.VerifyGatewayPendingReceipt(raw, q.identity.Confirmation)
-		if err != nil || r.AdmissionID != q.identity.Binding.AdmissionID || r.RuntimeID != q.identity.Binding.RuntimeID {
+		if err != nil || !q.matchesReceipt(r) {
 			return ErrQueue
 		}
 		q.receipt = r
@@ -237,8 +255,8 @@ func (q *Queue) recover(names []string) error {
 			return ErrQueue
 		}
 		raw, err := q.read(name, security.MaxGatewayPendingSize)
-		h, verifyErr := security.InspectGatewayPending(raw, q.identity.Source)
-		if err != nil || verifyErr != nil || h.Binding != q.identity.Binding || h.Sequence != seq {
+		h, verifyErr := q.inspect(raw)
+		if err != nil || verifyErr != nil || h.Sequence != seq {
 			return ErrQueue
 		}
 		hash := security.GatewayPendingHash(raw)
@@ -286,11 +304,15 @@ func (q *Queue) Append(r security.GatewayPendingRecord) error {
 	if r.Header.Binding != (security.GatewayAuthorizationBinding{}) && r.Header.Binding != q.identity.Binding {
 		return ErrQueue
 	}
+	if r.Header.AuditOrigin != (security.GatewayAuditBinding{}) && r.Header.AuditOrigin != q.identity.AuditOrigin {
+		return ErrQueue
+	}
 	id, err := uuid.NewV7()
 	if err != nil {
 		return ErrQueue
 	}
 	r.Header.Binding = q.identity.Binding
+	r.Header.AuditOrigin = q.identity.AuditOrigin
 	r.Header.RecordID = id
 	r.Header.Sequence = q.sequence + 1
 	r.Header.PreviousHash = q.hash
@@ -320,8 +342,8 @@ func (q *Queue) Next() ([]byte, error) {
 		return nil, nil
 	}
 	wire, err := q.read(q.files[0], security.MaxGatewayPendingSize)
-	h, e := security.InspectGatewayPending(wire, q.identity.Source)
-	if err != nil || e != nil || h.Binding != q.identity.Binding || h.Sequence != q.receipt.Sequence+1 || h.PreviousHash != receiptHash(q.receipt) {
+	h, e := q.inspect(wire)
+	if err != nil || e != nil || h.Sequence != q.receipt.Sequence+1 || h.PreviousHash != receiptHash(q.receipt) {
 		q.failed = true
 		return nil, ErrQueue
 	}
@@ -335,6 +357,9 @@ func (q *Queue) Next() ([]byte, error) {
 func (q *Queue) CheckProducer(binding security.GatewayAuthorizationBinding, source, confirmation ed25519.PublicKey) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if q.identity.AuditOrigin != (security.GatewayAuditBinding{}) {
+		return ErrQueue
+	}
 	return q.checkProducer(binding, source, confirmation)
 }
 
@@ -343,11 +368,46 @@ func (q *Queue) CheckProducer(binding security.GatewayAuthorizationBinding, sour
 func (q *Queue) ClaimProducer(binding security.GatewayAuthorizationBinding, source, confirmation ed25519.PublicKey) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if q.producerClaimed || q.sequence != 0 || q.checkProducer(binding, source, confirmation) != nil {
+	if q.identity.AuditOrigin != (security.GatewayAuditBinding{}) || q.producerClaimed || q.sequence != 0 || q.checkProducer(binding, source, confirmation) != nil {
 		return ErrQueue
 	}
 	q.producerClaimed = true
 	return nil
+}
+
+func (q *Queue) CheckGlobalAuditProducer(origin security.GatewayAuditBinding, source, confirmation ed25519.PublicKey) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if origin.Validate() != nil || q.identity.AuditOrigin != origin {
+		return ErrQueue
+	}
+	return q.checkProducer(security.GatewayAuthorizationBinding{}, source, confirmation)
+}
+
+func (q *Queue) ClaimGlobalAuditProducer(origin security.GatewayAuditBinding, source, confirmation ed25519.PublicKey) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if origin.Validate() != nil || q.identity.AuditOrigin != origin || q.producerClaimed || q.sequence != 0 ||
+		q.checkProducer(security.GatewayAuthorizationBinding{}, source, confirmation) != nil {
+		return ErrQueue
+	}
+	q.producerClaimed = true
+	return nil
+}
+
+func (q *Queue) inspect(wire []byte) (security.GatewayPendingHeader, error) {
+	h, err := security.InspectGatewayPending(wire, q.identity.Source)
+	if err != nil || h.Binding != q.identity.Binding || h.AuditOrigin != q.identity.AuditOrigin {
+		return security.GatewayPendingHeader{}, ErrQueue
+	}
+	return h, nil
+}
+
+func (q *Queue) matchesReceipt(r security.GatewayPendingReceipt) bool {
+	if q.identity.AuditOrigin != (security.GatewayAuditBinding{}) {
+		return r.AdmissionID == uuid.Nil && r.AuditOriginID == q.identity.AuditOrigin.OriginID && r.RuntimeID == q.identity.AuditOrigin.RuntimeID
+	}
+	return r.AuditOriginID == uuid.Nil && r.AdmissionID == q.identity.Binding.AdmissionID && r.RuntimeID == q.identity.Binding.RuntimeID
 }
 
 func (q *Queue) checkProducer(binding security.GatewayAuthorizationBinding, source, confirmation ed25519.PublicKey) error {
@@ -374,7 +434,7 @@ func (q *Queue) Acknowledge(wire []byte) error {
 		return ErrQueue
 	}
 	r, err := security.VerifyGatewayPendingReceipt(wire, q.identity.Confirmation)
-	if err != nil || r.AdmissionID != q.identity.Binding.AdmissionID || r.RuntimeID != q.identity.Binding.RuntimeID {
+	if err != nil || !q.matchesReceipt(r) {
 		return ErrQueue
 	}
 	if r == q.receipt {
@@ -384,7 +444,7 @@ func (q *Queue) Acknowledge(wire []byte) error {
 		return ErrQueue
 	}
 	raw, err := q.read(q.files[0], security.MaxGatewayPendingSize)
-	h, e := security.InspectGatewayPending(raw, q.identity.Source)
+	h, e := q.inspect(raw)
 	if err != nil || e != nil || h.RecordID != r.RecordID || h.Sequence != r.Sequence || security.GatewayPendingHash(raw) != r.WireHash {
 		return ErrQueue
 	}
