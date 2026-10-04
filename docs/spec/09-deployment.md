@@ -383,7 +383,7 @@ restfleet-server gateway-start --config-file /var/lib/restfleet/gateway-startup/
 
 Gateway MUST 核验中心签名与完整 binding，再调用该 owner 的 `AcceptAuthorization`；普通续期不能越过原 admission 到期，失效/失败 owner 不得复活。授权状态与连接状态分离；中断不续期、不吊销、不删除已接受决定。吊销由 watchdog/每操作 guard 取消并 join 工作，清零明文并冻结 Queue；回执不等待/证明这项清理，也不确认 READY、Agent ACK、封存或释放。
 
-回执丢失 MUST 保留中心已提交决定和原 fence。MAY 显式重放同一最新 committed 决定/幂等键，MUST 保留签发与到期时刻；不得自动签发新授权、重发初始化材料或恢复失败 owner。单次交付无自动重试。取消 MUST 关闭活跃连接并等待当前 callback 退出；callback MUST 响应 context。拒绝审计 MUST 使用固定无资源 `GATEWAY_AUTHORIZATION_DELIVERY_DENIED` / `REJECTED`，不得记录 wire、未认证身份、路径或原始错误；审计失败 MUST 停止接收通道。开发工作区 MUST NOT 执行服务或验证；REP-047–048 仅在 Actions 运行。
+回执丢失 MUST 保留中心已提交决定和原 fence。MAY 显式重放同一最新 committed 决定/幂等键，MUST 保留签发与到期时刻；不得自动签发新授权、重发初始化材料或恢复失败 owner。单次交付无自动重试。取消 MUST 关闭活跃连接并等待当前 callback 退出；callback MUST 响应 context。拒绝审计 MUST 使用固定无资源 `GATEWAY_AUTHORIZATION_DELIVERY_DENIED` / `REJECTED`，不得记录 wire、未认证身份、路径或原始错误；已观察到的拒绝 MUST 另用最多 3s 的独立 context 完成审计，调用方取消 MUST NOT 丢弃该观察，listener 退出 MUST 等待审计 callback。审计失败 MUST 停止接收通道。开发工作区 MUST NOT 执行服务或验证；REP-047–048 仅在 Actions 运行。
 
 本批不新增命令、自动续期调度器或 schema。Gateway daemon/生产配置、多仓库公网数据面、全局离线拒绝审计、Agent 会话能力交付、可信清理/恢复、readiness、rotation/READY、真实云端及 AGT-005 仍待完成。
 
