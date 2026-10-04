@@ -178,3 +178,35 @@ func TestGatewayTrustRequiresIndependentProtectedPinAndCopiesKeys(t *testing.T) 
 		t.Fatal("source seed accepted as independent public pin")
 	}
 }
+
+func TestGatewayCentralPinLoadsWithoutAnySourceSeedAndRejectsUnsafeFiles(t *testing.T) {
+	dir := sourceDirectory(t)
+	path := filepath.Join(dir, "center.pub")
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	defer clear(private)
+	if err != nil || os.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(public)), 0400) != nil {
+		t.Fatal("independent central pin fixture")
+	}
+	loaded, err := LoadGatewayCentralPin(path)
+	if err != nil || !bytes.Equal(loaded, public) {
+		t.Fatal("public pin required a source seed")
+	}
+	if os.Chmod(path, 0644) != nil {
+		t.Fatal("unsafe pin mode fixture")
+	}
+	if pin, err := LoadGatewayCentralPin(path); err != ErrGatewaySource || pin != nil {
+		t.Fatal("unsafe pin returned")
+	}
+	if os.Chmod(path, 0600) != nil || os.Link(path, path+".other") != nil {
+		t.Fatal("hardlink pin fixture")
+	}
+	if pin, err := LoadGatewayCentralPin(path); err != ErrGatewaySource || pin != nil {
+		t.Fatal("hardlinked pin returned")
+	}
+	if os.Remove(path+".other") != nil || os.WriteFile(path, []byte("private-pin-canary"), 0600) != nil {
+		t.Fatal("corrupt pin fixture")
+	}
+	if pin, err := LoadGatewayCentralPin(path); err != ErrGatewaySource || pin != nil {
+		t.Fatal("corrupt pin returned or echoed")
+	}
+}

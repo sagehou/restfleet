@@ -89,12 +89,22 @@ func LoadGatewayTrust(sourceFile, centralPinFile string) (ed25519.PrivateKey, ed
 	if err != nil {
 		return nil, nil, ErrGatewaySource
 	}
-	pin, err := readGatewayKey(centralPinFile)
+	pin, err := LoadGatewayCentralPin(centralPinFile)
 	if err != nil {
 		clear(source)
 		return nil, nil, ErrGatewaySource
 	}
-	return source, ed25519.PublicKey(pin), nil
+	return source, pin, nil
+}
+
+// LoadGatewayCentralPin reads only the independently provisioned central PUBLIC
+// key. Replay-only recovery must not need access to a source seed/private key.
+func LoadGatewayCentralPin(path string) (ed25519.PublicKey, error) {
+	key, err := readGatewayKey(path)
+	if err != nil {
+		return nil, ErrGatewaySource
+	}
+	return ed25519.PublicKey(key), nil
 }
 
 func readGatewayKey(path string) ([]byte, error) {

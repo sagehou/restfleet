@@ -401,6 +401,18 @@ Gateway MUST 核验中心签名与完整 binding，再调用该 owner 的 `Accep
 
 回放完成不证明公网入口已停止。可信协调器 MUST 在所有入口、会话及全局生产者 join 后，以精确 tail 调用 `SealGatewayGlobalAudit`；此封存不封存仓库来源、不释放任何占用、不授予 READY。schema 15 的升级顺序和历史保留见数据库规范；REP-049–051 全部在 Actions 验证。生产配置/daemon、自动续期/吊销、Agent 能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
 
+### 7.21 Gateway 显式恢复回放（ADR-0028）
+
+崩溃后管理员 MAY 在 Gateway 服务身份下显式执行 `restfleet-gateway replay --config-file /absolute/path/replay.json`，每次处理一个既有仓库或全局 Queue。MUST 先停止旧 producer；活跃 flock、损坏或不确定记录阻塞恢复。命令只使用公钥，MUST NOT 读取来源 seed/中心私钥、申请或恢复授权、交付材料、启动子进程/公网 listener、修复文件、封存来源或释放占用。整个尝试 context 最多 1min，每帧 5s，取消关闭连接并退出；失败不自动重试。重试 MUST 保留原 wire 和可靠回执，不重新加密或按失败丢弃未确认记录。
+
+配置文件 MUST 位于 canonical、Gateway 服务所有的 0700 私有目录中，文件 MUST 0400/0600、regular、单链接、无 symlink/特殊权限，最多 4096 bytes；同名 `.pending` 阻塞读取。字段及顺序 MUST 为 `version`（1）、`binding`（仅仓库域，完整 §7.11 绑定）或 `audit_origin`（仅全局域，§7.20 绑定）、`source_public`、`recipient_public`、`central_pin_file`、`queue_directory`、`max_bytes`、`max_records`、`socket_path`、`server_uid`、`shared_group`。另一个域 MUST 省略，两个同时存在或两个均缺失拒绝。两公钥使用标准 base64、解码正好 32 bytes，recipient 不得全零；pin 文件为独立配置的中心 Ed25519 公钥，沿用 §7.17 的私有文件/目录策略，MUST NOT 从 wire/peer/Queue 自选 pin。允许排版空白，MUST 按规范重新编码拒绝未知/重复/缺失/null/大小写替代/替代数字等输入。
+
+路径 MUST 绝对、规范且无控制字符，socket 最多 107 bytes；`max_bytes/max_records` MUST 与原 Queue identity 完全一致，范围沿用 §7.13。零共享组 MUST 使用本服务相同 UID 的 0700/0600 私有通道；非零组 MUST 使用不同的两个非 root UID、专用 GID 及 §7.16 的 0710/0660 通道，保留 UID/GID 值拒绝。生产 MUST 使用不同的非 root 服务 UID 与共享组。管理员 MUST 从既有可信运行元数据取得原 binding、来源/接收公钥及上限，不能从未认证请求或猜测身份构造配置。
+
+Recover/RecoverGlobalAudit MUST 比对完整 identity，保持 producer 冻结；中央仍通过 §7.13/7.20 的注册来源、验签/解密、顺序、原子 effect/接收历史后才签精确回执。命令仅在精确确认全部记录并成功关闭 Queue 后，输出 `version`（1）、对应 `binding` 或 `audit_origin`、`sequence`、`wire_hash` 的 JSON。输出不含秘密或原始请求，错误固定为 `gateway recovery replay unavailable or inconsistent`。输出失败不会撤销已保存回执，再次显式运行 MAY 得到相同 tail。
+
+tail MUST NOT 被当作旧进程/请求/追加者清理证明、来源封存、占用释放或 READY；上述决定继续由可信中心另行核验。REP-052–053 在 Actions 覆盖命令与跨 UID 恢复；生产 daemon、完整可信清理/恢复、自动续期/吊销、Agent 能力、readiness、rotation/READY、真实云和 AGT-005 继续待完成。
+
 ## 8. Native Agent 安装
 
 目标目录：

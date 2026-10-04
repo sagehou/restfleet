@@ -306,10 +306,34 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 			t.Fatal("installation fixture marker")
 		}
 		var release bool
-		if decoder.Decode(&release) != nil || !release || queue.Append(pendingAudit()) != nil ||
-			Drain(ctx, queue, replayPath, crossCenter, c.Binding.RuntimeID, crossGroup) != nil ||
-			Drain(ctx, globalQueue, replayPath, crossCenter, c.AuditOrigin.RuntimeID, crossGroup) != nil {
-			t.Fatal("source-signed cross-UID replay")
+		if decoder.Decode(&release) != nil || !release || queue.Append(pendingAudit()) != nil {
+			t.Fatal("source-signed cross-UID observation")
+		}
+		recipient := bytes.Clone(queue.identity.Recipient[:])
+		if queue.Close() != nil || globalQueue.Close() != nil {
+			t.Fatal("cross-UID crash/recovery fixture")
+		}
+		for _, config := range []ReplayConfig{
+			{Version: 1, Binding: c.Binding, SourcePublic: public, RecipientPublic: recipient,
+				CentralPinFile: privatePath("gateway", "center.pub"), QueueDirectory: privatePath("gateway", "queue"),
+				MaxBytes: 2 << 20, MaxRecords: 4, SocketPath: replayPath, ServerUID: crossCenter, SharedGroup: crossGroup},
+			{Version: 1, AuditOrigin: c.AuditOrigin, SourcePublic: public, RecipientPublic: recipient,
+				CentralPinFile: privatePath("gateway", "center.pub"), QueueDirectory: privatePath("gateway", "global-queue"),
+				MaxBytes: 2 << 20, MaxRecords: 4, SocketPath: replayPath, ServerUID: crossCenter, SharedGroup: crossGroup},
+		} {
+			path := privatePath("gateway", "replay.json")
+			raw, err := json.Marshal(config)
+			if err != nil || os.WriteFile(path, raw, 0600) != nil {
+				t.Fatal("protected cross-UID replay metadata")
+			}
+			loaded, err := LoadReplayConfig(path)
+			if err != nil {
+				t.Fatal("load protected cross-UID replay metadata")
+			}
+			tail, err := ReplayFromConfig(ctx, loaded)
+			if err != nil || tail.Sequence != 1 || tail.Binding != config.Binding || tail.AuditOrigin != config.AuditOrigin {
+				t.Fatal("public-key-only cross-UID recovery replay")
+			}
 		}
 		select {
 		case <-revoked:
