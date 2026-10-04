@@ -186,7 +186,9 @@
 
 第二十八批（#58，已合并）交付 Gateway 启动前置修复（ADR-0029 / REP-054–055）：显式有界等待与每次 5s 材料交换分开，既有 Receive 保持等待/交换合计 5s；失败审计独立最多 3s，Close/退出等待完成再清零。单次意图、拒绝旧来源接管和失败保留 fence 的边界不变。最终 head `2df76a3` 与合并 commit `2eaf44f` 均通过 Actions 十项检查；生产 daemon、全局审计注册 command、Agent 能力、可信恢复/readiness、rotation/READY、真实云及 AGT-005 继续待完成。
 
-第二十九批（#59）接入中心显式 `gateway-audit-register --config-file`（ADR-0030 / REP-056–057）：保护公开元数据、中心运行配置与 DB/schema/审计链核验后复用 audit-only 注册事务，仅公开 JSON 输出；精确重复和输出失败保留原注册，冲突/封存/生产 root 拒绝。实际命令隔离 schema 与三后端完整数据库均交 Actions 验证，格式化/编译/测试不在本地执行。精确 head 十项全绿后才合并；Gateway daemon、自动授权分发、Agent 能力、可信恢复/readiness、rotation/READY、真实云及 AGT-005 继续待完成。
+第二十九批（#59，已合并）接入中心显式 `gateway-audit-register --config-file`（ADR-0030 / REP-056–057）：保护公开元数据、中心运行配置与 DB/schema/审计链核验后复用 audit-only 注册事务，仅公开 JSON 输出；精确重复和输出失败保留原注册，冲突/封存/生产 root 拒绝。实际命令隔离 schema 与三后端完整数据库在 Actions 验证；最终 head `0957be0` 与合并 commit `934c4af` 均通过十项检查。Gateway daemon、自动授权分发、Agent 能力、可信恢复/readiness、rotation/READY、真实云及 AGT-005 继续待完成。
+
+第三十批接入 Gateway 单次启动 owner（ADR-0031 / REP-058–060）：protected config/source/pin/TLS→并行单次材料初始化→原 owner RFGA→多仓库 TLS→两类 RFGR 精确密文回写。全部初始化完成前不绑定公网；部分失败、非法 ACK、全局容量或吊销取消/join 全部工作、清零并保留 Queue/fence。跨非 root UID 生产配置和固定引擎连续两次备份/读回经新 Service 验收，原在线与签名路径保留。格式化/编译/运行验证仅 Actions，精确 head 十项全绿后才合并。WithBackup 仍是可信进程内接缝，Agent 会话协议和可部署 daemon command 尚未连接；自动授权分发、可信清理恢复/readiness、rotation/READY、真实云与 AGT-005 继续待完成，12h 取舍尚无决定。
 
 ### Goal
 
@@ -211,7 +213,7 @@
 
 ### Tests/Exit
 
-- REP-001–057；
+- REP-001–060；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

@@ -33,7 +33,7 @@ import (
 // Only the remote is a local fixture; the frontend uses verified TLS and the
 // backend is a private Unix socket. No Control API or gRPC proxy participates.
 func TestPinnedGatewayBackupAndReadback(t *testing.T) {
-	for _, policy := range []string{"online", "signed-local"} {
+	for _, policy := range []string{"online", "signed-local", "service"} {
 		t.Run(policy, func(t *testing.T) { testPinnedGatewayBackupAndReadback(t, policy) })
 	}
 }
@@ -53,7 +53,29 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 			t.Fatal("unapproved engine binary")
 		}
 	}
-	s, dir, runtimeRoot := supervisorFixture(t, "real", 1)
+	var s *Supervisor
+	var dir, runtimeRoot string
+	var service *Service
+	var serviceConfig ServiceConfig
+	request := backupFixture()
+	var local *AuthorizedBackup
+	var queue *gatewaypending.Queue
+	var central ed25519.PrivateKey
+	var pendingSource ed25519.PublicKey
+	var pendingPrivate []byte
+	var server *publicFixture
+	if policy == "service" {
+		f := newServiceFixture(t, 1, "real")
+		service = startServiceFixture(t, f)
+		serviceConfig = f.config
+		s, dir, runtimeRoot = service.supervisor, f.state, f.config.RuntimeDirectory
+		b := f.config.Repositories[0].Binding
+		request.Binding = Binding{HostID: b.HostID, RepositoryID: b.RepositoryID, GatewayID: b.GatewayID}
+		local, queue, central, pendingSource, pendingPrivate = service.repositories[0].owner, service.repositories[0].queue, f.central, f.sources[0], f.pending
+		server = &publicFixture{URL: "https://" + service.listener.Addr().String(), certificate: f.certificate, client: serviceTLSClient(t, f.certificate)}
+	} else {
+		s, dir, runtimeRoot = supervisorFixture(t, "real", 1)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "real-rclone"), []byte(rcloneBinary), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -79,22 +101,19 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 	}
 	var mu sync.Mutex
 	lockCleanups := 0
-	s.audit, err = NewAuditRecorder(auditStoreFunc(func(_ context.Context, e domain.AuditEvent) error {
+	if service == nil {
+		s.audit, err = NewAuditRecorder(auditStoreFunc(func(_ context.Context, e domain.AuditEvent) error {
 		mu.Lock()
 		defer mu.Unlock()
 		if e.Action == "GATEWAY_LOCK_CLEANUP_INTENT" {
 			lockCleanups++
 		}
 		return nil
-	}))
-	if err != nil {
-		t.Fatal(err)
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	var local *AuthorizedBackup
-	var queue *gatewaypending.Queue
-	var central ed25519.PrivateKey
-	var pendingSource ed25519.PublicKey
-	var pendingPrivate []byte
 	cleanupSessions := make(map[uuid.UUID]bool)
 	if policy == "signed-local" {
 		var grant security.GatewayStatement
@@ -109,9 +128,14 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 		// central transaction is a fixture here; no central port is used by backup.
 		s.audit = func(context.Context, Event) error { return ErrGatewayAudit }
 	}
-	server := startPublicFixture(t, s, nil)
+	if server == nil {
+		server = startPublicFixture(t, s, nil)
+	}
 	admission := newAdmissionStoreFixture()
 	start := func() *supervisedRun {
+		if service != nil {
+			return startServiceBackup(t, service, request.Binding.RepositoryID)
+		}
 		if local != nil {
 			return startAuthorized(t, local, nil)
 		}
@@ -136,7 +160,7 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 	if err := os.WriteFile(ca, server.certificate, 0600); err != nil {
 		t.Fatal(err)
 	}
-	env := []string{"RESTIC_REPOSITORY=rest:" + server.URL + access.EndpointPath, "RESTIC_REST_USERNAME=" + backupFixture().Binding.GatewayID.String(),
+	env := []string{"RESTIC_REPOSITORY=rest:" + server.URL + access.EndpointPath, "RESTIC_REST_USERNAME=" + access.Username,
 		"RESTIC_REST_PASSWORD=" + string(access.Password), "RESTIC_CACERT=" + ca}
 	source := filepath.Join(dir, "source")
 	if err := os.Mkdir(source, 0700); err != nil {
@@ -146,7 +170,7 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 	if err := os.WriteFile(filepath.Join(source, filename), []byte(contents), 0600); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := run(env, "backup", "--host", backupFixture().Binding.HostID.String(), source)
+	raw, err := run(env, "backup", "--host", request.Binding.HostID.String(), source)
 	if err != nil {
 		t.Fatal("pinned backup through guarded TLS endpoint failed")
 	}
@@ -184,14 +208,14 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 	}
 	if local != nil {
 		finishSupervised(t, op)
-		assertSupervisorClean(t, dir, runtimeRoot, backupFixture())
+		assertSupervisorClean(t, dir, runtimeRoot, request)
 		op = start()
 		access = waitAccess(t, op)
 		env[2] = "RESTIC_REST_PASSWORD=" + string(access.Password)
 		if os.WriteFile(filepath.Join(source, filename), []byte("second local backup fixture\n"), 0600) != nil {
 			t.Fatal("second source")
 		}
-		if _, err := run(env, "backup", "--host", backupFixture().Binding.HostID.String(), source); err != nil {
+		if _, err := run(env, "backup", "--host", request.Binding.HostID.String(), source); err != nil {
 			t.Fatal("second pinned backup under the same accepted grant failed")
 		}
 		raw, err = run(env, "snapshots")
@@ -200,6 +224,10 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 		}
 		if err != nil || json.Unmarshal(raw, &second) != nil || len(second) != 2 {
 			t.Fatal("sequential backup snapshots missing")
+		}
+		raw, err = run(env, "dump", "latest", filepath.Join(source, filename))
+		if err != nil || string(raw) != "second local backup fixture\n" {
+			t.Fatal("second backup readback mismatch")
 		}
 		collectLocalAudits()
 		if len(cleanupSessions) != 2 {
@@ -244,7 +272,7 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 		if err != nil {
 			t.Fatal("invalid fixture request")
 		}
-		r.SetBasicAuth(backupFixture().Binding.GatewayID.String(), string(access.Password))
+		r.SetBasicAuth(access.Username, string(access.Password))
 		resp, err := client.Do(r)
 		if err != nil {
 			t.Fatal("gateway request failed")
@@ -287,13 +315,22 @@ func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 	}
 	finishSupervised(t, op)
 	if local != nil {
-		local.Close()
 		collectLocalAudits()
+		if service != nil {
+			if service.Close() != nil { t.Fatal("pinned service shutdown failed") }
+			r := serviceConfig.Repositories[0]
+			queue, err = gatewaypending.Recover(r.QueueDirectory, r.Binding, [32]byte(serviceConfig.RecipientPublic), pendingSource,
+				central.Public().(ed25519.PublicKey), gatewaypending.Limits{MaxBytes: serviceConfig.MaxBytes, MaxRecords: serviceConfig.MaxRecords})
+			if err != nil { t.Fatal("pinned service evidence recovery failed") }
+			defer queue.Close()
+		} else {
+			local.Close()
+		}
 		if _, _, err := queue.Tail(); err != nil || admission.releases != 0 {
 			t.Fatal("local cleanup released a central fence or lost pending data")
 		}
 	} else if admission.releases != 1 {
 		t.Fatal("successful pinned backup did not release admission")
 	}
-	assertSupervisorClean(t, dir, runtimeRoot, backupFixture())
+	assertSupervisorClean(t, dir, runtimeRoot, request)
 }
