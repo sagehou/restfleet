@@ -81,6 +81,13 @@ func TestCrossUIDMaterialReplayIsolation(t *testing.T) {
 		t.Fatal("pending fixture key")
 	}
 	defer clear(pending[:])
+	// The trusted fixture coordinator installs ONLY the central public pin in
+	// Gateway's private directory; source generation remains inside Gateway.
+	pinPath := filepath.Join(root, "gateway-private", "center.pub")
+	if os.WriteFile(pinPath, []byte(base64.StdEncoding.EncodeToString(public)), 0600) != nil ||
+		os.Chown(pinPath, crossGateway, crossGroup) != nil {
+		t.Fatal("independent protected central public pin")
+	}
 	id := uuid.Must(uuid.NewV7())
 	binding := security.GatewayAuthorizationBinding{AdmissionID: id, Owner: id, RuntimeID: id, AgentID: id,
 		HostID: id, RepositoryID: id, GatewayID: id, StorageCredentialID: id, DeliveryID: id,
@@ -140,7 +147,7 @@ func TestCrossUIDMaterialReplayIsolation(t *testing.T) {
 			t.Fatal("isolated service did not join")
 		}
 	}
-	gatewayInput, gatewayDone := start("gateway", crossGateway, crossConfig{Root: root, Binding: binding, CenterPin: public})
+	gatewayInput, gatewayDone := start("gateway", crossGateway, crossConfig{Root: root, Binding: binding})
 	waitPath(filepath.Join(root, "gateway-ipc", "material.sock"))
 	source, err := os.ReadFile(filepath.Join(root, "gateway-ipc", "source.pub"))
 	if err != nil || len(source) != ed25519.PublicKeySize {
@@ -190,19 +197,22 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 	}
 	switch role {
 	case "gateway":
-		if os.Geteuid() != crossGateway || len(c.CenterKey) != 0 || len(c.PendingKey) != 0 {
+		if os.Geteuid() != crossGateway || len(c.CenterKey) != 0 || len(c.PendingKey) != 0 || len(c.CenterPin) != 0 {
 			t.Fatal("central secrets reached Gateway")
 		}
-		public, source, err := ed25519.GenerateKey(rand.Reader)
+		public, err := security.CreateGatewaySource(privatePath("gateway", "source"))
 		if err != nil {
 			t.Fatal("local source key")
 		}
+		source, centralPin, err := security.LoadGatewayTrust(privatePath("gateway", "source"), privatePath("gateway", "center.pub"))
+		if err != nil || !bytes.Equal(source.Public().(ed25519.PublicKey), public) {
+			t.Fatal("protected source and independent center pin loading")
+		}
 		defer clear(source)
-		if os.WriteFile(privatePath("gateway", "source"), []byte(base64.StdEncoding.EncodeToString(source.Seed())), 0600) != nil ||
-			os.WriteFile(filepath.Join(c.Root, "gateway-ipc", "source.pub"), public, 0644) != nil {
+		if os.WriteFile(filepath.Join(c.Root, "gateway-ipc", "source.pub"), public, 0644) != nil {
 			t.Fatal("local source provisioning")
 		}
-		receiver, err := NewMaterialReceiver(c.Binding, source, c.CenterPin)
+		receiver, err := NewMaterialReceiverFromFiles(c.Binding, privatePath("gateway", "source"), privatePath("gateway", "center.pub"))
 		if err != nil {
 			t.Fatal("receiver")
 		}
@@ -221,7 +231,7 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 			if !bytes.Equal(m.Config, []byte("cross-uid-secret-canary")) {
 				return nil, ErrChannel
 			}
-			queue, err = Create(privatePath("gateway", "queue"), c.Binding, m.PendingRecipient, source, c.CenterPin, Limits{MaxBytes: 2 << 20, MaxRecords: 4})
+			queue, err = Create(privatePath("gateway", "queue"), c.Binding, m.PendingRecipient, source, centralPin, Limits{MaxBytes: 2 << 20, MaxRecords: 4})
 			if err != nil {
 				return nil, ErrQueue
 			}
@@ -262,6 +272,7 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 			clear(loaded)
 		}
 		assertPrivate("gateway", "source")
+		assertPrivate("gateway", "center.pub")
 		if err := os.Remove(materialPath); !errors.Is(err, os.ErrPermission) {
 			t.Fatal("center could replace Gateway socket")
 		}
@@ -324,6 +335,7 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 			t.Fatal("wrong third UID")
 		}
 		assertPrivate("gateway", "source")
+		assertPrivate("gateway", "center.pub")
 		assertPrivate("center", "signing")
 		assertPrivate("center", "pending")
 		if err := os.Remove(replayPath); !errors.Is(err, os.ErrPermission) {

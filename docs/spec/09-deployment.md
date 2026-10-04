@@ -303,7 +303,7 @@ Server 内部回放 listener 默认禁用。`RESTFLEET_GATEWAY_SIGNING_KEY_FILE`
 
 `ControlPlane.GatewayMaterialDelivery` 仅供可信中心协调器使用，不是公共 API。协调器 MUST 提供独立可信 binding/来源 pin，并串行化交付、授权投递及清理；来源私钥与中心验证公钥 MUST 从 Gateway 受保护本地配置取得，不信任 Agent 输入。中心事务最多 3s；交换最多 5s，先验证来源挑战，再提交当前状态核验、单次交付意图与访问审计，最后短时解密并签名加密。失败不回显底层错误或配置。
 
-Gateway 默认监听新建的服务所有 0700 目录内 0600 Unix socket，中心主动连接；双方 MUST 核验预期 SO_PEERCRED UID，中心还 MUST 验证预注册来源签名。原正向测试为同 UID；显式跨 UID 访问见 §7.16，不能据此声称完整生产 UID 隔离。没有进程启动器、独立 pin/source 受保护配置接线或 command 启用选项。
+Gateway 默认监听新建的服务所有 0700 目录内 0600 Unix socket，中心主动连接；双方 MUST 核验预期 SO_PEERCRED UID，中心还 MUST 验证预注册来源签名。原正向测试为同 UID；显式跨 UID 访问见 §7.16，不能据此声称完整生产 UID 隔离。来源创建与独立 pin/source 文件装载见 §7.17；完整可信 binding 配置、来源注册、进程启动器与数据面 command 仍未接线。
 
 帧 MUST 为 ASCII `RFGM`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire，与回放的 `RFGR` 隔离。挑战与回执最多 2048 bytes，材料 wire 最多 512 KiB，config 最多 256 KiB；空帧、错误 runtime、版本或超长帧 MUST 拒绝。
 
@@ -325,7 +325,22 @@ Server/Gateway SHOULD 使用不同的固定非 root UID，管理员 MUST 将两�
 
 共享组 MUST NOT 用于中心 DB/master/signing/接收私钥、Gateway 来源私钥、明文配置和待回写 Queue；它们仍 MUST 在各自服务所有的 0700 私有目录内，以 0400/0600 文件或已有 tmpfs 规则保护。独立挂载中心 secrets，Gateway 不持有中心秘密。没有新的 wire、公共 API、DB schema 或部署服务依赖。
 
-GitHub Actions `gateway-isolation` job 编译 race-enabled 测试二进制并运行 REP-042。root 仅是测试进程启动/权限协调器，三个实际协议进程均为不同非 root UID；Gateway 在自身进程产生来源私钥，中心只获公钥，中心私钥经匿名 stdin 管道单独交给中心。测试核验加密材料/签名回放与确认、借用明文清零、跨服务私钥读取拒绝、socket 替换拒绝和同组第三 UID 拒绝；准入/DB 事务仍由既有集成测试覆盖。开发工作区 MUST NOT 执行该 job 的编译或进程测试。`4c9285c` 的 Actions 验收已通过，后续 MUST 以当前 head 检查为准；生产身份装载/运行协调、续期/吊销、恢复、command/readiness、rotation/READY、真实云端和 AGT-005 仍未完成。
+GitHub Actions `gateway-isolation` job 编译 race-enabled 测试二进制并运行 REP-042。root 仅是测试进程启动/权限协调器，三个实际协议进程均为不同非 root UID；Gateway 在自身进程产生来源私钥，中心只获公钥，中心私钥经匿名 stdin 管道单独交给中心。测试核验加密材料/签名回放与确认、借用明文清零、跨服务私钥读取拒绝、socket 替换拒绝和同组第三 UID 拒绝；准入/DB 事务仍由既有集成测试覆盖。开发工作区 MUST NOT 执行该 job 的编译或进程测试。`4c9285c` 的 Actions 验收已通过，后续 MUST 以当前 head 检查为准；完整生产信任配置/运行协调、续期/吊销、恢复、数据面 command/readiness、rotation/READY、真实云端和 AGT-005 仍未完成。
+
+### 7.17 来源创建与独立公钥 pin 文件装载（ADR-0024）
+
+Gateway 身份操作 MUST 以其服务 UID 执行，仅处理本地受保护文件，不访问 DB 或接收云端材料。管理员 MUST 预先准备服务所有 0700 私有持久目录，祖先由可信管理员维护；此目录 MUST 与共享 IPC 目录和 Queue 分开。开发工作区 MUST NOT 执行以下命令或生成真实身份，它们只用于 Actions 验收及正式部署：
+
+```text
+restfleet-gateway source-init --source-key-file /var/lib/restfleet-gateway/identity/source.seed
+restfleet-gateway source-public --source-key-file /var/lib/restfleet-gateway/identity/source.seed
+```
+
+`source-init` MUST 仅创建新 Ed25519 seed，写入 0600、标准 base64 32-byte seed 加换行；排他 pending 文件、文件/目录 fsync、无覆盖 Link 发布及最终目录 fsync 全部成功后，才输出标准 base64 32-byte 公钥。旧目标、symlink、损坏/不确定文件及重复初始化 MUST 拒绝。失败 MUST 保留私有证据，不能自动删 pending/覆盖身份；并发已完成后本次仍未写入私钥的空 reservation 可回收。`source-public` 只导出已有身份公钥，不自动创建、修复、恢复授权或确认 fence 清理。
+
+中心签名公钥 MUST 从可信管理员取得，独立配置到 Gateway 私有目录内的 0400/0600 文件，内容为标准 base64 32-byte Ed25519 **公钥**，不能复制中心 seed/私钥。`LoadGatewayTrust` 与 `NewMaterialReceiverFromFiles` MUST 核验文件与目录的 canonical 路径、精确服务 UID/权限、regular/单链接及大小，拒绝特殊权限、symlink/hardlink、pending 痕迹和同一 seed 文件充当 pin。初始化 wire 仍不能选择验证信任；receiver 保持原单次生命周期，加载私钥副本在复制后清零。生成成功/公钥导出/加载均不代表来源已注册、可信 binding 已确认或数据面可运行。
+
+REP-043–044 MUST 在 Actions 运行。跨 UID 夹具由可信测试协调器独立安装公钥 pin，Gateway 子进程使用上述生产文件创建/装载 API；私钥不通过共享目录、argv、环境变量或中心进程。该验收不替代生产配置装载、来源注册、启动协调、续期/吊销、Agent 会话能力、恢复、数据面 command/readiness、rotation/READY、REP-016 或 AGT-005。
 
 ## 8. Native Agent 安装
 

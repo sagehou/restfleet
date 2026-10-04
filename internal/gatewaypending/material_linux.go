@@ -30,6 +30,18 @@ type MaterialReceiver struct {
 	recipient [32]byte
 }
 
+// NewMaterialReceiverFromFiles obtains trust from protected local provisioning,
+// never from the initialization peer. It clears the loaded private copy after
+// the receiver copies it; the receiver keeps its existing single-use lifecycle.
+func NewMaterialReceiverFromFiles(binding security.GatewayAuthorizationBinding, sourceFile, centralPinFile string) (*MaterialReceiver, error) {
+	source, central, err := security.LoadGatewayTrust(sourceFile, centralPinFile)
+	if err != nil {
+		return nil, ErrChannel
+	}
+	defer clear(source)
+	return NewMaterialReceiver(binding, source, central)
+}
+
 func NewMaterialReceiver(binding security.GatewayAuthorizationBinding, source ed25519.PrivateKey, central ed25519.PublicKey) (*MaterialReceiver, error) {
 	if binding.Validate() != nil || len(source) != 64 || len(central) != 32 {
 		return nil, ErrChannel

@@ -164,13 +164,15 @@
 
 第十七批接入中心授权决定事务与提交后签名（schema 12 / ADR-0019）：追加历史、精确幂等/revision CAS、原占用期限内续期、明确吊销与在线材料拒绝，保留连续 fence。三后端、并发、绑定/状态、审计回滚/到期与迁移负向测试交 CI 验证。密钥生产装载、独立通道、可信恢复/回写、command/readiness 与 AGT-005 仍待完成。
 
-第十八批（本分支，待审查）实现独立来源签名、公钥加密与有界 fsync 待回写区，以及中央有序幂等审计/token-only 加密 CAS（schema 13 / ADR-0020）。受保护本地回写 listener 和中心私钥文件装载已接入 Server；Gateway 审计/运行 watcher 经现有 supervisor 测试验证。重启只回放、不恢复授权/数据面，未封存来源保留 fence；新增 REP-031–034。授权/材料及 Agent 会话能力的生产通道、可信清理恢复、command/readiness、rotation/READY 与 AGT-005 仍未完成。
+第十八批（#51，已合并）实现独立来源签名、公钥加密与有界 fsync 待回写区，以及中央有序幂等审计/token-only 加密 CAS（schema 13 / ADR-0020）。受保护本地回写 listener 和中心私钥文件装载已接入 Server；Gateway 审计/运行 watcher 经现有 supervisor 测试验证。重启只回放、不恢复授权/数据面，未封存来源保留 fence；新增 REP-031–034。授权/材料及 Agent 会话能力的生产通道、可信清理恢复、command/readiness、rotation/READY 与 AGT-005 仍未完成。
 
-第十九批（本地开发，待审查）连接签名授权、待回写 Queue 与既有 supervisor 的内部会话生命周期（ADR-0021 / REP-035–037）：同一唯一来源 owner 连续备份并保留已接受 token/revision，每次转发前检查授权及容量，吊销/到期/时钟/持久化失败取消并等待清理。失败不恢复、Close 不释放中心 fence，原在线入口不变。固定二进制 TLS 套件同时覆盖在线和本地签名授权两条路径；来源/材料交付仍用明确夹具，不代表生产通道、可信恢复、READY 或 AGT-005 完成。
+第十九批（#51，已合并）连接签名授权、待回写 Queue 与既有 supervisor 的内部会话生命周期（ADR-0021 / REP-035–037）：同一唯一来源 owner 连续备份并保留已接受 token/revision，每次转发前检查授权及容量，吊销/到期/时钟/持久化失败取消并等待清理。失败不恢复、Close 不释放中心 fence，原在线入口不变。固定二进制 TLS 套件同时覆盖在线和本地签名授权两条路径；来源/材料交付仍用明确夹具，不代表生产通道、可信恢复、READY 或 AGT-005 完成。
 
-第二十批（本地开发，待审查）增加来源签名 fresh challenge、中心加密材料、单次 Unix 初始化与 owner 安装（schema 14 / ADR-0022 / REP-038–040）。当前身份/ACK/来源/revision/最新授权与单次意图及访问审计原子提交；提交后失败或回执丢失不重发、不释放 fence。固定真实引擎的本地授权路径经此通道初始化，三后端事务用真实 PostgreSQL 验证。同 UID 测试不代表生产 UID 隔离、受保护 pin/source 装载或 command 完成；生产协调、续期/吊销、全局离线审计、Agent 能力、可信恢复、rotation/READY、真实云和 AGT-005 仍待完成。
+第二十批（#51，已合并）增加来源签名 fresh challenge、中心加密材料、单次 Unix 初始化与 owner 安装（schema 14 / ADR-0022 / REP-038–040）。当前身份/ACK/来源/revision/最新授权与单次意图及访问审计原子提交；提交后失败或回执丢失不重发、不释放 fence。固定真实引擎的本地授权路径经此通道初始化，三后端事务用真实 PostgreSQL 验证。同 UID 测试不代表生产 UID 隔离、受保护 pin/source 装载或 command 完成；生产协调、续期/吊销、全局离线审计、Agent 能力、可信恢复、rotation/READY、真实云和 AGT-005 仍待完成。
 
-第二十一批（#51，待审查）增加显式共享组的跨 UID 材料/回写通道（ADR-0023 / REP-041–042），中心 replay 配置精确 peer UID/GID；私有默认与签名/加密协议保持。`4c9285c` 的 Actions 九项检查全通过，独立 job 使用两个非 root 服务及同组第三用户验证私钥/目录/socket 隔离；开发环境只编辑源码。首轮发现的 Web 高危传递依赖通过 Actions 生成兼容锁文件修复，并增加原生 npm audit 门禁；最终以 #51 当前 head 为准，未合并不计入 main 完成进度。生产身份装载、启动协调及 M4 其他退出条件继续待完成。
+第二十一批（#51，已合并）增加显式共享组的跨 UID 材料/回写通道（ADR-0023 / REP-041–042），中心 replay 配置精确 peer UID/GID；私有默认与签名/加密协议保持。最终 head `08b1ebc` 的 Actions 十项全通过，独立 job 使用两个非 root 服务及同组第三用户验证私钥/目录/socket 隔离；开发环境只编辑源码。首轮发现的 Web 高危传递依赖已兼容修复，原生 npm audit 门禁报告零漏洞。合并 commit 为 `2fbe498`；完整生产信任配置、启动协调及 M4 其他退出条件继续待完成。
+
+第二十二批（本分支，待 Actions 验证）接入来源 seed 的本地无覆盖可靠创建、source-public 导出与独立中心公钥 pin 文件装载（ADR-0024 / REP-043–044）。复用 protected reader / MaterialReceiver，补充特殊权限拒绝和可清零解码；跨 UID 套件走生产文件 API。身份命令不启动数据面、不注册来源、不确认 binding 或释放 fence；完整运行配置/协调、续期/吊销、全局离线审计、Agent 能力、恢复、readiness、rotation/READY、真实云和 AGT-005 继续待完成。
 
 ### Goal
 
@@ -195,7 +197,7 @@
 
 ### Tests/Exit
 
-- REP-001–042；
+- REP-001–044；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

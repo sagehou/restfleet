@@ -1,20 +1,21 @@
 # 2026-10-03 开发进度与方向复核
 
-评估基线为已合并 `main`：`da0d92f`。此前未合并、未推送的开发分支与本地改动已丢弃；不计入完成进度。Dependabot 的 #38–41、#43–50 共 12 个 PR 已合并，#42 被后续更新取代关闭，复核时没有开放的依赖 PR。React/React DOM 已配对升级并分组更新，依赖主分支 CI 八项检查通过。
+初始评估基线为已合并 `main`：`da0d92f`；2026-10-04 更新基线为 #51 合并后的 `2fbe498`。此前未合并、未推送的旧开发分支与本地改动已丢弃。Dependabot 的 #38–41、#43–50 共 12 个 PR 已合并，#42 被后续更新取代关闭。React/React DOM 已配对升级并分组更新；#51 另外修复 Web 高危传递依赖并增加 npm audit 门禁，最终 head 十项 Actions 全通过、audit 零漏洞。
 
 | 范围 | 当前证据与状态 |
 |---|---|
 | M0–M3 | 计划标记完成，代码已合并：骨架/CI、认证、Host/enrollment/mTLS、心跳/inventory/基础 DesiredState。 |
 | M4 | 进行中。存储凭据、三后端显式校验、初始化任务、Agent 仓库凭据 ACK、安全 Gateway 会话/supervisor/TLS、占用 fence、在线材料/审计、签名授权历史已合并。 |
-| 本批 M4 开发分支 | 加密有界待回写区、独立来源认证、可靠精确确认、中央有序幂等审计/token CAS、内部 Unix 回放 listener 与文件密钥加载；schema 13 / ADR-0020 / REP-031–034。进入完成进度前仍需审查合并。 |
-| 后续本地 M4 开发 | 将签名授权/待回写接入 supervisor 的唯一 owner 生命周期；连续备份维持 token revision、逐次转发核验、吊销/到期/容量取消及 join；ADR-0021 / REP-035–037。固定真实二进制走在线与本地签名两条测试路径，生产交付通道仍未完成，不计入已合并进度。 |
-| 最新本地 M4 开发 | 来源签名挑战、中心加密材料与单次 Unix owner 安装；schema 14 / ADR-0022 / REP-038–040。事务提交后不重发，回执未知保留 fence，Close/失败清理；真实 DB 与引擎覆盖内部通道。生产 pin/source 配置与 UID 隔离、运行协调、command 尚未完成，不计入已合并进度。 |
-| 跨 UID 接线（#51，待审查） | 显式共享组、精确 peer UID、0710/0660 socket 策略及 Server replay 配置；ADR-0023 / REP-041–042。`4c9285c` 的 Actions 九项检查全通过，包含非 root 双进程及同组第三 UID 负向验收。首轮发现的 Web 高危传递依赖已由 Actions 生成兼容修复，增加 npm audit 门禁，最终以当前 head 检查为准；未合并不计入 main 完成进度。生产身份/启动协调仍待接线。 |
+| 加密回写（#51，已合并） | 加密有界待回写区、独立来源认证、可靠精确确认、中央有序幂等审计/token CAS、内部 Unix 回放 listener 与文件密钥加载；schema 13 / ADR-0020 / REP-031–034。 |
+| 本地授权 owner（#51，已合并） | 将签名授权/待回写接入 supervisor 的唯一 owner 生命周期；连续备份维持 token revision、逐次转发核验、吊销/到期/容量取消及 join；ADR-0021 / REP-035–037。固定真实二进制走在线与本地签名两条路径，生产运行协调仍未完成。 |
+| 单次材料初始化（#51，已合并） | 来源签名挑战、中心加密材料与单次 Unix owner 安装；schema 14 / ADR-0022 / REP-038–040。事务提交后不重发，回执未知保留 fence，Close/失败清理；真实 DB 与引擎覆盖内部通道，完整生产配置/运行协调仍未完成。 |
+| 跨 UID 接线（#51，已合并） | 显式共享组、精确 peer UID、0710/0660 socket 策略及 Server replay 配置；ADR-0023 / REP-041–042。最终 head `08b1ebc` 十项 Actions 全通过，含非 root 双进程及同组第三 UID 验收；npm audit 零漏洞。 |
+| 来源文件装载（当前分支，待 CI） | 来源 seed 本地无覆盖可靠创建与独立中心公钥 pin 文件装载；ADR-0024 / REP-043–044。CLI 只初始化/导出公钥，跨 UID 套件走生产文件 API；尚未合并，完整 binding 配置/来源注册/启动协调仍待完成。 |
 | M5–M6 | Template/Plan、本地 scheduler 和实际 Agent backup 执行主链路尚未交付；基础消息/Operation/jobs 能复用，不能据此算作备份可用。 |
 | M7–M11 | Backup Health、Snapshot browser、下载、staging restore、中央 retention/maintenance 的完整业务链路尚未交付。 |
 | M12 | CI、日志脱敏和审计链有基础；通知、诊断、灾备/升级和正式发布的全量验收尚未完成。 |
 
-当前不能作为生产备份系统发布。`cmd/restfleet-gateway` 仍只输出版本；仓库初始化成功或 Agent ACK 保持 `PROVISIONING`，不是 `READY`。内部回放 listener 和单次材料初始化接缝不能替代生产协调、受保护信任配置和数据面启动。模拟与离线二进制测试也不能替代 REP-016 三个真实后端的人工证据。
+当前不能作为生产备份系统发布。已合并的 Gateway command 只输出版本；当前分支增加身份创建/公钥导出，仍不启动数据面。仓库初始化成功或 Agent ACK 保持 `PROVISIONING`，不是 `READY`。内部回放 listener、文件密钥装载和单次材料初始化接缝不能替代完整可信 binding 配置、来源注册、生产协调和数据面启动。模拟与离线二进制测试也不能替代 REP-016 三个真实后端的人工证据。
 
 开发顺序 MUST 继续遵守一次一个 milestone：
 

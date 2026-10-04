@@ -20,7 +20,7 @@ func TestProtectedKeyRejectsSymlinksPermissionsLinksFIFOAndContents(t *testing.T
 	if err != nil || !bytes.Equal(got, key) {
 		t.Fatal("valid key")
 	}
-	for _, mode := range []os.FileMode{0644, 0660, 0700} {
+	for _, mode := range []os.FileMode{0644, 0660, 0700, 0600 | os.ModeSetuid, 0600 | os.ModeSetgid, 0600 | os.ModeSticky} {
 		if os.Chmod(path, mode) != nil {
 			t.Fatal("chmod")
 		}
