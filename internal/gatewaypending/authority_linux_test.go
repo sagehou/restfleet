@@ -222,6 +222,53 @@ func TestAuthorityAuditFailureStopsListener(t *testing.T) {
 	}
 }
 
+func TestAuthorityShutdownJoinsObservedDenialAudit(t *testing.T) {
+	f := newQueueFixture(t)
+	path := replaySocket(t)
+	l, err := ListenReplay(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	var audited atomic.Bool
+	go func() {
+		done <- ServeAuthorization(ctx, l, uint32(os.Geteuid()), f.binding, f.source, f.confirmation.Public().(ed25519.PublicKey),
+			func(context.Context, []byte) error { return ErrChannel }, func(audit context.Context) error {
+				close(entered)
+				<-release
+				audited.Store(audit.Err() == nil)
+				return audit.Err()
+			})
+	}()
+	wire, err := security.SignGatewayStatement(security.GatewayStatement{Binding: f.binding, Revision: 1,
+		IssuedAt: time.Now().Unix() - 1, ExpiresAt: time.Now().Add(time.Minute).Unix()}, f.confirmation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if SendAuthorization(ctx, path, uint32(os.Geteuid()), f.binding, f.public,
+		func(context.Context) ([]byte, error) { return wire, nil }, func(context.Context) error { return nil }) != ErrChannel {
+		t.Fatal("fixture rejection failed")
+	}
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("rejection audit not entered")
+	}
+	cancel()
+	select {
+	case <-done:
+		t.Fatal("listener returned before denial audit joined")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(release)
+	if <-done != nil || !audited.Load() {
+		t.Fatal("caller cancellation discarded observed denial audit")
+	}
+}
+
 func TestAuthorityChannelRejectsPeerProofBindingAndCallback(t *testing.T) {
 	for _, failure := range []string{"receiver-uid", "sender-uid", "source", "binding", "center-pin", "callback", "cancellation"} {
 		t.Run(failure, func(t *testing.T) {

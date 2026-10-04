@@ -51,7 +51,9 @@ func ServeAuthorization(ctx context.Context, listener *net.UnixListener, centerU
 			return nil
 		}
 		if err != nil {
-			audit, finish := context.WithTimeout(ctx, 3*time.Second)
+			// A caller may cancel immediately after transport failure. Preserve
+			// this observed rejection through the bounded audit and join it.
+			audit, finish := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 			err = denied(audit)
 			finish()
 			if err != nil {
