@@ -199,6 +199,13 @@ Gateway 显式恢复回放验收（ADR-0028）：
 | REP-052 | P0 | 受保护版本配置严格核验规范编码/文件/peer/域/上限，私钥不存在仍能恢复两类既有 Queue；丢失确认保留原 wire，显式精确重放与空队列回放得到相同 tail，取消关闭交换/释放本地 lock 但不恢复 producer。活跃 producer、换 binding/来源/recipient/中心 pin/上限、损坏记录与不确定文件 MUST 拒绝并保留证据，不触发 effect、授权、材料、子进程或 fence release。 |
 | REP-053 | P0 | CLI 经保护配置→恢复→RFGR→精确回执，成功仅输出对应 binding 与已确认 tail；参数/配置/输出错误固定且不回显秘密，输出失败不重复 effect。跨非 root UID 对两个域装载生产配置并恢复回放，同组第三 UID 仍无 effect，私钥/配置/Queue/socket 隔离保持。 |
 
+Gateway 启动等待与拒绝审计验收（ADR-0029）：
+
+| ID | 优先级 | 场景与预期 |
+|---|---|---|
+| REP-054 | P0 | 显式初始化等待大于零且最多 5min；延后超过原 5s 的中心连接仍完成原认证交换，Accept 后交换最多 5s，父取消/Close 同时约束两个阶段。非法参数、等待超时和交换失败消费接收器、关闭 listener、清零私钥；不自动重试、不释放 fence。原 Receive 继续总 5s 上限，UID/pin/帧/密文和单次意图负向边界不变。 |
+| REP-055 | P0 | 接收等待/交换超时、Close 和发送取消后已观察拒绝使用独立最多 3s 的有效审计 context；Close 和返回等待 callback/rollback 退出再清零，不因父 context 取消丢观察，不回显秘密或原始错误，不恢复数据面。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |
