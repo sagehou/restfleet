@@ -442,8 +442,10 @@ func TestOwnerAuthorizationDeliveryCannotExtendFenceOrReviveFailure(t *testing.T
 	statement.Revision++
 	statement.ExpiresAt = time.Now().Add(time.Minute).Unix()
 	wire := statementWire(t, statement, key)
-	if owner.AcceptAuthorization(ctx, wire) != nil || owner.AcceptAuthorization(ctx, wire) != nil {
-		t.Fatal("valid renewal/exact replay rejected")
+	for range 2 {
+		if owner.AcceptAuthorization(ctx, wire) != nil {
+			t.Fatal("valid renewal/exact replay rejected")
+		}
 	}
 	tooLong := statement
 	tooLong.Revision++
@@ -488,21 +490,32 @@ func TestAuthorityChannelRevocationCancelsActiveOwnerAndJoinsCleanup(t *testing.
 	// This test isolates the local channel/owner seam. The real DB tests check
 	// the independently registered source pin before any central decision.
 	public, source, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer clear(source)
 	dir, err := os.MkdirTemp("", "rfg-owner-authority-")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer os.RemoveAll(dir)
 	path := filepath.Join(dir, "authority.sock")
 	l, err := gatewaypending.ListenReplay(path)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
 		done <- gatewaypending.ServeAuthorization(ctx, l, uint32(os.Geteuid()), statement.Binding, source, key.Public().(ed25519.PublicKey),
 			owner.AcceptAuthorization, func(context.Context) error { return nil })
 	}()
-	defer func() { cancel(); if <-done != nil { t.Error("authority listener exit") } }()
+	defer func() {
+		cancel()
+		if <-done != nil {
+			t.Error("authority listener exit")
+		}
+	}()
 	statement.Revision++
 	statement.Revoked, statement.ExpiresAt = true, 0
 	wire := statementWire(t, statement, key)
@@ -511,11 +524,19 @@ func TestAuthorityChannelRevocationCancelsActiveOwnerAndJoinsCleanup(t *testing.
 		t.Fatal("revocation delivery failed")
 	}
 	waitSupervised(t, op)
-	if op.err == nil { t.Fatal("active backup survived delivered revocation") }
-	select { case <-owner.watchDone: case <-time.After(5*time.Second): t.Fatal("owner cleanup did not join") }
+	if op.err == nil {
+		t.Fatal("active backup survived delivered revocation")
+	}
+	select {
+	case <-owner.watchDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("owner cleanup did not join")
+	}
 	if len(owner.raw) != 0 || len(bytes.Trim(borrowed, "\x00")) != 0 || queue.CheckProducer(statement.Binding, owner.source, owner.authorization.key) != gatewaypending.ErrQueue {
 		t.Fatal("delivered revocation retained raw material or writable queue")
 	}
-	if supervisorRequest(supervisor, access, "config").Code == http.StatusOK { t.Fatal("revoked session still routes") }
+	if supervisorRequest(supervisor, access, "config").Code == http.StatusOK {
+		t.Fatal("revoked session still routes")
+	}
 	assertSupervisorClean(t, state, root, backupFixture())
 }

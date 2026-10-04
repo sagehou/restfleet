@@ -272,13 +272,17 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 						return ErrChannel
 					}
 					deliveries = append(deliveries, bytes.Clone(wire))
-					if s.Revoked { close(revoked) }
+					if s.Revoked {
+						close(revoked)
+					}
 					return nil
 				}, func(context.Context) error { authorityDenials.Add(1); return nil }, crossGroup)
 		}()
 		defer func() {
 			cancel()
-			if <-authorityDone != nil { t.Error("authority listener did not join") }
+			if <-authorityDone != nil {
+				t.Error("authority listener did not join")
+			}
 			if len(deliveries) != 3 || !bytes.Equal(deliveries[0], deliveries[1]) || authorityDenials.Load() != 1 {
 				t.Error("cross-UID authority replay/revocation/denial failed")
 			}
@@ -367,9 +371,13 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 		}
 		now := time.Now().Unix()
 		grant, err := security.SignGatewayStatement(security.GatewayStatement{Binding: c.Binding, Revision: 2, IssuedAt: now - 1, ExpiresAt: now + 60}, c.CenterKey)
-		if err != nil { t.Fatal("fixture grant") }
+		if err != nil {
+			t.Fatal("fixture grant")
+		}
 		revoke, err := security.SignGatewayStatement(security.GatewayStatement{Binding: c.Binding, Revision: 3, IssuedAt: now - 1, Revoked: true}, c.CenterKey)
-		if err != nil { t.Fatal("fixture revocation") }
+		if err != nil {
+			t.Fatal("fixture revocation")
+		}
 		for _, wire := range [][]byte{grant, grant, revoke} {
 			if SendAuthorization(ctx, authorityPath, crossGateway, c.Binding, c.SourcePin,
 				func(context.Context) ([]byte, error) { return wire, nil }, denied, crossGroup) != nil {

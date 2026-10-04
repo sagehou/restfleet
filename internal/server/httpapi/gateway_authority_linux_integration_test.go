@@ -60,12 +60,14 @@ func TestCentralAuthorityDeliveryRenewsReplaysAndRevokesDisabledIdentity(t *test
 					}, f.control.RecordGatewayAuthorityDenied)
 			}()
 			var joinOnce sync.Once
-			join := func() { joinOnce.Do(func() {
-				cancel()
-				if <-done != nil {
-					t.Error("authority server did not join")
-				}
-			}) }
+			join := func() {
+				joinOnce.Do(func() {
+					cancel()
+					if <-done != nil {
+						t.Error("authority server did not join")
+					}
+				})
+			}
 			defer join()
 			r := domain.GatewayDecisionRequest{ID: uuid.Must(uuid.NewV7()), AdmissionID: startup.Binding.AdmissionID, Owner: startup.Binding.Owner,
 				RuntimeID: startup.Binding.RuntimeID, ExpectedRevision: 1, Lifetime: 5 * time.Minute}
@@ -101,25 +103,35 @@ func TestCentralAuthorityDeliveryRejectsBeforeNewDecisionOrMaterial(t *testing.T
 			f, startup := startupIntegrationFixture(t, "onedrive")
 			if sent, received := startupExchange(t, f, startup, func(context.Context, security.GatewayMaterial) (func(), error) {
 				return func() {}, nil
-			}); sent != nil || received != nil { t.Fatal("startup fixture") }
+			}); sent != nil || received != nil {
+				t.Fatal("startup fixture")
+			}
 			dir, err := os.MkdirTemp("", "rfg-authority-negative-")
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer os.RemoveAll(dir)
 			path := filepath.Join(dir, "authority.sock")
 			l, err := gatewaypending.ListenReplay(path)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			ctx, cancel := context.WithCancel(context.Background())
 			binding, source, pin, uid := startup.Binding, f.source, f.sourcePublic, uint32(os.Geteuid())
 			r := domain.GatewayDecisionRequest{ID: uuid.Must(uuid.NewV7()), AdmissionID: binding.AdmissionID, Owner: binding.Owner,
 				RuntimeID: binding.RuntimeID, ExpectedRevision: 1, Lifetime: time.Minute}
 			switch failure {
-			case "source": pin = f.centralPublic
+			case "source":
+				pin = f.centralPublic
 			case "stored-source":
 				pin, source, err = ed25519.GenerateKey(rand.Reader)
 				defer clear(source)
-			case "binding": binding.HostID = uuid.Must(uuid.NewV7())
-			case "uid": uid++
-			case "revision": r.ExpectedRevision = 2
+			case "binding":
+				binding.HostID = uuid.Must(uuid.NewV7())
+			case "uid":
+				uid++
+			case "revision":
+				r.ExpectedRevision = 2
 			case "ack":
 				_, err = f.pool.Exec(ctx, "update repository_agent_deliveries set accepted_at=null where id=$1", binding.DeliveryID)
 			case "disabled":
@@ -136,7 +148,11 @@ func TestCentralAuthorityDeliveryRejectsBeforeNewDecisionOrMaterial(t *testing.T
 					}
 				})
 			}
-			if err != nil { cancel(); l.Close(); t.Fatal(err) }
+			if err != nil {
+				cancel()
+				l.Close()
+				t.Fatal(err)
+			}
 			var applied atomic.Int32
 			done := make(chan error, 1)
 			go func() {
@@ -164,15 +180,23 @@ func TestCentralAuthorityLostReceiptReplaysExactCommittedGrant(t *testing.T) {
 	if sent, received := startupExchange(t, f, startup, func(_ context.Context, m security.GatewayMaterial) (func(), error) {
 		var err error
 		f.authorization, err = gateway.NewAuthorization(f.centralPublic, startup.Binding)
-		if err != nil || f.authorization.Accept(m.Statement) != nil { return nil, security.ErrGatewayMaterial }
+		if err != nil || f.authorization.Accept(m.Statement) != nil {
+			return nil, security.ErrGatewayMaterial
+		}
 		return func() {}, nil
-	}); sent != nil || received != nil { t.Fatal("startup fixture") }
+	}); sent != nil || received != nil {
+		t.Fatal("startup fixture")
+	}
 	dir, err := os.MkdirTemp("", "rfg-authority-receipt-")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer os.RemoveAll(dir)
 	path := filepath.Join(dir, "authority.sock")
 	l, err := gatewaypending.ListenReplay(path)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer l.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -181,27 +205,44 @@ func TestCentralAuthorityLostReceiptReplaysExactCommittedGrant(t *testing.T) {
 	go func() {
 		for attempt := range 2 {
 			conn, err := l.AcceptUnix()
-			if err != nil { done <- err; return }
-			_ = conn.SetDeadline(time.Now().Add(3*time.Second))
+			if err != nil {
+				done <- err
+				return
+			}
+			_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
 			challenge, err := security.NewGatewayAuthorityChallenge(startup.Binding)
-			if err != nil { conn.Close(); done <- err; return }
+			if err != nil {
+				conn.Close()
+				done <- err
+				return
+			}
 			proof, err := security.SignGatewayAuthorityChallenge(challenge, f.source)
-			if err == nil { err = writeAuthorityFixtureFrame(conn, startup.Binding.RuntimeID, proof) }
+			if err == nil {
+				err = writeAuthorityFixtureFrame(conn, startup.Binding.RuntimeID, proof)
+			}
 			var header [28]byte
-			if err == nil { _, err = io.ReadFull(conn, header[:]) }
+			if err == nil {
+				_, err = io.ReadFull(conn, header[:])
+			}
 			size := binary.BigEndian.Uint32(header[24:])
 			if err != nil || string(header[:4]) != "RFGA" || size == 0 || size > security.MaxGatewayStatementSize {
-				conn.Close(); done <- security.ErrGatewayAuthority; return
+				conn.Close()
+				done <- security.ErrGatewayAuthority
+				return
 			}
 			wire := make([]byte, size)
 			if _, err = io.ReadFull(conn, wire); err != nil || f.authorization.Accept(wire) != nil {
-				conn.Close(); done <- security.ErrGatewayAuthority; return
+				conn.Close()
+				done <- security.ErrGatewayAuthority
+				return
 			}
 			accepted = append(accepted, bytes.Clone(wire))
 			if attempt == 1 {
 				ack, signErr := security.SignGatewayAuthorityReceipt(security.GatewayAuthorityReceipt{Challenge: challenge, WireHash: security.GatewayPendingHash(wire)}, f.source)
 				if signErr != nil || writeAuthorityFixtureFrame(conn, startup.Binding.RuntimeID, ack) != nil {
-					conn.Close(); done <- security.ErrGatewayAuthority; return
+					conn.Close()
+					done <- security.ErrGatewayAuthority
+					return
 				}
 			}
 			conn.Close() // First accepted statement deliberately loses its receipt.

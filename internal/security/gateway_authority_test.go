@@ -37,7 +37,9 @@ func TestGatewayAuthorityProofAndExactReceiptDomainSeparation(t *testing.T) {
 	}
 	for _, verify := range []func() error{
 		func() error { return VerifyGatewayAuthorityReceipt(ack, other, hash, source) },
-		func() error { return VerifyGatewayAuthorityReceipt(ack, c, GatewayPendingHash([]byte("other-statement")), source) },
+		func() error {
+			return VerifyGatewayAuthorityReceipt(ack, c, GatewayPendingHash([]byte("other-statement")), source)
+		},
 		func() error { return VerifyGatewayAuthorityReceipt(ack, c, hash, central) },
 		func() error { return VerifyGatewayAuthorityReceipt(proof, c, hash, source) },
 	} {
