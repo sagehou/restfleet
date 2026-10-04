@@ -19,22 +19,34 @@ import (
 func globalRecorderFixture(t *testing.T, capacity int) (*GlobalAuditRecorder, *gatewaypending.Queue, ed25519.PublicKey, ed25519.PrivateKey, []byte) {
 	t.Helper()
 	source, key, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer clear(key)
 	_, central, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { clear(central) })
 	recipient, private, err := box.GenerateKey(rand.Reader)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { clear(private[:]) })
 	dir := t.TempDir()
-	if os.Chmod(dir, 0700) != nil { t.Fatal("private queue") }
+	if os.Chmod(dir, 0700) != nil {
+		t.Fatal("private queue")
+	}
 	b := security.GatewayAuditBinding{OriginID: uuid.Must(uuid.NewV7()), RuntimeID: uuid.Must(uuid.NewV7())}
 	q, err := gatewaypending.CreateGlobalAudit(dir, b, *recipient, key, central.Public().(ed25519.PublicKey), gatewaypending.Limits{MaxBytes: 2 << 20, MaxRecords: capacity})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { q.Close() })
 	r, err := NewGlobalAuditRecorder(q, b, source, central.Public().(ed25519.PublicKey))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(r.Close)
 	return r, q, source, central, private[:]
 }
@@ -47,7 +59,9 @@ func TestGlobalRecorderKeepsOnlyFixedUnboundEventsAndSanitizesInvalid(t *testing
 		{Action: "channel_denied", Reason: "material_rejected"},
 		{Action: "channel_denied", Reason: "authority_rejected"},
 	} {
-		if r.Record(context.Background(), event) != nil { t.Fatal("global observation failed") }
+		if r.Record(context.Background(), event) != nil {
+			t.Fatal("global observation failed")
+		}
 	}
 	// A route identity can never be smuggled into this process-only source.
 	if r.Record(context.Background(), Event{Binding: bindingFixture(), Action: "session_start", Reason: "requested"}) != ErrGatewayAudit || r.Ready() {
@@ -56,20 +70,30 @@ func TestGlobalRecorderKeepsOnlyFixedUnboundEventsAndSanitizesInvalid(t *testing
 	count := 0
 	for {
 		wire, err := q.Next()
-		if err != nil { t.Fatal(err) }
-		if wire == nil { break }
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wire == nil {
+			break
+		}
 		opened, openErr := security.OpenGatewayPending(wire, source, private)
 		if openErr != nil || opened.Event.Binding != (domain.GatewayBinding{}) || opened.Config != nil || opened.Header.AuthorizationRevision != 0 || opened.Header.Binding != (security.GatewayAuthorizationBinding{}) {
 			t.Fatal("global event carried repository authority or material")
 		}
 		count++
-		if count == 5 && (opened.Event.Action != "event_rejected" || opened.Event.Reason != "invalid_event") { t.Fatal("invalid event was not sanitized") }
+		if count == 5 && (opened.Event.Action != "event_rejected" || opened.Event.Reason != "invalid_event") {
+			t.Fatal("invalid event was not sanitized")
+		}
 		h := opened.Header
 		ack, err := security.SignGatewayPendingReceipt(security.GatewayPendingReceipt{AuditOriginID: r.binding.OriginID, RuntimeID: r.binding.RuntimeID,
 			Sequence: h.Sequence, RecordID: h.RecordID, WireHash: security.GatewayPendingHash(wire)}, central)
-		if err != nil || q.Acknowledge(ack) != nil { t.Fatal("global acknowledgment") }
+		if err != nil || q.Acknowledge(ack) != nil {
+			t.Fatal("global acknowledgment")
+		}
 	}
-	if count != 5 { t.Fatal("missing global observations") }
+	if count != 5 {
+		t.Fatal("missing global observations")
+	}
 }
 
 func TestGlobalAuditCapacityClockAndShutdownCancelActiveOwner(t *testing.T) {
@@ -82,7 +106,9 @@ func TestGlobalAuditCapacityClockAndShutdownCancelActiveOwner(t *testing.T) {
 			// supplies the same pair through NewSupervisor's constructor.
 			supervisor.audit, supervisor.auditReady = r.Record, r.Ready
 			owner, err := NewAuthorizedBackup(supervisor, authorization, ownedQueue, authorizedOrigin(statement, ownerSource), backupFixture().Config, "encrypted")
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			t.Cleanup(owner.Close)
 			owner.material.Lock()
 			borrowed := owner.raw
@@ -91,26 +117,38 @@ func TestGlobalAuditCapacityClockAndShutdownCancelActiveOwner(t *testing.T) {
 			_ = waitAccess(t, op)
 			switch failure {
 			case "capacity":
-				if r.Record(context.Background(), Event{Action: "denied", Reason: "route_unavailable"}) != nil { t.Fatal("fill global queue") }
+				if r.Record(context.Background(), Event{Action: "denied", Reason: "route_unavailable"}) != nil {
+					t.Fatal("fill global queue")
+				}
 			case "clock":
 				r.mu.Lock()
 				r.clock = func() time.Time { return time.Now().Add(-time.Minute) }
 				r.mu.Unlock()
-			case "closed": r.Close()
-			case "queue-closed": q.Close()
+			case "closed":
+				r.Close()
+			case "queue-closed":
+				q.Close()
 			}
 			waitSupervised(t, op)
-			if op.err == nil { t.Fatal("active owner ignored global audit failure") }
-			if r.Ready() || len(owner.raw) != 0 || len(bytes.Trim(borrowed, "\x00")) != 0 { t.Fatal("global failure retained authorized plaintext") }
+			if op.err == nil {
+				t.Fatal("active owner ignored global audit failure")
+			}
+			if r.Ready() || len(owner.raw) != 0 || len(bytes.Trim(borrowed, "\x00")) != 0 {
+				t.Fatal("global failure retained authorized plaintext")
+			}
 			assertSupervisorClean(t, state, root, backupFixture())
 			if failure == "capacity" {
 				wire, err := q.Next()
 				opened, openErr := security.OpenGatewayPending(wire, source, private)
-				if err != nil || openErr != nil || opened.Header.AuditOrigin != r.binding { t.Fatal("pending global observation lost") }
+				if err != nil || openErr != nil || opened.Header.AuditOrigin != r.binding {
+					t.Fatal("pending global observation lost")
+				}
 				h := opened.Header
 				ack, err := security.SignGatewayPendingReceipt(security.GatewayPendingReceipt{AuditOriginID: r.binding.OriginID, RuntimeID: r.binding.RuntimeID,
 					Sequence: h.Sequence, RecordID: h.RecordID, WireHash: security.GatewayPendingHash(wire)}, central)
-				if err != nil || q.Acknowledge(ack) != nil || r.Ready() { t.Fatal("drain revived failed global recorder") }
+				if err != nil || q.Acknowledge(ack) != nil || r.Ready() {
+					t.Fatal("drain revived failed global recorder")
+				}
 			}
 			statement.Revision++
 			if owner.AcceptAuthorization(context.Background(), statementWire(t, statement, key)) != ErrAuthorization {

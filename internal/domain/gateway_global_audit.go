@@ -13,7 +13,7 @@ var ErrGatewayGlobalAudit = errors.New("gateway global audit unavailable or inco
 // GatewayAuditBinding identifies only a trusted process audit source. It has
 // no Host, Repository, credential, admission or data-plane authority.
 type GatewayAuditBinding struct {
-	OriginID uuid.UUID `json:"origin_id"`
+	OriginID  uuid.UUID `json:"origin_id"`
 	RuntimeID uuid.UUID `json:"runtime_id"`
 }
 
@@ -27,19 +27,19 @@ func (b GatewayAuditBinding) Validate() error {
 }
 
 type GatewayAuditOrigin struct {
-	Binding GatewayAuditBinding
+	Binding   GatewayAuditBinding
 	PublicKey ed25519.PublicKey
 	CreatedAt time.Time
-	ClosedAt *time.Time
+	ClosedAt  *time.Time
 }
 
 type GatewayAuditCommit struct {
-	Binding GatewayAuditBinding
-	RecordID uuid.UUID
-	Sequence int64
+	Binding                GatewayAuditBinding
+	RecordID               uuid.UUID
+	Sequence               int64
 	PreviousHash, WireHash string
-	CreatedAt time.Time
-	Audit AuditEvent
+	CreatedAt              time.Time
+	Audit                  AuditEvent
 }
 
 func GatewayGlobalAudit(event GatewayEvent) (AuditEvent, bool) {

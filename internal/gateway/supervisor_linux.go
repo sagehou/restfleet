@@ -59,14 +59,14 @@ type activeBackup struct {
 // job queue or lease authority. Use ONE supervisor per gateway runtime; close
 // the listener, then this supervisor, then the caller-owned credential runtime.
 type Supervisor struct {
-	mu      sync.Mutex
-	runtime *rclone.Runtime
-	limit   int
-	audit   func(context.Context, Event) error
+	mu         sync.Mutex
+	runtime    *rclone.Runtime
+	limit      int
+	audit      func(context.Context, Event) error
 	auditReady func() bool
-	active  map[uuid.UUID]*activeBackup
-	closed  bool
-	running sync.WaitGroup
+	active     map[uuid.UUID]*activeBackup
+	closed     bool
+	running    sync.WaitGroup
 }
 
 func NewSupervisor(runtime *rclone.Runtime, maxSessions int, audit func(context.Context, Event) error, auditReady ...func() bool) (*Supervisor, error) {
@@ -74,7 +74,9 @@ func NewSupervisor(runtime *rclone.Runtime, maxSessions int, audit func(context.
 		return nil, ErrInvalidSession
 	}
 	s := &Supervisor{runtime: runtime, limit: maxSessions, audit: audit, active: make(map[uuid.UUID]*activeBackup)}
-	if len(auditReady) == 1 { s.auditReady = auditReady[0] }
+	if len(auditReady) == 1 {
+		s.auditReady = auditReady[0]
+	}
 	return s, nil
 }
 

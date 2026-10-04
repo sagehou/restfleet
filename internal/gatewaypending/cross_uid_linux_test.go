@@ -35,12 +35,12 @@ const (
 // shared secrets files or logs. The Gateway creates its own source key locally.
 // This tests Linux isolation and the existing codecs, not central DB admission.
 type crossConfig struct {
-	Root       string
-	Binding    security.GatewayAuthorizationBinding
-	CenterPin  ed25519.PublicKey
-	SourcePin  ed25519.PublicKey
-	CenterKey  ed25519.PrivateKey
-	PendingKey []byte
+	Root        string
+	Binding     security.GatewayAuthorizationBinding
+	CenterPin   ed25519.PublicKey
+	SourcePin   ed25519.PublicKey
+	CenterKey   ed25519.PrivateKey
+	PendingKey  []byte
 	AuditOrigin security.GatewayAuditBinding
 }
 
@@ -252,12 +252,18 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 			t.Fatal("material initialization and clearing")
 		}
 		defer queue.Close()
-		if os.Mkdir(privatePath("gateway", "global-queue"), 0700) != nil { t.Fatal("private global queue") }
+		if os.Mkdir(privatePath("gateway", "global-queue"), 0700) != nil {
+			t.Fatal("private global queue")
+		}
 		globalQueue, err := CreateGlobalAudit(privatePath("gateway", "global-queue"), c.AuditOrigin, queue.identity.Recipient, source, centralPin, Limits{MaxBytes: 2 << 20, MaxRecords: 4})
-		if err != nil { t.Fatal("global queue") }
+		if err != nil {
+			t.Fatal("global queue")
+		}
 		defer globalQueue.Close()
 		if globalQueue.Append(security.GatewayPendingRecord{Header: security.GatewayPendingHeader{CreatedAt: time.Now().Unix()}, Kind: "global_audit",
-			Event: &domain.GatewayEvent{Action: "denied", Reason: "route_unavailable"}}) != nil { t.Fatal("global observation") }
+			Event: &domain.GatewayEvent{Action: "denied", Reason: "route_unavailable"}}) != nil {
+			t.Fatal("global observation")
+		}
 		assertPrivate("center", "signing")
 		assertPrivate("center", "pending")
 		if err := os.Remove(replayPath); !errors.Is(err, os.ErrPermission) {
@@ -339,17 +345,21 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- ServeReplay(ctx, listener, crossGateway, func(_ context.Context, runtime uuid.UUID, wire []byte) ([]byte, error) {
-					r, err := security.OpenGatewayPending(wire, c.SourcePin, c.PendingKey)
-					if err != nil || runtime != c.Binding.RuntimeID || r.Header.Sequence != 1 {
+				r, err := security.OpenGatewayPending(wire, c.SourcePin, c.PendingKey)
+				if err != nil || runtime != c.Binding.RuntimeID || r.Header.Sequence != 1 {
+					return nil, ErrChannel
+				}
+				h := r.Header
+				if r.Kind == "global_audit" {
+					if h.AuditOrigin != c.AuditOrigin || h.Binding != (security.GatewayAuthorizationBinding{}) || effects.Add(1) != 2 {
 						return nil, ErrChannel
 					}
-					h := r.Header
-					if r.Kind == "global_audit" {
-						if h.AuditOrigin != c.AuditOrigin || h.Binding != (security.GatewayAuthorizationBinding{}) || effects.Add(1) != 2 { return nil, ErrChannel }
-						return security.SignGatewayPendingReceipt(security.GatewayPendingReceipt{AuditOriginID: c.AuditOrigin.OriginID, RuntimeID: runtime,
-							Sequence: h.Sequence, RecordID: h.RecordID, WireHash: security.GatewayPendingHash(wire)}, c.CenterKey)
-					}
-					if h.Binding != c.Binding || effects.Add(1) != 1 { return nil, ErrChannel }
+					return security.SignGatewayPendingReceipt(security.GatewayPendingReceipt{AuditOriginID: c.AuditOrigin.OriginID, RuntimeID: runtime,
+						Sequence: h.Sequence, RecordID: h.RecordID, WireHash: security.GatewayPendingHash(wire)}, c.CenterKey)
+				}
+				if h.Binding != c.Binding || effects.Add(1) != 1 {
+					return nil, ErrChannel
+				}
 				return security.SignGatewayPendingReceipt(security.GatewayPendingReceipt{AdmissionID: h.Binding.AdmissionID, RuntimeID: runtime,
 					Sequence: h.Sequence, RecordID: h.RecordID, WireHash: security.GatewayPendingHash(wire)}, c.CenterKey)
 			}, func(context.Context) error { rejections.Add(1); return nil }, crossGroup)

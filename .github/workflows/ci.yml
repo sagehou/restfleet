@@ -33,15 +33,6 @@ jobs:
         with:
           go-version: 1.27.1
           cache: true
-      - name: Prepare global audit formatting patch in Actions
-        run: |
-          gofmt -w cmd/restfleet-server/main.go internal/domain/gateway_audit.go internal/domain/gateway_global_audit.go internal/gateway/authorized_linux.go internal/gateway/supervisor_linux.go internal/gateway/global_audit_linux.go internal/gateway/global_audit_linux_test.go internal/gatewaypending/queue_linux.go internal/gatewaypending/global_audit_linux_test.go internal/gatewaypending/cross_uid_linux_test.go internal/persistence/postgres/store.go internal/persistence/postgres/gateway_global_audit.go internal/security/gateway_pending.go internal/security/gateway_global_audit_test.go internal/server/gateway_global_audit.go internal/server/httpapi/server_integration_test.go internal/server/httpapi/gateway_global_audit_linux_integration_test.go tools/gateway_global_audit_migration_test.go
-          git diff --binary > "${RUNNER_TEMP}/global-audit-format.patch"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: global-audit-format
-          path: ${{ runner.temp }}/global-audit-format.patch
-          retention-days: 1
       - name: Compile race-enabled isolated channel tests
         run: go test -race -c -o "${RUNNER_TEMP}/gatewaypending.test" ./internal/gatewaypending
       - name: Test material, authority and replay channels across non-root service UIDs

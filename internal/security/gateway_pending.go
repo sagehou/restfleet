@@ -167,7 +167,9 @@ func GatewayPendingAuditIdentity(wire []byte) (GatewayAuditBinding, error) {
 	if len(wire) <= 64 || len(wire) > MaxGatewayPendingSize {
 		return GatewayAuditBinding{}, ErrGatewayPending
 	}
-	var outer struct { Header GatewayPendingHeader `json:"header"` }
+	var outer struct {
+		Header GatewayPendingHeader `json:"header"`
+	}
 	if json.Unmarshal(wire[:len(wire)-64], &outer) != nil || outer.Header.Validate() != nil || outer.Header.AuditOrigin.Validate() != nil {
 		return GatewayAuditBinding{}, ErrGatewayPending
 	}
@@ -175,7 +177,9 @@ func GatewayPendingAuditIdentity(wire []byte) (GatewayAuditBinding, error) {
 }
 
 func pendingSignatureContext(h GatewayPendingHeader) string {
-	if h.AuditOrigin != (GatewayAuditBinding{}) { return globalPendingContext }
+	if h.AuditOrigin != (GatewayAuditBinding{}) {
+		return globalPendingContext
+	}
 	return pendingContext
 }
 
@@ -185,7 +189,9 @@ func verifyPendingWire(wire []byte, source ed25519.PublicKey) (gatewayPendingWir
 		return w, ErrGatewayPending
 	}
 	payload := wire[:len(wire)-64]
-	var selector struct { Header GatewayPendingHeader `json:"header"` }
+	var selector struct {
+		Header GatewayPendingHeader `json:"header"`
+	}
 	if json.Unmarshal(payload, &selector) != nil || selector.Header.Validate() != nil ||
 		!ed25519.Verify(source, append([]byte(pendingSignatureContext(selector.Header)), payload...), wire[len(payload):]) ||
 		json.Unmarshal(payload, &w) != nil || len(w.Ciphertext) <= box.AnonymousOverhead {
@@ -238,18 +244,20 @@ func validPendingHash(value string) bool {
 // Receipt is a precise committed record acknowledgement, never a statement
 // that a Gateway process stopped or that an admission can be released.
 type GatewayPendingReceipt struct {
-	AdmissionID uuid.UUID `json:"admission_id"`
-	RuntimeID   uuid.UUID `json:"runtime_id"`
-	Sequence    int64     `json:"sequence"`
-	RecordID    uuid.UUID `json:"record_id"`
-	WireHash    string    `json:"wire_hash"`
+	AdmissionID   uuid.UUID `json:"admission_id"`
+	RuntimeID     uuid.UUID `json:"runtime_id"`
+	Sequence      int64     `json:"sequence"`
+	RecordID      uuid.UUID `json:"record_id"`
+	WireHash      string    `json:"wire_hash"`
 	AuditOriginID uuid.UUID `json:"audit_origin_id,omitzero"`
 }
 
 func (r GatewayPendingReceipt) valid() bool {
 	id := r.AdmissionID
 	if r.AuditOriginID != uuid.Nil {
-		if r.AdmissionID != uuid.Nil { return false }
+		if r.AdmissionID != uuid.Nil {
+			return false
+		}
 		id = r.AuditOriginID
 	}
 	for _, id := range []uuid.UUID{id, r.RuntimeID, r.RecordID} {
@@ -272,7 +280,9 @@ func SignGatewayPendingReceipt(r GatewayPendingReceipt, key ed25519.PrivateKey) 
 }
 
 func receiptSignatureContext(r GatewayPendingReceipt) string {
-	if r.AuditOriginID != uuid.Nil { return globalReceiptContext }
+	if r.AuditOriginID != uuid.Nil {
+		return globalReceiptContext
+	}
 	return receiptContext
 }
 
