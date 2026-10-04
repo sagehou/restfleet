@@ -210,7 +210,7 @@ Gateway 启动等待与拒绝审计验收（ADR-0029）：
 
 | ID | 优先级 | 场景与预期 |
 |---|---|---|
-| REP-056 | P0 | 中心公开 metadata 仅从服务所有 canonical 0700 私有目录的单链接 0400/0600 文件装载；1024 bytes、版本、完整 origin/runtime UUIDv7 和非全零 32-byte 来源公钥严格检查，拒绝未知/重复/遗漏/大小写/null/非规范 JSON、权限、symlink/hardlink/pending 和私钥输入。非法 CLI 参数/输出返回固定错误，无秘密或原始路径/错误。 |
+| REP-056 | P0 | 中心公开 metadata 仅从服务所有 canonical 0700 私有目录的单链接 0400/0600 文件装载；1024 bytes、版本、完整 origin/runtime UUIDv7 和非全零 32-byte 来源公钥严格检查，拒绝未知/重复/遗漏/大小写/null/非规范 JSON、权限、symlink/hardlink/pending 和 64-byte 私钥输入。非法 CLI 参数/输出返回固定错误，无秘密或原始路径/错误。 |
 | REP-057 | P0 | 实际 CLI 经保护 metadata/中心运行配置→DB/schema/审计链核验→原注册事务→仅公开 metadata/接收公钥输出；输出失败保留 committed 来源，精确显式重试不重复审计/改变注册时刻。换来源/runtime、同 runtime 新 origin、封存、无效 schema/审计链/DB 不注册；生产 root 拒绝且不产生 effect。三后端完整数据库从无 grant/material 开始，经生产元数据入口验证 audit-only 注册→Queue→回放，无授权/材料或 fence release。 |
 
 ## 7. Backup 与 Restic 解析
