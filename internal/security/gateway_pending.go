@@ -19,6 +19,10 @@ import (
 const MaxGatewayPendingSize = 512 << 10
 const pendingContext = "restfleet:gateway-pending:v1\x00"
 const receiptContext = "restfleet:gateway-pending-receipt:v1\x00"
+const globalPendingContext = "restfleet:gateway-global-audit:v1\x00"
+const globalReceiptContext = "restfleet:gateway-global-audit-receipt:v1\x00"
+
+type GatewayAuditBinding = domain.GatewayAuditBinding
 
 var ErrGatewayPending = errors.New("gateway pending record unavailable or inconsistent")
 
@@ -29,11 +33,15 @@ type GatewayPendingHeader struct {
 	PreviousHash          string                      `json:"previous_hash"`
 	AuthorizationRevision int64                       `json:"authorization_revision"`
 	CreatedAt             int64                       `json:"created_at"`
+	AuditOrigin           GatewayAuditBinding         `json:"audit_origin,omitzero"`
 }
 
 func (h GatewayPendingHeader) Validate() error {
-	if h.Binding.Validate() != nil || h.RecordID.Version() != 7 || h.RecordID.Variant() != uuid.RFC4122 ||
-		h.Sequence < 1 || h.Sequence == math.MaxInt64 || h.AuthorizationRevision < 1 || h.CreatedAt <= 0 || h.CreatedAt > 253402300799 || !validPendingHash(h.PreviousHash) {
+	global := h.AuditOrigin != (GatewayAuditBinding{})
+	if (!global && (h.Binding.Validate() != nil || h.AuthorizationRevision < 1)) ||
+		(global && (h.AuditOrigin.Validate() != nil || h.Binding != (GatewayAuthorizationBinding{}) || h.AuthorizationRevision != 0)) ||
+		h.RecordID.Version() != 7 || h.RecordID.Variant() != uuid.RFC4122 ||
+		h.Sequence < 1 || h.Sequence == math.MaxInt64 || h.CreatedAt <= 0 || h.CreatedAt > 253402300799 || !validPendingHash(h.PreviousHash) {
 		return ErrGatewayPending
 	}
 	if h.Sequence == 1 && h.PreviousHash != hex.EncodeToString(make([]byte, 32)) {
@@ -57,8 +65,15 @@ func (r GatewayPendingRecord) Validate() error {
 		return ErrGatewayPending
 	}
 	switch r.Kind {
+	case "global_audit":
+		if r.Header.AuditOrigin.Validate() != nil || r.Event == nil || r.ExpectedSecretRevision != 0 || r.Config != nil {
+			return ErrGatewayPending
+		}
+		if _, ok := domain.GatewayGlobalAudit(*r.Event); !ok {
+			return ErrGatewayPending
+		}
 	case "audit":
-		if r.Event == nil || r.ExpectedSecretRevision != 0 || r.Config != nil {
+		if r.Header.AuditOrigin != (GatewayAuditBinding{}) || r.Event == nil || r.ExpectedSecretRevision != 0 || r.Config != nil {
 			return ErrGatewayPending
 		}
 		if _, ok := domain.GatewayAudit(*r.Event); !ok {
@@ -69,7 +84,7 @@ func (r GatewayPendingRecord) Validate() error {
 			return ErrGatewayPending
 		}
 	case "refresh":
-		if r.Event != nil || r.ExpectedSecretRevision < 1 || r.ExpectedSecretRevision == math.MaxInt64 || len(r.Config) == 0 || len(r.Config) > 256<<10 {
+		if r.Header.AuditOrigin != (GatewayAuditBinding{}) || r.Event != nil || r.ExpectedSecretRevision < 1 || r.ExpectedSecretRevision == math.MaxInt64 || len(r.Config) == 0 || len(r.Config) > 256<<10 {
 			return ErrGatewayPending
 		}
 	default:
@@ -120,7 +135,7 @@ func SealGatewayPending(r GatewayPendingRecord, recipient [32]byte, source ed255
 	if err != nil || len(payload)+64 > MaxGatewayPendingSize {
 		return nil, ErrGatewayPending
 	}
-	return append(payload, ed25519.Sign(source, append([]byte(pendingContext), payload...))...), nil
+	return append(payload, ed25519.Sign(source, append([]byte(pendingSignatureContext(r.Header)), payload...))...), nil
 }
 
 // Inspect verifies the registered source BEFORE decryption. Knowing the
@@ -140,10 +155,28 @@ func GatewayPendingIdentity(wire []byte) (uuid.UUID, uuid.UUID, error) {
 	var outer struct {
 		Header GatewayPendingHeader `json:"header"`
 	}
-	if json.Unmarshal(wire[:len(wire)-64], &outer) != nil || outer.Header.Validate() != nil {
+	if json.Unmarshal(wire[:len(wire)-64], &outer) != nil || outer.Header.Validate() != nil || outer.Header.AuditOrigin != (GatewayAuditBinding{}) {
 		return uuid.Nil, uuid.Nil, ErrGatewayPending
 	}
 	return outer.Header.Binding.AdmissionID, outer.Header.Binding.RuntimeID, nil
+}
+
+// Global identity is an UNTRUSTED registry selector only, never authority.
+// A regular record cannot choose this registry; verify the domain/source next.
+func GatewayPendingAuditIdentity(wire []byte) (GatewayAuditBinding, error) {
+	if len(wire) <= 64 || len(wire) > MaxGatewayPendingSize {
+		return GatewayAuditBinding{}, ErrGatewayPending
+	}
+	var outer struct { Header GatewayPendingHeader `json:"header"` }
+	if json.Unmarshal(wire[:len(wire)-64], &outer) != nil || outer.Header.Validate() != nil || outer.Header.AuditOrigin.Validate() != nil {
+		return GatewayAuditBinding{}, ErrGatewayPending
+	}
+	return outer.Header.AuditOrigin, nil
+}
+
+func pendingSignatureContext(h GatewayPendingHeader) string {
+	if h.AuditOrigin != (GatewayAuditBinding{}) { return globalPendingContext }
+	return pendingContext
 }
 
 func verifyPendingWire(wire []byte, source ed25519.PublicKey) (gatewayPendingWire, error) {
@@ -152,7 +185,10 @@ func verifyPendingWire(wire []byte, source ed25519.PublicKey) (gatewayPendingWir
 		return w, ErrGatewayPending
 	}
 	payload := wire[:len(wire)-64]
-	if !ed25519.Verify(source, append([]byte(pendingContext), payload...), wire[len(payload):]) || json.Unmarshal(payload, &w) != nil || w.Header.Validate() != nil || len(w.Ciphertext) <= box.AnonymousOverhead {
+	var selector struct { Header GatewayPendingHeader `json:"header"` }
+	if json.Unmarshal(payload, &selector) != nil || selector.Header.Validate() != nil ||
+		!ed25519.Verify(source, append([]byte(pendingSignatureContext(selector.Header)), payload...), wire[len(payload):]) ||
+		json.Unmarshal(payload, &w) != nil || len(w.Ciphertext) <= box.AnonymousOverhead {
 		return gatewayPendingWire{}, ErrGatewayPending
 	}
 	canonical, err := json.Marshal(w)
@@ -207,10 +243,16 @@ type GatewayPendingReceipt struct {
 	Sequence    int64     `json:"sequence"`
 	RecordID    uuid.UUID `json:"record_id"`
 	WireHash    string    `json:"wire_hash"`
+	AuditOriginID uuid.UUID `json:"audit_origin_id,omitzero"`
 }
 
 func (r GatewayPendingReceipt) valid() bool {
-	for _, id := range []uuid.UUID{r.AdmissionID, r.RuntimeID, r.RecordID} {
+	id := r.AdmissionID
+	if r.AuditOriginID != uuid.Nil {
+		if r.AdmissionID != uuid.Nil { return false }
+		id = r.AuditOriginID
+	}
+	for _, id := range []uuid.UUID{id, r.RuntimeID, r.RecordID} {
 		if id.Version() != 7 || id.Variant() != uuid.RFC4122 {
 			return false
 		}
@@ -226,7 +268,12 @@ func SignGatewayPendingReceipt(r GatewayPendingReceipt, key ed25519.PrivateKey) 
 	if err != nil {
 		return nil, ErrGatewayPending
 	}
-	return append(payload, ed25519.Sign(key, append([]byte(receiptContext), payload...))...), nil
+	return append(payload, ed25519.Sign(key, append([]byte(receiptSignatureContext(r)), payload...))...), nil
+}
+
+func receiptSignatureContext(r GatewayPendingReceipt) string {
+	if r.AuditOriginID != uuid.Nil { return globalReceiptContext }
+	return receiptContext
 }
 
 func VerifyGatewayPendingReceipt(wire []byte, key ed25519.PublicKey) (GatewayPendingReceipt, error) {
@@ -235,7 +282,7 @@ func VerifyGatewayPendingReceipt(wire []byte, key ed25519.PublicKey) (GatewayPen
 		return r, ErrGatewayPending
 	}
 	payload := wire[:len(wire)-64]
-	if !ed25519.Verify(key, append([]byte(receiptContext), payload...), wire[len(payload):]) || json.Unmarshal(payload, &r) != nil || !r.valid() {
+	if json.Unmarshal(payload, &r) != nil || !r.valid() || !ed25519.Verify(key, append([]byte(receiptSignatureContext(r)), payload...), wire[len(payload):]) {
 		return GatewayPendingReceipt{}, ErrGatewayPending
 	}
 	canonical, err := json.Marshal(r)

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/security"
 	"golang.org/x/crypto/nacl/box"
 )
@@ -40,6 +41,7 @@ type crossConfig struct {
 	SourcePin  ed25519.PublicKey
 	CenterKey  ed25519.PrivateKey
 	PendingKey []byte
+	AuditOrigin security.GatewayAuditBinding
 }
 
 func TestCrossUIDMaterialReplayIsolation(t *testing.T) {
@@ -92,6 +94,7 @@ func TestCrossUIDMaterialReplayIsolation(t *testing.T) {
 	binding := security.GatewayAuthorizationBinding{AdmissionID: id, Owner: id, RuntimeID: id, AgentID: id,
 		HostID: id, RepositoryID: id, GatewayID: id, StorageCredentialID: id, DeliveryID: id,
 		GatewaySecretRef: id, ResticSecretRef: id, ConfigurationHash: strings.Repeat("a", 64)}
+	auditOrigin := security.GatewayAuditBinding{OriginID: uuid.Must(uuid.NewV7()), RuntimeID: id}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	start := func(role string, uid uint32, config crossConfig) (io.WriteCloser, <-chan error) {
@@ -147,14 +150,14 @@ func TestCrossUIDMaterialReplayIsolation(t *testing.T) {
 			t.Fatal("isolated service did not join")
 		}
 	}
-	gatewayInput, gatewayDone := start("gateway", crossGateway, crossConfig{Root: root, Binding: binding})
+	gatewayInput, gatewayDone := start("gateway", crossGateway, crossConfig{Root: root, Binding: binding, AuditOrigin: auditOrigin})
 	waitPath(filepath.Join(root, "gateway-ipc", "material.sock"))
 	source, err := os.ReadFile(filepath.Join(root, "gateway-ipc", "source.pub"))
 	if err != nil || len(source) != ed25519.PublicKeySize {
 		t.Fatal("locally generated source proof")
 	}
 	centerInput, centerDone := start("center", crossCenter, crossConfig{Root: root, Binding: binding, CenterPin: public,
-		SourcePin: source, CenterKey: central, PendingKey: pending[:]})
+		SourcePin: source, CenterKey: central, PendingKey: pending[:], AuditOrigin: auditOrigin})
 	waitPath(filepath.Join(root, "gateway-ipc", "installed"))
 	otherInput, otherDone := start("other", crossOther, crossConfig{Root: root, Binding: binding, SourcePin: source})
 	_ = otherInput.Close()
@@ -249,6 +252,12 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 			t.Fatal("material initialization and clearing")
 		}
 		defer queue.Close()
+		if os.Mkdir(privatePath("gateway", "global-queue"), 0700) != nil { t.Fatal("private global queue") }
+		globalQueue, err := CreateGlobalAudit(privatePath("gateway", "global-queue"), c.AuditOrigin, queue.identity.Recipient, source, centralPin, Limits{MaxBytes: 2 << 20, MaxRecords: 4})
+		if err != nil { t.Fatal("global queue") }
+		defer globalQueue.Close()
+		if globalQueue.Append(security.GatewayPendingRecord{Header: security.GatewayPendingHeader{CreatedAt: time.Now().Unix()}, Kind: "global_audit",
+			Event: &domain.GatewayEvent{Action: "denied", Reason: "route_unavailable"}}) != nil { t.Fatal("global observation") }
 		assertPrivate("center", "signing")
 		assertPrivate("center", "pending")
 		if err := os.Remove(replayPath); !errors.Is(err, os.ErrPermission) {
@@ -292,7 +301,8 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 		}
 		var release bool
 		if decoder.Decode(&release) != nil || !release || queue.Append(pendingAudit()) != nil ||
-			Drain(ctx, queue, replayPath, crossCenter, c.Binding.RuntimeID, crossGroup) != nil {
+			Drain(ctx, queue, replayPath, crossCenter, c.Binding.RuntimeID, crossGroup) != nil ||
+			Drain(ctx, globalQueue, replayPath, crossCenter, c.AuditOrigin.RuntimeID, crossGroup) != nil {
 			t.Fatal("source-signed cross-UID replay")
 		}
 		select {
@@ -329,11 +339,17 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- ServeReplay(ctx, listener, crossGateway, func(_ context.Context, runtime uuid.UUID, wire []byte) ([]byte, error) {
-				r, err := security.OpenGatewayPending(wire, c.SourcePin, c.PendingKey)
-				if err != nil || runtime != c.Binding.RuntimeID || r.Header.Binding != c.Binding || r.Header.Sequence != 1 || effects.Add(1) != 1 {
-					return nil, ErrChannel
-				}
-				h := r.Header
+					r, err := security.OpenGatewayPending(wire, c.SourcePin, c.PendingKey)
+					if err != nil || runtime != c.Binding.RuntimeID || r.Header.Sequence != 1 {
+						return nil, ErrChannel
+					}
+					h := r.Header
+					if r.Kind == "global_audit" {
+						if h.AuditOrigin != c.AuditOrigin || h.Binding != (security.GatewayAuthorizationBinding{}) || effects.Add(1) != 2 { return nil, ErrChannel }
+						return security.SignGatewayPendingReceipt(security.GatewayPendingReceipt{AuditOriginID: c.AuditOrigin.OriginID, RuntimeID: runtime,
+							Sequence: h.Sequence, RecordID: h.RecordID, WireHash: security.GatewayPendingHash(wire)}, c.CenterKey)
+					}
+					if h.Binding != c.Binding || effects.Add(1) != 1 { return nil, ErrChannel }
 				return security.SignGatewayPendingReceipt(security.GatewayPendingReceipt{AdmissionID: h.Binding.AdmissionID, RuntimeID: runtime,
 					Sequence: h.Sequence, RecordID: h.RecordID, WireHash: security.GatewayPendingHash(wire)}, c.CenterKey)
 			}, func(context.Context) error { rejections.Add(1); return nil }, crossGroup)
@@ -398,7 +414,7 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 			t.Fatal("trusted fixture completion")
 		}
 		cancel()
-		if <-done != nil || effects.Load() != 1 || rejections.Load() != 1 {
+		if <-done != nil || effects.Load() != 2 || rejections.Load() != 1 {
 			t.Fatal("cross-UID replay effect or denial boundary")
 		}
 	case "other":

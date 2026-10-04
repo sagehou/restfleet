@@ -280,6 +280,12 @@ MUST 停止旧中心 writer 后迁移并升级至 schema 12；旧代码不会检
 
 材料读取 MUST 复用当前身份/ACK/占用锁，再锁来源，确认来源 pin、未封存/未开始回写、初始秘密 revision 和最新有效普通授权；追加意图与秘密访问审计同事务提交，审计等待后复查期限。中心只在提交后解密并加密交付。一个占用 MUST 只提交一次，精确重试、新挑战及丢失回执均不允许再交付，失败保留 fence。升级 MUST 停止旧 writer 后迁移 schema 14；已有交付意图时 Down MUST 拒绝删除。该表不授予 READY、清理、释放或重新派发权限。
 
+### 5.4.8 Gateway 全局审计（schema 15，ADR-0027）
+
+`gateway_audit_origins` MUST 以 UUIDv7 id 为主键、runtime_id 唯一，保存可信协调注册的 32-byte 来源公钥、DB UTC created_at 和只可中心显式设置的 closed_at。MUST NOT FK 到 Host/Repository/凭据/占用；全局审计没有数据面授权。精确注册幂等，公钥与 runtime 不可替换，已封存来源不能重开。
+
+`gateway_audit_records` MUST 以 (origin_id,runtime_id,sequence) 为主键，保存全局唯一 record_id、精确 wire SHA-256 与发生/提交时间；两 ID MUST 复合 FK 到来源。来源行锁后，精确旧记录仅确认既有 effect；新记录 MUST 依序关联前一 wire hash、发生于注册 UTC 整秒之后且不晚于中央时钟，未封存。固定无资源审计事件与接收历史 MUST 同事务，不存秘密或原始请求，失败不产生回执。角色仅 SELECT/INSERT 历史及 UPDATE(closed_at)，无换 key/runtime、UPDATE/DELETE 历史权限；已有来源时 Down MUST 拒绝。升级 MUST 停旧 Gateway producer/中心 reader 后迁移 schema 15；旧协议 reader 只会拒绝全局域，不能混跑后忽略该审计。
+
 ### 5.5 template_revisions / plan_revisions
 
 每次变更保存不可变 snapshot：

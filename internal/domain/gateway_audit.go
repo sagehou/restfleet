@@ -35,6 +35,21 @@ func GatewayAudit(event GatewayEvent) (AuditEvent, bool) {
 	}
 	action, result := "", AuditSuccess
 	switch event.Action {
+	case "channel_denied":
+		if scoped || event.Authenticated {
+			return invalid, false
+		}
+		result = AuditDenied
+		switch event.Reason {
+		case "material_rejected":
+			action = "GATEWAY_MATERIAL_DELIVERY_DENIED"
+		case "authority_rejected":
+			action = "GATEWAY_AUTHORIZATION_DELIVERY_DENIED"
+		case "session_rejected":
+			action = "GATEWAY_SESSION_DELIVERY_DENIED"
+		default:
+			return invalid, false
+		}
 	case "event_rejected":
 		if scoped || event.Authenticated || event.Reason != "invalid_event" {
 			return invalid, false
@@ -79,6 +94,9 @@ func GatewayAudit(event GatewayEvent) (AuditEvent, bool) {
 	}
 	audit := AuditEvent{ActorType: ActorSystem, Action: action, ResourceType: "GATEWAY",
 		Result: result, ReasonCode: strings.ToUpper(event.Reason)}
+	if event.Action == "channel_denied" {
+		audit.ReasonCode = "REJECTED"
+	}
 	if scoped {
 		audit.ResourceType, audit.ResourceID = "REPOSITORY", event.Binding.RepositoryID
 		// These are trusted ROUTE/session context, never the claimed identity of

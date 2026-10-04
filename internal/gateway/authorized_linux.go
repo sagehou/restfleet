@@ -54,7 +54,7 @@ func NewAuthorizedBackup(supervisor *Supervisor, authorization *Authorization, q
 		StorageCredentialID: a.StorageCredentialID, DeliveryID: a.DeliveryID, GatewaySecretRef: a.GatewaySecretRef,
 		ResticSecretRef: a.ResticSecretRef, ConfigurationHash: a.ConfigurationHash}
 	if b != authorization.binding || !a.ExpiresAt.After(time.Now()) || authorization.Status() != AuthorizationValid ||
-		queue.CheckProducer(b, origin.PublicKey, authorization.key) != nil {
+		queue.CheckProducer(b, origin.PublicKey, authorization.key) != nil || (supervisor.auditReady != nil && !supervisor.auditReady()) {
 		return nil, ErrAuthorization
 	}
 	authorization.mu.Lock()
@@ -85,7 +85,8 @@ func NewAuthorizedBackup(supervisor *Supervisor, authorization *Authorization, q
 
 func (a *AuthorizedBackup) ready() bool {
 	return a.authorization.Status() == AuthorizationValid && time.Now().Before(a.expires) &&
-		a.queue.CheckProducer(a.authorization.binding, a.source, a.authorization.key) == nil
+		a.queue.CheckProducer(a.authorization.binding, a.source, a.authorization.key) == nil &&
+		(a.supervisor.auditReady == nil || a.supervisor.auditReady())
 }
 
 // AcceptAuthorization updates this existing owner's state only; it cannot

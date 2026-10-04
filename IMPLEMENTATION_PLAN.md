@@ -178,7 +178,9 @@
 
 第二十四批（#54，已合并）修复空闲 owner 未主动清理过期材料的问题：复用唯一生命周期 watchdog 覆盖构造后、会话中与会话间空闲期，失效先阻止新会话，再取消/join、清零和冻结。最终 head `12fadab` 与合并 commit `5c13453` 均通过 Actions 十项。扩展 REP-036 验证自然到期/吊销/时钟/Queue 关闭与耗尽、并发 Close、借用 buffer 清零、高版本续期和排空不复活。
 
-第二十五批（本分支，待 Actions 验证）加入 metadata-only RFGA 续期/明确吊销通道和中心已注册来源核验后的决定交付（ADR-0026 / REP-047–048）。来源 fresh challenge 与精确回执独立签名，先验证 UID/pin/binding 才提交决定；回执丢失保留 fence，仅允许显式同一最新决定重放。更新同一 owner，不重发材料、延长原占用或复活失败；覆盖跨非 root UID、三后端 DB 和活动 owner 吊销清理。Gateway 生产配置/daemon、多仓库数据面、自动可靠续期/吊销分发、全局离线审计、Agent 能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
+第二十五批（#55，已合并）加入 metadata-only RFGA 续期/明确吊销通道和中心已注册来源核验后的决定交付（ADR-0026 / REP-047–048）。最终 head `e7f3369` 与合并 commit `804307f` 均通过 Actions 十项。来源 fresh challenge 与精确回执独立签名，先验证 UID/pin/binding 才提交决定；回执丢失保留 fence，仅允许显式同一最新决定重放。更新同一 owner，不重发材料、延长原占用或复活失败；覆盖跨非 root UID、三后端 DB 和活动 owner 吊销清理，修复取消打断拒绝审计的时序。
+
+第二十六批（本分支，待 Actions 验证）补齐独立全局离线拒绝审计（schema 15 / ADR-0027 / REP-049–051）。复用有界加密 Queue、fsync/确认及 Unix 回放，独立 audit-only 来源/签名域不猜测 Host/Repository 或授予数据访问；固定观察和中央接收历史原子提交。全局生产者失败同时停止本地 owner，取消/join 后清零/冻结，排空不复活。Gateway 生产配置/daemon、多仓库数据面、自动可靠续期/吊销分发、Agent 能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
 
 ### Goal
 
@@ -203,7 +205,7 @@
 
 ### Tests/Exit
 
-- REP-001–048；
+- REP-001–051；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

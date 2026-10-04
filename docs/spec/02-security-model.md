@@ -190,6 +190,10 @@ ADR-0022 / 09 §7.15 的内部通道 MUST 使用预注册来源签名挑战、�
 
 ADR-0026 / 09 §7.19 的 `RFGA` 通道 MUST 仅交付中心签名 metadata，不携带云端材料、接收私钥或 Agent 能力。中心 MUST 在 peer UID、来源 fresh challenge 和已注册完整 binding/公钥验证后提交续期或明确吊销；普通授权继续检查当前身份/ACK/配置，禁用后仍允许明确吊销。Gateway MUST 更新同一已初始化 owner，保持原占用期限与失败不可复活边界。来源回执 MUST 匹配本次挑战和精确 statement；回执丢失不回滚、不重新发材料、不签发新 grant。显式精确重放 MUST 保持原到期，失败 owner 可以拒绝。接收回执不证明 cleanup、READY 或可释放 fence，完整生产协调与全局离线审计仍待接线。
 
+### 8.6 Gateway 全局离线审计
+
+ADR-0027 / 09 §7.20 的全局来源 MUST 仅绑定可信 origin/runtime 和独立来源公钥，MUST NOT 推断 Host/Repository、引用备份占用、授予数据访问或保存 config/token。无路由、限流和通道拒绝 MUST 只记录固定无身份事件，使用独立签名域与中心公钥加密、可靠有界 Queue。中心 MUST 验证注册来源、完整全局 binding、顺序/精确 wire 和时间后，原子提交观察与接收历史，再签名精确回执；全局记录或回执不得作为备份授权、Host 身份、清理证明或 fence release。全局 Queue/时钟/生产者失效 MUST 同时停止本地授权 owner，取消/join 后清零；排空不能复活。生产者恢复仅回放，可信清理后才能封存。
+
 ## 9. Web 安全
 
 - 首个管理员只可通过一次性 bootstrap secret 创建；使用后删除/作废；

@@ -184,6 +184,14 @@ Gateway 授权决定交付验收（ADR-0026；不代表 daemon、cleanup receipt
 | REP-047 | P0 | RFGA 独立签名域、fresh nonce、完整 binding 与精确回执；错误 UID/pin/magic/version/runtime/空或超长帧、伪造/非规范证明及错误回执拒绝。不同非 root 服务 UID 顺序续期/精确重放/吊销成功，同组第三 UID 不触发中心决定；取消关闭连接并 join 阻塞 callback，已观察拒绝的独立有界审计不因取消丢失，审计失败停止 listener，原私钥/socket 隔离不削弱。 |
 | REP-048 | P0 | 三后端真实首次初始化后续期、相同幂等键重放与禁用后明确吊销；错误来源/注册绑定/UID/revision、失效 ACK、封存和审计失败不产生新 grant 或重发材料。回执丢失仅显式重放同一最新决定，不改到期或释放 fence；活动 owner 经通道吊销后取消/join、清零/冻结，续期不能越过原占用或复活失败 owner。 |
 
+Gateway 全局离线审计验收（ADR-0027）：
+
+| ID | 优先级 | 场景与预期 |
+|---|---|---|
+| REP-049 | P0 | 独立 origin/runtime 来源不含仓库/占用，global_audit 与仓库记录/回执域不能互认；拒绝 config/token、scoped/authenticated 事件、普通授权/refresh 和非规范 wire。全局 Queue 可靠加密有界存储、确认丢失不回收、准确 ACK 后回收，恢复仅回放，不确定文件保留并拒绝；跨非 root UID 两种回放均成功，第三 UID 无 effect。 |
+| REP-050 | P0 | 固定全局 recorder 唯一认领，非法事件仅记录固定拒绝，不猜测身份。全局容量/时钟/关闭失效触发活动 owner watchdog 取消/join、清零/冻结，排空和高版本续期不能复活；未路由与限流观察可在中心离线时可靠保存。 |
+| REP-051 | P0 | 三后端真实 DB 独立注册、无授权的离线观察→有序回放、确认丢失/并发重复仅一次 effect、精确 tail 封存。错误公钥/runtime/来源、未来/旧时间、跳序/冲突、封存后新记录及审计失败拒绝，不写 grant/材料/Host 归属、不释放 fence；注册/历史权限及 Down 保留约束通过。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |
