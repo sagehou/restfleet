@@ -187,7 +187,7 @@ func TestGatewayStartupRejectsUntrustedPinsAndRetainsPartialCommit(t *testing.T)
 			case "disabled":
 				_, err = f.pool.Exec(context.Background(), "update storage_credentials set status='DISABLED' where id=$1", startup.Binding.StorageCredentialID)
 			case "ack":
-				_, err = f.pool.Exec(context.Background(), "update agent_credential_deliveries set accepted_at=null")
+				_, err = f.pool.Exec(context.Background(), "update repository_agent_deliveries set accepted_at=null where id=$1", startup.Binding.DeliveryID)
 			case "grant-audit", "material-audit":
 				action := "GATEWAY_AUTHORIZATION_DECISION"
 				if failure == "material-audit" {
@@ -196,11 +196,21 @@ func TestGatewayStartupRejectsUntrustedPinsAndRetainsPartialCommit(t *testing.T)
 				_, err = f.pool.Exec(context.Background(), `create function reject_startup_audit() returns trigger language plpgsql as $$ begin
 				if NEW.action='`+action+`' then raise exception 'private-database-canary'; end if; return NEW; end $$;
 				create trigger reject_startup_audit before insert on audit_events for each row execute function reject_startup_audit()`)
+				t.Cleanup(func() {
+					if _, err := f.pool.Exec(context.Background(), "drop trigger if exists reject_startup_audit on audit_events;drop function if exists reject_startup_audit()"); err != nil {
+						t.Error("audit injection cleanup", err)
+					}
+				})
 			case "registration":
 				decisions = 1
 				_, err = f.pool.Exec(context.Background(), `create function reject_startup_origin() returns trigger language plpgsql as $$ begin
 				raise exception 'private-registration-canary'; end $$;
 				create trigger reject_startup_origin before insert on gateway_pending_origins for each row execute function reject_startup_origin()`)
+				t.Cleanup(func() {
+					if _, err := f.pool.Exec(context.Background(), "drop trigger if exists reject_startup_origin on gateway_pending_origins;drop function if exists reject_startup_origin()"); err != nil {
+						t.Error("registration injection cleanup", err)
+					}
+				})
 			case "install":
 				decisions, origins, intents = 1, 1, 1
 			}
