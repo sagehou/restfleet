@@ -65,6 +65,14 @@ func (s *Store) RefreshBackupAdmission(ctx context.Context, id, owner uuid.UUID,
 	if err != nil {
 		return domain.StorageCredential{}, err
 	}
+	var registered bool
+	if err = tx.QueryRow(ctx, "select exists(select 1 from gateway_pending_origins where admission_id=$1)", id).Scan(&registered); err != nil {
+		return domain.StorageCredential{}, err
+	}
+	if registered {
+		return domain.StorageCredential{}, domain.ErrGatewayPending
+	}
+
 	c, err := scanCredential(tx.QueryRow(ctx, "select "+credentialColumns+" from storage_credentials where id=$1", a.StorageCredentialID))
 	if err != nil {
 		return domain.StorageCredential{}, err

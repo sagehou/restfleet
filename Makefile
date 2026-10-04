@@ -21,6 +21,8 @@ build: web-build
 
 cross-build:
 	mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build ./internal/gateway ./internal/gatewaypending ./internal/security
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build ./internal/gateway ./internal/gatewaypending ./internal/security
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/restfleet-server-linux-amd64 ./cmd/restfleet-server
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/restfleet-server-linux-arm64 ./cmd/restfleet-server
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/restfleet-gateway-linux-amd64 ./cmd/restfleet-gateway

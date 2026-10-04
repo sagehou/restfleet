@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/security"
 )
 
@@ -39,18 +40,11 @@ var objectName = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // Binding comes from the trusted session owner, never a request payload. The
 // owner MUST admit/fence the durable backup lease and exclude central writes
 // and other sessions on this repository for the entire session lifetime.
-type Binding struct {
-	HostID, RepositoryID, GatewayID, OperationID uuid.UUID
-}
+type Binding = domain.GatewayBinding
 
 // Event contains only trusted route context and fixed classifications. Never add a
 // URL, supplied username, Authorization, backend error or object content here.
-type Event struct {
-	Binding       Binding
-	Authenticated bool
-	Action        string
-	Reason        string
-}
+type Event = domain.GatewayEvent
 
 // BackupSession is a single-use capability: it cannot be resumed after restart.
 // It owns no provider credentials, Restic password, listeners or subprocesses.
@@ -63,6 +57,7 @@ type BackupSession struct {
 	cancel    context.CancelFunc
 	transport *http.Transport
 	audit     func(context.Context, Event) error
+	guard     func() bool // Optional local signed authority, fixed before publishing.
 	lifecycle sync.RWMutex
 	requests  chan struct{}
 	writes    chan struct{}
@@ -156,7 +151,7 @@ func (s *BackupSession) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer s.lifecycle.RUnlock()
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if s.ctx.Err() != nil {
+	if s.ctx.Err() != nil || (s.guard != nil && !s.guard()) {
 		s.deny(w, r, false, "session_inactive", http.StatusForbidden)
 		return
 	}
@@ -251,6 +246,9 @@ func (s *BackupSession) objectPath(r *http.Request) (string, bool) {
 }
 
 func (s *BackupSession) request(ctx context.Context, method, path string, body []byte, headers http.Header) (*http.Response, error) {
+	if s.guard != nil && !s.guard() {
+		return nil, ErrAuthorization
+	}
 	u := &url.URL{Scheme: "http", Host: "gateway-backend.invalid", Path: "/" + path}
 	r, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(body))
 	if err != nil {

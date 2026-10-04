@@ -131,6 +131,38 @@ Gateway TLS transport 验收（不等于 command 可公网部署）：
 | REP-029 | P0 | 三种后端均只从认证 Agent 的当前已 ACK 仓库申请占用；重复/并发重放不延长期限、无新任务；跨 Host、错误 owner、失效 ACK、禁用/撤销及不安全期限拒绝，原始秘密不进入记录/outbox。 |
 | REP-030 | P0 | 同凭据的备份占用与 test/init/replace、有效 repository lease 互斥；过期仍排斥新 owner/维护，只有可信 owner 清理确认才释放；claim 不能旁路，禁用不自动释放，审计失败回滚占用/outbox/释放，Down 不能抹去历史。 |
 
+Gateway 加密回写验收（ADR-0020，不替代生产接线、REP-016 或 AGT-005）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-031 | P0 | 中心当前授权与 fence 核验后注册不可替换的来源；Gateway 仅持接收公钥，来源签名与加密独立；伪造来源、密文/header 移植、跨实例/Host、非规范或超长记录拒绝，磁盘无配置明文。 |
+| REP-032 | P0 | 文件和目录 fsync 后才接受；字节/记录数硬上限不丢旧记录；空间耗尽/写入不确定使 watcher/supervisor 停止；精确签名确认先保存再回收，确认丢失重放同 wire，错误确认不删文件。 |
+| REP-033 | P0 | 三后端中央有序幂等接收；并发重复只有一个 effect，冲突/跳序/旧 ID/非 token 改写/CAS 失败拒绝；审计失败不产生历史、秘密版本或 ACK；旧有效记录可在过期/禁用/吊销后回放，不能借回写恢复授权或释放 fence。 |
+| REP-034 | P0 | Unix 回写通道双向 UID + 实例签名认证，拒绝版本/大小/不安全 socket/错误 UID，取消等待 handler；重启只验证回放、缺失/损坏阻塞、不恢复数据面；未精确封存来源不能释放占用，历史 migration Down 拒绝删除。 |
+
+Gateway 本地签名授权会话验收（ADR-0021；不替代生产材料交付、REP-016 或 AGT-005）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-035 | P0 | owner 核验完整占用/运行绑定、有效签名授权、注册来源/确认公钥及期限；跨绑定、已释放/封存/过期、第二 owner、已有历史/重开来源拒绝，排空不能重置 token revision 或恢复 owner。 |
+| REP-036 | P0 | 每次路由及 backend 转发前核验本地授权和待回写容量，HEAD 成功/上传开始不授予后续写权限；吊销、到期、时钟回拨、冻结/耗尽/写入不确定取消并 join 所有进程/请求/持久化工作，失败 owner 不重新启动，原在线准入保持核验。 |
+| REP-037 | P0 | 同一本地 owner 无中心调用连续两次备份，维持刷新后的配置与 expected revision；新会话拒绝旧 capability，审计在对应独立来源内持久化；固定 Restic/rclone 的 TLS 备份、读回及临时锁归属负向套件通过。返回/Close 只冻结清理本地，不自动释放中心 fence。 |
+
+Gateway 单次加密材料初始化验收（ADR-0022；同 UID 内部通道，不替代生产隔离、REP-016 或 AGT-005）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-038 | P0 | 来源签名 fresh nonce/临时接收公钥/完整 binding；独立中心验签加密；错误 pin、绑定、签名、密文、hash、未知/重复/非规范字段和大小拒绝；中心私钥与 Restic password 不交给 Gateway，借用 config/临时私钥清零。 |
+| REP-039 | P0 | 三后端真实 DB 核验当前身份、owner、ACK、来源、revision、期限与最新普通授权；禁用/吊销/封存/已回写/审计失败拒绝；意图和访问审计原子提交，并发仅一次，提交后新挑战或无回执不再发，不释放 fence；应用角色不能改删历史，Down 拒绝。 |
+| REP-040 | P0 | 单次 Unix RFGM 交换拒绝错误 UID/版本/runtime/帧上限；安装失败、取消或回执发送丢失 rollback/join，Close 消费未使用或取消/join 接收者；已安装 fresh owner 连续两次固定二进制 TLS 备份及读回，旧初始化不能复活 owner。回执不代表 READY/ACK/释放。 |
+
+跨 UID 通道验收（ADR-0023，GitHub Actions 执行；不替代完整生产接线）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-041 | P0 | 共享组仅显式启用；精确 0710 owner/group 目录与 0660 socket；错误 owner/group、权限、特殊位、多个 GID 和非规范 UID 配置拒绝；私有默认不接受共享目录，已有 socket 不接管，peer UID 验证与签名不削弱。 |
+| REP-042 | P0 | Actions 运行不同非 root UID 的中心/Gateway 实际进程，Gateway 本地产生来源私钥、中心仅获公钥；独立 pin 下加密初始化及可靠签名回放/确认成功，借用明文清零；两个服务不能读取另一服务私钥或替换其 socket，同组第三 UID 不触发回写 handler。进程取消/失败必须等待退出再清理测试文件。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

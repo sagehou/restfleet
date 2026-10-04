@@ -51,6 +51,8 @@ type activeBackup struct {
 	credentialID uuid.UUID
 	cancel       context.CancelFunc
 	session      *BackupSession
+	audit        func(context.Context, Event) error
+	guard        func() bool
 }
 
 // Supervisor is the in-process data-plane router and child owner. It is not a
@@ -81,11 +83,11 @@ func NewSupervisor(runtime *rclone.Runtime, maxSessions int, audit func(context.
 func (s *Supervisor) WithBackup(ctx context.Context, request BackupRequest,
 	persist func(context.Context, []byte) error, run func(context.Context, Access) error,
 ) error {
-	return s.withBackup(ctx, request, persist, run, nil)
+	return s.withBackup(ctx, request, persist, run, nil, nil)
 }
 
 func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
-	persist func(context.Context, []byte) error, run func(context.Context, Access) error, admission *admittedBackup,
+	persist func(context.Context, []byte) error, run func(context.Context, Access) error, admission *admittedBackup, local *AuthorizedBackup,
 ) (result error) {
 	if run == nil || persist == nil {
 		return ErrInvalidSession
@@ -104,7 +106,17 @@ func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	entry := &activeBackup{binding: request.Binding, credentialID: request.CredentialID, cancel: cancel}
+	entry := &activeBackup{binding: request.Binding, credentialID: request.CredentialID, cancel: cancel, audit: s.audit}
+	if local != nil {
+		entry.guard = local.ready
+		entry.audit = func(ctx context.Context, event Event) error {
+			if err := local.record(ctx, event); err != nil {
+				cancel()
+				return err
+			}
+			return nil
+		}
+	}
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -139,13 +151,16 @@ func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
 		// Runs after runtime and end-audit cleanup, before capacity and Close's join.
 		defer func() { result = finish(result) }()
 	}
-	if !s.record(ctx, request.Binding, "session_start", "requested") {
+	if entry.guard != nil && !entry.guard() {
+		return ErrAuthorization
+	}
+	if !recordBackup(ctx, entry.audit, request.Binding, "session_start", "requested") {
 		return ErrGatewayAudit
 	}
 	defer func() {
 		// End auditing happens after runtime cleanup but before releasing capacity.
 		// It cannot use an already canceled lease context or wait without a bound.
-		if !s.record(context.WithoutCancel(ctx), request.Binding, "session_end", "finished") && result == nil {
+		if !recordBackup(context.WithoutCancel(ctx), entry.audit, request.Binding, "session_end", "finished") && result == nil {
 			result = ErrGatewayAudit
 		}
 	}()
@@ -203,11 +218,15 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 	if err := waitBackendSocket(backendCtx, socket); err != nil {
 		return ErrBackendUnavailable
 	}
-	session, password, err := NewBackupSession(backendCtx, entry.binding, socket, s.audit)
+	if entry.guard != nil && !entry.guard() {
+		return ErrAuthorization
+	}
+	session, password, err := NewBackupSession(backendCtx, entry.binding, socket, entry.audit)
 	if err != nil {
 		return err
 	}
 	defer clear(password)
+	session.guard = entry.guard
 	defer func() {
 		// Unpublish before cancellation; already-routed requests are joined by Close.
 		s.mu.Lock()
@@ -225,7 +244,7 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 		return ErrBackendUnavailable // Never initialize a missing repo or use a TCP fallback.
 	}
 	s.mu.Lock()
-	if s.closed || backendCtx.Err() != nil {
+	if s.closed || backendCtx.Err() != nil || (entry.guard != nil && !entry.guard()) {
 		s.mu.Unlock()
 		return ErrBackendUnavailable
 	}
@@ -297,9 +316,13 @@ func (s *Supervisor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Supervisor) record(ctx context.Context, binding Binding, action, reason string) bool {
+	return recordBackup(ctx, s.audit, binding, action, reason)
+}
+
+func recordBackup(ctx context.Context, audit func(context.Context, Event) error, binding Binding, action, reason string) bool {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	return s.audit(ctx, Event{Binding: binding, Action: action, Reason: reason}) == nil
+	return audit(ctx, Event{Binding: binding, Action: action, Reason: reason}) == nil
 }
 
 func (s *Supervisor) Close() {

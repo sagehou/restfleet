@@ -9,6 +9,40 @@ permissions:
   contents: read
 
 jobs:
+  web-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: web
+      - run: npm audit --audit-level=high
+        working-directory: web
+
+  gateway-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+          cache: true
+      - name: Compile race-enabled isolated channel tests
+        run: go test -race -c -o "${RUNNER_TEMP}/gatewaypending.test" ./internal/gatewaypending
+      - name: Test material and replay channels across non-root service UIDs
+        run: |
+          test_dir=$(mktemp -d /tmp/restfleet-isolation.XXXXXX)
+          trap 'sudo rm -rf "$test_dir"' EXIT
+          chmod 755 "$test_dir"
+          install -m 755 "${RUNNER_TEMP}/gatewaypending.test" "$test_dir/gatewaypending.test"
+          sudo env RESTFLEET_TEST_CROSS_UID=1 "$test_dir/gatewaypending.test" -test.run='^TestCrossUIDMaterialReplayIsolation$' -test.v -test.count=1 -test.timeout=60s
+
   quality:
     runs-on: ubuntu-latest
     services:

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
@@ -22,13 +23,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sagehou/restfleet/internal/domain"
+	"github.com/sagehou/restfleet/internal/gatewaypending"
+	"github.com/sagehou/restfleet/internal/security"
 )
 
 // This exercises the actual shipping engines without any cloud credentials.
 // Only the remote is a local fixture; the frontend uses verified TLS and the
 // backend is a private Unix socket. No Control API or gRPC proxy participates.
 func TestPinnedGatewayBackupAndReadback(t *testing.T) {
+	for _, policy := range []string{"online", "signed-local"} {
+		t.Run(policy, func(t *testing.T) { testPinnedGatewayBackupAndReadback(t, policy) })
+	}
+}
+
+func testPinnedGatewayBackupAndReadback(t *testing.T, policy string) {
 	resticBinary, rcloneBinary := os.Getenv("RESTFLEET_TEST_RESTIC_BINARY"), os.Getenv("RESTFLEET_TEST_RCLONE_BINARY")
 	if resticBinary == "" || rcloneBinary == "" {
 		t.Skip("CI supplies pinned Restic and rclone executables")
@@ -80,9 +90,47 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var local *AuthorizedBackup
+	var queue *gatewaypending.Queue
+	var central ed25519.PrivateKey
+	var pendingSource ed25519.PublicKey
+	var pendingPrivate []byte
+	cleanupSessions := make(map[uuid.UUID]bool)
+	if policy == "signed-local" {
+		var grant security.GatewayStatement
+		_, _, grant, central, _, pendingPrivate = pendingGatewayFixture(t, gatewaypending.Limits{MaxBytes: 2 << 20, MaxRecords: 64})
+		pendingRecipient, deriveErr := security.GatewayPendingPublicKey(pendingPrivate)
+		if deriveErr != nil {
+			t.Fatal(deriveErr)
+		}
+		local, queue, pendingSource = deliverGatewayOwner(t, s, grant, central, pendingRecipient)
+		t.Cleanup(local.Close)
+		// The authenticated Unix material channel initialized this owner. Its
+		// central transaction is a fixture here; no central port is used by backup.
+		s.audit = func(context.Context, Event) error { return ErrGatewayAudit }
+	}
 	server := startPublicFixture(t, s, nil)
 	admission := newAdmissionStoreFixture()
-	op := startAdmitted(t, s, admission, noGatewayRefresh)
+	start := func() *supervisedRun {
+		if local != nil {
+			return startAuthorized(t, local, nil)
+		}
+		return startAdmitted(t, s, admission, noGatewayRefresh)
+	}
+	collectLocalAudits := func() {
+		if local == nil {
+			return
+		}
+		for _, record := range drainAuthorized(t, queue, central, pendingSource, pendingPrivate) {
+			if record.Event != nil && record.Event.Action == "lock_cleanup" {
+				cleanupSessions[record.Event.Binding.OperationID] = true
+				mu.Lock()
+				lockCleanups++
+				mu.Unlock()
+			}
+		}
+	}
+	op := start()
 	access := waitAccess(t, op)
 	ca := filepath.Join(dir, "ca.pem")
 	if err := os.WriteFile(ca, server.certificate, 0600); err != nil {
@@ -116,6 +164,7 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 		t.Fatal("backup had no successful snapshot summary")
 	}
 	locks, err := os.ReadDir(filepath.Join(repo, "locks"))
+	collectLocalAudits()
 	mu.Lock()
 	cleaned := lockCleanups
 	mu.Unlock()
@@ -132,6 +181,30 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 	raw, err = run(env, "dump", snapshots[0].ID, filepath.Join(source, filename))
 	if err != nil || string(raw) != contents {
 		t.Fatal("encrypted backup readback mismatch")
+	}
+	if local != nil {
+		finishSupervised(t, op)
+		assertSupervisorClean(t, dir, runtimeRoot, backupFixture())
+		op = start()
+		access = waitAccess(t, op)
+		env[2] = "RESTIC_REST_PASSWORD=" + string(access.Password)
+		if os.WriteFile(filepath.Join(source, filename), []byte("second local backup fixture\n"), 0600) != nil {
+			t.Fatal("second source")
+		}
+		if _, err := run(env, "backup", "--host", backupFixture().Binding.HostID.String(), source); err != nil {
+			t.Fatal("second pinned backup under the same accepted grant failed")
+		}
+		raw, err = run(env, "snapshots")
+		var second []struct {
+			ID string `json:"id"`
+		}
+		if err != nil || json.Unmarshal(raw, &second) != nil || len(second) != 2 {
+			t.Fatal("sequential backup snapshots missing")
+		}
+		collectLocalAudits()
+		if len(cleanupSessions) != 2 {
+			t.Fatal("sequential sessions did not persist independent lock cleanup")
+		}
 	}
 	// A wrong CA must fail with the same endpoint/auth; no insecure fallback.
 	badCA := filepath.Join(dir, "bad-ca.pem")
@@ -213,7 +286,13 @@ func TestPinnedGatewayBackupAndReadback(t *testing.T) {
 		t.Fatal("foreign lock changed")
 	}
 	finishSupervised(t, op)
-	if admission.releases != 1 {
+	if local != nil {
+		local.Close()
+		collectLocalAudits()
+		if _, _, err := queue.Tail(); err != nil || admission.releases != 0 {
+			t.Fatal("local cleanup released a central fence or lost pending data")
+		}
+	} else if admission.releases != 1 {
 		t.Fatal("successful pinned backup did not release admission")
 	}
 	assertSupervisorClean(t, dir, runtimeRoot, backupFixture())

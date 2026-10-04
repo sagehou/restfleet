@@ -267,9 +267,65 @@ schema 12 / ADR-0019 将授权决定追加持久化，原占用 ID/owner、释�
 
 `ControlPlane.DecideGatewayAuthorization` 只向可信中心运行协调器开放，无新 HTTP/gRPC 路由；调用方 MUST 控制运行实例身份，并串行化签发投递与最终清理/释放。服务使用最多 3s 的上下文，事务提交后重验请求/绑定/版本/期限，再使用独立 Ed25519 key 签名；DB 失败、取消或过期不返回签名。重放同一最新决定不延寿；旧决定被后续版本取代后不再重新签发。
 
-`Settings.GatewaySigningKey` 默认留空禁用签发；启用时必须为一致的 64-byte Ed25519 私钥并配置有效 Gateway origin/CA。中心复制密钥，仅保留在中心服务中；密钥 MUST 经受保护配置加载，不进入日志、argv、审计、API 或 Gateway runner。当前命令尚未提供该密钥的文件装载和生产运行协调，MUST NOT 把测试注入配置当作部署开关。
+`Settings.GatewaySigningKey` 默认留空禁用签发；启用时必须为一致的 64-byte Ed25519 私钥并配置有效 Gateway origin/CA。中心复制密钥，仅保留在中心服务中；密钥 MUST 经受保护配置加载，不进入日志、argv、审计、API 或 Gateway runner。命令文件装载见 §7.13；生产运行协调尚未完成，MUST NOT 把测试注入配置当作部署开关。
 
 已知吊销阻止在线材料使用，但不自动结束远程进程或完成审计回写。释放检查覆盖所有历史未过期授权，显式吊销/全部到期只满足释放的一项前提；仍 MUST 证明请求、子进程和持久化工作退出。升级必须停旧 writer、运行迁移并启用 schema 12 的新代码，不能混跑。独立 Gateway 通道、吊销投递/恢复、回写区、生产 command/readiness 与 AGT-005 仍待验收。
+
+### 7.13 加密待回写与本地回放（schema 13 / ADR-0020）
+
+本批实现回写链路，尚未交付授权/云端材料或 Agent 会话能力的生产通道，在线 §7.8/7.9 MUST 保持原检查。Gateway command、可信清理恢复和 AGT-005 仍待完成。
+
+记录 MUST 为 `security.GatewayPendingRecord` 的规范紧凑 JSON，外层为 header、ciphertext（标准 base64）后拼接 64-byte Ed25519 签名，总长最多 512 KiB。签名域为 `restfleet:gateway-pending:v1` 加 NUL；来源公钥 MUST 从中心注册查得，不能接受 wire 提供的公钥。未验签 header 只 MAY 用 admission_id/runtime_id 查询可信来源，不能用于授权或效果；验签后 MUST 比对完整绑定。同一运行实例的多个占用独立注册、排序和封存。ciphertext 使用 `nacl/box.SealAnonymous`（X25519 / XSalsa20-Poly1305），接收私钥仅在中心；解密后 MUST 验证内外 header 完全相同和规范重编码，不归一化未知/重复字段。
+
+header 顺序 MUST 为 binding（同 §7.11）、record_id、sequence、previous_hash、authorization_revision、created_at；ID 为 UUIDv7，sequence 为 1..MaxInt64-1，authorization_revision 为正 bigint，hash 为 64 位小写 hex，首次 previous_hash 为全零。created_at 为正 UTC Unix 整秒且不超过 9999 年末。内层其余字段依序为 kind、event、expected_secret_revision、config。audit 仅携带同一白名单 event，config MUST 为 null、expected_secret_revision=0；refresh 要求 event=null、合法 expected_secret_revision 和最多 256 KiB config，只在中心解密并再次执行 token-only 验证。event 顺序为 binding（host_id、repository_id、gateway_id、session_id）、authenticated、action、reason；未绑定拒绝事件的 ID 均为 nil，不能按请求推断身份。
+
+待回写目录 MUST 是 canonical、服务所有、0700 的持久目录；普通文件 MUST 0600、无 symlink/hardlink。一个目录只容纳一个完整 binding，独占 flock；记录原子写入前 MUST 检查记录数 1–4096 和总文件字节上限（至少 512 KiB +16 KiB、最多 64 MiB，预留 16 KiB 给 identity/确认及临时文件；不计算文件系统目录块）。fsync/rename/目录 fsync 任一步失败 MUST 停止本实例追加，禁止丢弃未确认记录。损坏、缺失前缀或不确定临时文件 MUST 保留并阻塞恢复；不得自动删掉未提交文件来启动数据面。重开只可回放，不可追加或复活授权。
+
+确认 MUST 为 admission_id、runtime_id、sequence、record_id、wire_hash 的规范 JSON +64-byte 中心 Ed25519 签名（域 `restfleet:gateway-pending-receipt:v1` 加 NUL，最多 1024 bytes）。中心 MUST 在同事务提交 effect 和接收历史后才签名；Gateway MUST 核验精确首条记录、可靠保存确认后再删对应文件。确认丢失 MUST 重发相同 wire，不重新加密。同 sequence 改参、跳序、前 hash 不符、唯一 ID 重用及跨 binding MUST 拒绝。
+
+回放 MUST 保留原占用并使用 credential → admission → origin 锁顺序；过期/禁用/已吊销不丢弃旧记录。refresh MUST 引用原运行实例的非吊销历史授权，发生于其签发至到期区间，并满足中心加密 revision CAS；不能以历史回写授予新访问。audit 清理观察 MAY 晚于授权到期，仍不构成进程退出证明。已注册来源 MUST 独占刷新，原同步刷新接口不得旁路。来源封存 MUST 由可信中心在数据面与追加者退出、全部回写后提交精确 tail；未封存来源阻止占用释放，封存自身也不证明清理。
+
+回放通道默认 MUST 使用服务所有 0700 目录内新建的 0600 Unix socket，拒绝接管现有 socket；显式跨 UID 模式见 §7.16。双方核验 SO_PEERCRED 的服务 UID，来源/确认签名仍不可省略。原同 UID 测试不能据此声称 UID 隔离或生产材料交付已经完成。帧依序为 ASCII `RFGR`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire；未知版本和超长/空帧 MUST 拒绝分配/执行。四并发连接、每连接最多 5s、一次请求/确认，中心事务最多 3s；取消 MUST 关闭连接并等待 handler 退出。没有 TCP、HTTP 或 Agent 路由。身份/帧或来源/绑定拒绝 MUST 写固定的无资源 GATEWAY_PENDING_REPLAY_DENIED / REJECTED 审计，不能记录未认证 header、UID、原始错误或配置；DB/审计不可用时不接受原操作。
+
+Server 内部回放 listener 默认禁用。`RESTFLEET_GATEWAY_SIGNING_KEY_FILE` MUST 包含 base64 32-byte Ed25519 seed，`RESTFLEET_GATEWAY_PENDING_KEY_FILE` MUST 包含 base64 32-byte X25519 私钥；文件 MUST canonical、服务所有、0400/0600、regular、非 hardlink，两种私钥都禁止直接环境变量。pending key 要求 signing key，签名要求有效 Gateway/enrollment 配置；设置 `RESTFLEET_GATEWAY_REPLAY_SOCKET` 才启用内部 listener。中心密钥 MUST 持久复用，不得在队列未排空时直接替换/丢弃旧密钥；本批不提供中心密钥 overlap。私钥 MUST 不交给 Gateway，升级前 MUST 停旧 writer、迁移至 schema 13；历史记录存在时 Down 拒绝。来源注册和封存没有公网接口，不能靠设置 listener 宣称 Gateway 可部署或 Repository READY。
+
+### 7.14 本地签名授权会话 owner（ADR-0021）
+
+`gateway.NewAuthorizedBackup` 是尚未接入 command 的内部数据面入口，MUST NOT 接受 Agent 选择的 origin/material，也不替代 §7.8 的在线入口。可信协调器 MUST 先完成当前占用、来源注册与材料匹配，经过受保护认证交付后才构造 owner；内部单次材料通道见 §7.15，生产协调仍未接线。constructor MUST 比对完整 binding、来源/确认公钥、有效授权和原占用上限，只从无追加历史的新 Queue 认领一次来源；恢复、排空或重新构造不得重置 owner 的 token/replay 状态。
+
+同一 admission/runtime 的连续备份 MUST 复用唯一 owner、Authorization 和 token recorder，使用已可靠接受的最新配置和单调 expected revision；每次使用新 operation ID 与随机 session capability，仍受全局 supervisor 的容量和 Host/Repository/Gateway/Credential 冲突限制。会话审计 MUST 写向本绑定 Queue，未路由与全局限流审计仍由 supervisor 的独立全局 recorder 处理，不得猜测来源。
+
+每次路由和每次向 backend 转发（含上传完成后的 HEAD/POST 与锁 DELETE）前 MUST 检查本地签名授权、原占用期限及 Queue 可写性；watchdog 每 100ms 核验，取消空闲/已开始工作并等待全部清理。生产者可写性保守要求剩余一个最大 512 KiB wire 与一个记录位置，Append 仍执行真实大小校验；关闭、冻结、写入不确定或空间不足 MUST 停止。吊销、到期、时钟不安全或审计/刷新失败 MUST 取消，运行失败后 owner 永久停止启动；新授权、重连或排空不能恢复失败 owner。取消不能撤销已在外部后端提交的请求，不保证反向回滚数据。
+
+运行失败或 Close MUST 在取消/join 会话与 watchdog 后关闭 token recorder、清除当前明文并冻结来源；Queue 仅保留给可信回放。成功返回与 Close 均不是中心封存、崩溃清理证明或 fence release，MUST NOT 自动调用 ReleaseBackupAdmission。固定二进制 TLS 连续两次备份及负向测试只证明内部生命周期，不替代 production delivery、scheduler、可信恢复、READY、REP-016 或 AGT-005。
+
+### 7.15 单次加密材料初始化（schema 14 / ADR-0022）
+
+`ControlPlane.GatewayMaterialDelivery` 仅供可信中心协调器使用，不是公共 API。协调器 MUST 提供独立可信 binding/来源 pin，并串行化交付、授权投递及清理；来源私钥与中心验证公钥 MUST 从 Gateway 受保护本地配置取得，不信任 Agent 输入。中心事务最多 3s；交换最多 5s，先验证来源挑战，再提交当前状态核验、单次交付意图与访问审计，最后短时解密并签名加密。失败不回显底层错误或配置。
+
+Gateway 默认监听新建的服务所有 0700 目录内 0600 Unix socket，中心主动连接；双方 MUST 核验预期 SO_PEERCRED UID，中心还 MUST 验证预注册来源签名。原正向测试为同 UID；显式跨 UID 访问见 §7.16，不能据此声称完整生产 UID 隔离。没有进程启动器、独立 pin/source 受保护配置接线或 command 启用选项。
+
+帧 MUST 为 ASCII `RFGM`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire，与回放的 `RFGR` 隔离。挑战与回执最多 2048 bytes，材料 wire 最多 512 KiB，config 最多 256 KiB；空帧、错误 runtime、版本或超长帧 MUST 拒绝。
+
+三个 wire MUST 为 Go encoding/json 规范紧凑 JSON 后拼接 64-byte Ed25519 签名。签名域分别为 `restfleet:gateway-material-challenge:v1`、`restfleet:gateway-material:v1`、`restfleet:gateway-material-receipt:v1`，各加 NUL 后接 payload。未知/重复字段、非规范数字、空白、替代 UUID 表示 MUST 拒绝，不归一化。
+
+挑战字段顺序 MUST 为 binding（§7.11）、nonce、recipient；nonce 是 fresh 32-byte 随机值，recipient 是 Gateway 临时 X25519 公钥。二者 MUST 编码为 32 个 0..255 整数的 JSON 数组。材料外层顺序为 challenge、source、ciphertext；source 与 ciphertext 使用标准 base64。ciphertext 使用 `nacl/box.SealAnonymous`，接收私钥仅在 Gateway。中心签名验证后解密，内层顺序 MUST 为 challenge、source、pending_recipient、statement、admission_created_at、admission_expires_at、secret_revision、remote、config_hash、config；pending_recipient 是中心待回写 X25519 公钥，以 32 整数数组编码，statement/config 为标准 base64。MUST 比对内外挑战及可信 source，检查原占用 UTC Unix 整秒期限、初始 secret revision、普通有效授权和 config SHA-256（64 位小写 hex）。材料 MUST NOT 含 DB/master/signing/中心 recipient 私钥、Restic password 或 Agent capability。
+
+`MaterialReceiver` MUST 单次使用。无效交换也消费接收者，取消关闭 socket；Close MUST 消费未开始实例或取消/join 正在执行的交换，并清零来源私钥副本和临时接收私钥。install/rollback/denied 回调 MUST NOT 调用等待自己的 Close。安装只 MAY 通过 `InstallGatewayMaterial` 构造 fresh Queue/唯一 owner，config 借用后清零；回调 MUST 返回 rollback，安装或回执发送失败时取消并 join owner，保留 Queue 供回放。
+
+回执字段顺序 MUST 为 challenge、wire_hash，来源签名验证精确材料 wire SHA-256。它只确认初始化，不是 Agent ACK、READY、清理或释放。中心提交单次意图后 MUST NOT 重新交付，包括精确重试、新挑战、丢失回执和无已回写记录；未知结果保留 fence，等待可信恢复。升级 MUST 停旧 writer 后迁移 schema 14，已有交付历史时 Down 拒绝；不新增公共 API、自动注册来源或授权签发。
+
+### 7.16 独立 UID 与显式共享组通道（ADR-0023）
+
+Server/Gateway SHOULD 使用不同的固定非 root UID，管理员 MUST 将两者加入专用非 root GID。监听方 MUST 独占拥有对应通道目录，mode 精确为 0710、GID 与配置一致；新建 socket MUST 为监听方 UID、配置 GID、mode 0660。不接受额外特殊权限、组/其他用户写目录、symlink、非规范路径或旧 socket 接管。组只授予已知路径的遍历与 socket 连接，不能列目录、修改目录或替换 socket；祖先路径 MUST 由可信管理员维护，不接受不可信写入者。
+
+`ListenReplay`、`ServeReplay`、`Replay`、`Drain`、`MaterialReceiver.Receive`、`SendMaterial` 的可选 sharedGroup MUST 从可信配置显式传入，不从路径推断。省略/零 GID 保持 0700/0600 原模式；多个 GID 或保留值 4294967295 MUST 拒绝。组成员身份不代替 SO_PEERCRED 精确 peer UID、来源/中心签名或加密。共享组误加第三用户允许其干扰连接，MUST 仍拒绝其操作；被干扰的单次初始化保留 fence，不自动重试。
+
+中心设置 `RESTFLEET_GATEWAY_REPLAY_PEER_UID` 与 `RESTFLEET_GATEWAY_REPLAY_GROUP` 时 MUST 同时配置两项、回放 socket 和既有有效中心密钥。值 MUST 为规范十进制 uint32，均非零且非保留值，peer UID MUST 不同于本中心 UID。不设置两项保持同 UID 私有模式。该配置仅接入中心回放 listener，不生成生产 Gateway 身份、启动进程、注册来源或授予 READY。
+
+共享组 MUST NOT 用于中心 DB/master/signing/接收私钥、Gateway 来源私钥、明文配置和待回写 Queue；它们仍 MUST 在各自服务所有的 0700 私有目录内，以 0400/0600 文件或已有 tmpfs 规则保护。独立挂载中心 secrets，Gateway 不持有中心秘密。没有新的 wire、公共 API、DB schema 或部署服务依赖。
+
+GitHub Actions `gateway-isolation` job 编译 race-enabled 测试二进制并运行 REP-042。root 仅是测试进程启动/权限协调器，三个实际协议进程均为不同非 root UID；Gateway 在自身进程产生来源私钥，中心只获公钥，中心私钥经匿名 stdin 管道单独交给中心。测试核验加密材料/签名回放与确认、借用明文清零、跨服务私钥读取拒绝、socket 替换拒绝和同组第三 UID 拒绝；准入/DB 事务仍由既有集成测试覆盖。开发工作区 MUST NOT 执行该 job 的编译或进程测试。`4c9285c` 的 Actions 验收已通过，后续 MUST 以当前 head 检查为准；生产身份装载/运行协调、续期/吊销、恢复、command/readiness、rotation/READY、真实云端和 AGT-005 仍未完成。
 
 ## 8. Native Agent 安装
 

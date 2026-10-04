@@ -32,6 +32,7 @@ type Authorization struct {
 	key         ed25519.PublicKey
 	binding     security.GatewayAuthorizationBinding
 	current     security.GatewayStatement
+	lastGrant   security.GatewayStatement
 	lastWall    time.Time
 	deadline    time.Time
 	clockUnsafe bool
@@ -68,6 +69,7 @@ func (a *Authorization) Accept(wire []byte) error {
 	}
 	a.current = s
 	if !s.Revoked {
+		a.lastGrant = s
 		// Preserve time.Now's monotonic component; receiving an old grant does
 		// not grant another 12h. Wall-clock expiry is also checked in Status.
 		a.deadline = now.Add(time.Unix(s.ExpiresAt, 0).Sub(now))

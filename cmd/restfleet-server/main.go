@@ -17,6 +17,7 @@ import (
 
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
 	"github.com/sagehou/restfleet/internal/buildinfo"
+	"github.com/sagehou/restfleet/internal/gatewaypending"
 	"github.com/sagehou/restfleet/internal/persistence/postgres"
 	"github.com/sagehou/restfleet/internal/rclone"
 	"github.com/sagehou/restfleet/internal/restic"
@@ -39,6 +40,8 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	defer clear(config.GatewaySigningKey)
+	defer clear(config.GatewayPendingDecryptionKey)
 	for _, warning := range config.Warnings {
 		logger.Warn(warning, "component", "server", "event", "insecure_development_configuration")
 	}
@@ -81,12 +84,14 @@ func run(logger *slog.Logger) error {
 		initializeRepository = provisioner.Provision
 	}
 	controlPlane, err := control.NewControlPlane(store, control.Settings{
-		RunCredentialTest:    runCredentialTest,
-		InitializeRepository: initializeRepository,
-		BootstrapToken:       config.BootstrapToken,
-		MasterKey:            config.MasterKey,
-		GatewayPublicURL:     config.GatewayPublicURL,
-		ExpectedSchema:       postgres.ExpectedSchemaVersion,
+		RunCredentialTest:           runCredentialTest,
+		InitializeRepository:        initializeRepository,
+		BootstrapToken:              config.BootstrapToken,
+		MasterKey:                   config.MasterKey,
+		GatewayPublicURL:            config.GatewayPublicURL,
+		GatewaySigningKey:           config.GatewaySigningKey,
+		GatewayPendingDecryptionKey: config.GatewayPendingDecryptionKey,
+		ExpectedSchema:              postgres.ExpectedSchemaVersion,
 		Enrollment: control.EnrollmentSettings{
 			Pepper: security.DeriveEnrollmentPepper(config.MasterKey),
 			CA:     agentCA, PublicURL: config.PublicURL,
@@ -159,7 +164,23 @@ func run(logger *slog.Logger) error {
 		agentv1.RegisterAgentControlServiceServer(grpcServer, agentService)
 	}
 
-	serverErrors := make(chan error, 4)
+	serverErrors := make(chan error, 5)
+	replayDone := make(chan struct{})
+	if config.GatewayReplaySocket != "" {
+		listener, err := gatewaypending.ListenReplay(config.GatewayReplaySocket, config.GatewayReplayGroup)
+		if err != nil {
+			return err
+		}
+		go func() {
+			defer close(replayDone)
+			if err := gatewaypending.ServeReplay(ctx, listener, config.GatewayReplayPeerUID, controlPlane.ReplayGatewayPending, controlPlane.RecordGatewayReplayDenied, config.GatewayReplayGroup); err != nil {
+				serverErrors <- err
+			}
+		}()
+	} else {
+		close(replayDone)
+	}
+	defer func() { stop(); <-replayDone }()
 	workerDone := make(chan struct{})
 	if credentialRuntime != nil {
 		go func() {
