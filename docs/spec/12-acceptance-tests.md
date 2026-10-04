@@ -177,6 +177,13 @@ Gateway 单次加密材料初始化验收（ADR-0022；同 UID 内部通道，�
 | REP-045 | P0 | 中心元数据仅从服务所有 canonical 0700 私有目录的单链接 0400/0600 文件装载；版本/大小/完整 binding/公钥/期限/UID/GID/socket 路径有界验证，拒绝特殊权限、symlink/hardlink/pending 与重复/未知/遗漏/大小写/null/非规范 JSON。命令非法参数及路径仅返回固定错误，生产禁止 root/同 UID 私有协调。 |
 | REP-046 | P0 | 三后端真实 DB 从无授权/来源/意图开始，经来源签名与 peer 验证后首次授权→注册→单次加密交付，借用明文清零；错误来源/binding/UID、失效 ACK/禁用、审计与注册失败拒绝且不撤销先前 committed 阶段。安装失败 rollback 保留单次意图；新挑战不再交付，新 runtime 不能接管旧 admission，不释放 fence。 |
 
+Gateway 授权决定交付验收（ADR-0026；不代表 daemon、cleanup receipt 或 READY）：
+
+| ID | 优先级 | 场景与预期 |
+|---|---|---|
+| REP-047 | P0 | RFGA 独立签名域、fresh nonce、完整 binding 与精确回执；错误 UID/pin/magic/version/runtime/空或超长帧、伪造/非规范证明及错误回执拒绝。不同非 root 服务 UID 顺序续期/精确重放/吊销成功，同组第三 UID 不触发中心决定；取消关闭连接并 join 阻塞 callback，原私钥/socket 隔离不削弱。 |
+| REP-048 | P0 | 三后端真实首次初始化后续期、相同幂等键重放与禁用后明确吊销；错误来源/注册绑定/UID/revision、失效 ACK、封存和审计失败不产生新 grant 或重发材料。回执丢失仅显式重放同一最新决定，不改到期或释放 fence；活动 owner 经通道吊销后取消/join、清零/冻结，续期不能越过原占用或复活失败 owner。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

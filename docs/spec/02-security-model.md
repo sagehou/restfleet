@@ -186,6 +186,10 @@ Gateway 的审计与 token 刷新 MUST 在确认持久化前完成受保护的�
 
 ADR-0022 / 09 §7.15 的内部通道 MUST 使用预注册来源签名挑战、临时接收公钥加密及独立中心签名。可信 binding/来源和中心验证 pin MUST 来自受保护协调配置，不能从 Agent 请求或材料选择。当前身份、ACK、占用、来源、初始材料 revision 及最新有效授权 MUST 与单次交付意图/访问审计原子核验；提交后错误或回执丢失 MUST NOT 重新交付。Gateway 借用明文配置和临时私钥 MUST 清零，初始化回执不授予 READY 或清理权。原同 UID Unix 测试不证明生产 UID 隔离；ADR-0023 / 09 §7.16 增加显式共享组及精确 peer UID 验证，私钥/配置/队列 MUST 继续按不同服务私有隔离。来源本地创建与独立 pin 文件装载见 ADR-0024 / 09 §7.17；中心受保护元数据/显式单次协调见 ADR-0025 / 09 §7.18。协调 MUST 在来源/UID 认证后才签发、注册与交付；部分阶段失败保留已有决定及 fence。Gateway 生产配置/启动器及完整运行协调仍未完成；旧元数据不能作为自动重启配方。
 
+### 8.5 Gateway 授权决定交付
+
+ADR-0026 / 09 §7.19 的 `RFGA` 通道 MUST 仅交付中心签名 metadata，不携带云端材料、接收私钥或 Agent 能力。中心 MUST 在 peer UID、来源 fresh challenge 和已注册完整 binding/公钥验证后提交续期或明确吊销；普通授权继续检查当前身份/ACK/配置，禁用后仍允许明确吊销。Gateway MUST 更新同一已初始化 owner，保持原占用期限与失败不可复活边界。来源回执 MUST 匹配本次挑战和精确 statement；回执丢失不回滚、不重新发材料、不签发新 grant。显式精确重放 MUST 保持原到期，失败 owner 可以拒绝。接收回执不证明 cleanup、READY 或可释放 fence，完整生产协调与全局离线审计仍待接线。
+
 ## 9. Web 安全
 
 - 首个管理员只可通过一次性 bootstrap secret 创建；使用后删除/作废；

@@ -156,9 +156,13 @@ func TestCrossUIDMaterialReplayIsolation(t *testing.T) {
 	centerInput, centerDone := start("center", crossCenter, crossConfig{Root: root, Binding: binding, CenterPin: public,
 		SourcePin: source, CenterKey: central, PendingKey: pending[:]})
 	waitPath(filepath.Join(root, "gateway-ipc", "installed"))
-	otherInput, otherDone := start("other", crossOther, crossConfig{Root: root, Binding: binding})
+	otherInput, otherDone := start("other", crossOther, crossConfig{Root: root, Binding: binding, SourcePin: source})
 	_ = otherInput.Close()
 	finish(otherDone)
+	if json.NewEncoder(centerInput).Encode(true) != nil {
+		t.Fatal("authorize metadata delivery fixture")
+	}
+	waitPath(filepath.Join(root, "center-ipc", "authority-delivered"))
 	if json.NewEncoder(gatewayInput).Encode(true) != nil {
 		t.Fatal("release initialized service")
 	}
@@ -186,6 +190,7 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	materialPath := filepath.Join(c.Root, "gateway-ipc", "material.sock")
+	authorityPath := filepath.Join(c.Root, "gateway-ipc", "authority.sock")
 	replayPath := filepath.Join(c.Root, "center-ipc", "replay.sock")
 	privatePath := func(service, name string) string { return filepath.Join(c.Root, service+"-private", name) }
 	denied := func(context.Context) error { return nil }
@@ -249,6 +254,35 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 		if err := os.Remove(replayPath); !errors.Is(err, os.ErrPermission) {
 			t.Fatal("Gateway could replace center socket")
 		}
+		authorityListener, err := ListenReplay(authorityPath, crossGroup)
+		if err != nil {
+			t.Fatal("authority listener")
+		}
+		var deliveries [][]byte
+		var authorityDenials atomic.Int32
+		revoked := make(chan struct{})
+		authorityDone := make(chan error, 1)
+		go func() {
+			authorityDone <- ServeAuthorization(ctx, authorityListener, crossCenter, c.Binding, source, centralPin,
+				func(_ context.Context, wire []byte) error {
+					s, err := security.VerifyGatewayStatement(wire, centralPin)
+					if err != nil || s.Binding != c.Binding || len(deliveries) >= 3 ||
+						(len(deliveries) < 2 && (s.Revision != 2 || s.Revoked)) ||
+						(len(deliveries) == 2 && (s.Revision != 3 || !s.Revoked)) {
+						return ErrChannel
+					}
+					deliveries = append(deliveries, bytes.Clone(wire))
+					if s.Revoked { close(revoked) }
+					return nil
+				}, func(context.Context) error { authorityDenials.Add(1); return nil }, crossGroup)
+		}()
+		defer func() {
+			cancel()
+			if <-authorityDone != nil { t.Error("authority listener did not join") }
+			if len(deliveries) != 3 || !bytes.Equal(deliveries[0], deliveries[1]) || authorityDenials.Load() != 1 {
+				t.Error("cross-UID authority replay/revocation/denial failed")
+			}
+		}()
 		if os.WriteFile(filepath.Join(c.Root, "gateway-ipc", "installed"), []byte("ready"), 0644) != nil {
 			t.Fatal("installation fixture marker")
 		}
@@ -256,6 +290,11 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 		if decoder.Decode(&release) != nil || !release || queue.Append(pendingAudit()) != nil ||
 			Drain(ctx, queue, replayPath, crossCenter, c.Binding.RuntimeID, crossGroup) != nil {
 			t.Fatal("source-signed cross-UID replay")
+		}
+		select {
+		case <-revoked:
+		case <-ctx.Done():
+			t.Fatal("cross-UID revocation not received")
 		}
 	case "center":
 		if os.Geteuid() != crossCenter {
@@ -320,6 +359,30 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 			<-done
 			t.Fatal("encrypted cross-UID delivery")
 		}
+		var deliver bool
+		if decoder.Decode(&deliver) != nil || !deliver {
+			cancel()
+			<-done
+			t.Fatal("trusted metadata fixture trigger")
+		}
+		now := time.Now().Unix()
+		grant, err := security.SignGatewayStatement(security.GatewayStatement{Binding: c.Binding, Revision: 2, IssuedAt: now - 1, ExpiresAt: now + 60}, c.CenterKey)
+		if err != nil { t.Fatal("fixture grant") }
+		revoke, err := security.SignGatewayStatement(security.GatewayStatement{Binding: c.Binding, Revision: 3, IssuedAt: now - 1, Revoked: true}, c.CenterKey)
+		if err != nil { t.Fatal("fixture revocation") }
+		for _, wire := range [][]byte{grant, grant, revoke} {
+			if SendAuthorization(ctx, authorityPath, crossGateway, c.Binding, c.SourcePin,
+				func(context.Context) ([]byte, error) { return wire, nil }, denied, crossGroup) != nil {
+				cancel()
+				<-done
+				t.Fatal("cross-UID authority delivery")
+			}
+		}
+		if os.WriteFile(filepath.Join(c.Root, "center-ipc", "authority-delivered"), []byte("accepted"), 0644) != nil {
+			cancel()
+			<-done
+			t.Fatal("metadata fixture completion")
+		}
 		var shutdown bool
 		if decoder.Decode(&shutdown) != io.EOF {
 			cancel()
@@ -343,6 +406,12 @@ func TestCrossUIDServiceHelper(t *testing.T) {
 		}
 		if _, err := Replay(ctx, replayPath, crossCenter, c.Binding.RuntimeID, []byte("untrusted-record"), crossGroup); err != ErrChannel {
 			t.Fatal("wrong UID reached replay handler")
+		}
+		if SendAuthorization(ctx, authorityPath, crossGateway, c.Binding, c.SourcePin, func(context.Context) ([]byte, error) {
+			t.Error("wrong UID reached central decision")
+			return nil, ErrChannel
+		}, denied, crossGroup) != ErrChannel {
+			t.Fatal("wrong UID reached authority handler")
 		}
 	default:
 		t.Fatal("unknown isolated role")

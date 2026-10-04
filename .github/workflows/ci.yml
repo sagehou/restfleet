@@ -33,6 +33,15 @@ jobs:
         with:
           go-version: 1.27.1
           cache: true
+      - name: Prepare authority formatting patch in Actions
+        run: |
+          gofmt -w internal/gateway/authorized_linux.go internal/gateway/authorized_linux_test.go internal/gatewaypending/authority_linux.go internal/gatewaypending/authority_linux_test.go internal/gatewaypending/cross_uid_linux_test.go internal/security/gateway_authority.go internal/security/gateway_authority_test.go internal/server/gateway_authority_linux.go internal/server/httpapi/gateway_authority_linux_integration_test.go
+          git diff --binary > "${RUNNER_TEMP}/authority-format.patch"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: authority-format
+          path: ${{ runner.temp }}/authority-format.patch
+          retention-days: 1
       - name: Compile race-enabled isolated channel tests
         run: go test -race -c -o "${RUNNER_TEMP}/gatewaypending.test" ./internal/gatewaypending
       - name: Test material and replay channels across non-root service UIDs

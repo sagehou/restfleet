@@ -373,6 +373,20 @@ restfleet-server gateway-start --config-file /var/lib/restfleet/gateway-startup/
 
 命令成功只确认初始化回执，不代表 Agent 会话能力、可用数据面、清理或 READY。REP-045–046 MUST 在 Actions 执行；Gateway 生产配置/daemon、多仓库数据面、续期/吊销、全局离线审计、Agent 能力、可信恢复/readiness、rotation/READY、真实云端与 AGT-005 仍待完成。
 
+### 7.19 授权续期与明确吊销交付（ADR-0026）
+
+`ServeAuthorization` MUST 拥有一个新建受保护 Unix listener，绑定单一完整 admission/runtime，逐连接串行接受 metadata-only 决定。私有默认与显式跨 UID 共享策略 MUST 与 §7.16 相同；服务 MUST 使用精确 SO_PEERCRED UID，独立来源与中心 pin；来源私钥退出时清零。帧 MUST 为 `RFGA`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度和 body。每连接只交换挑战→statement→回执，最多 5s；挑战/回执/statement 各最多 2048 bytes（包括签名），空/超长、未知 magic/version/runtime MUST 拒绝。
+
+挑战 MUST 按字段 binding、nonce 编码规范紧凑 JSON，nonce 为 32-byte CSPRNG 数组且非全零，随后拼接 64-byte 来源 Ed25519 签名；签名域为 `restfleet:gateway-authority-challenge:v1` 加 NUL。回执 MUST 按 challenge、wire_hash 编码，后拼接来源签名；域为 `restfleet:gateway-authority-receipt:v1` 加 NUL。完整 binding 同 §7.11；wire_hash 为精确中心 signed statement 的 64 位小写 SHA-256 hex。未知/重复/遗漏/大小写替代或非规范 JSON MUST 拒绝。statement MUST 使用既有中心签名域；不得把初始化或回写证明作为授权交付证明。
+
+可信中心 MUST 在 Gateway 来源挑战/UID 验证后查询未封存注册来源，核验完整 binding 与独立 pin，再调用既有决定事务（expected revision ≥ 1）。普通续期必须核验当前身份、ACK、凭据、配置和原占用期限；明确吊销不得因身份/凭据禁用而无法交付。协调者 MUST 将初始化、所有决定/投递和可信清理按 admission 串行，MUST 指向已初始化的同一 owner；通道不能证明安装或进程新鲜性。
+
+Gateway MUST 核验中心签名与完整 binding，再调用该 owner 的 `AcceptAuthorization`；普通续期不能越过原 admission 到期，失效/失败 owner 不得复活。授权状态与连接状态分离；中断不续期、不吊销、不删除已接受决定。吊销由 watchdog/每操作 guard 取消并 join 工作，清零明文并冻结 Queue；回执不等待/证明这项清理，也不确认 READY、Agent ACK、封存或释放。
+
+回执丢失 MUST 保留中心已提交决定和原 fence。MAY 显式重放同一最新 committed 决定/幂等键，MUST 保留签发与到期时刻；不得自动签发新授权、重发初始化材料或恢复失败 owner。单次交付无自动重试。取消 MUST 关闭活跃连接并等待当前 callback 退出；callback MUST 响应 context。拒绝审计 MUST 使用固定无资源 `GATEWAY_AUTHORIZATION_DELIVERY_DENIED` / `REJECTED`，不得记录 wire、未认证身份、路径或原始错误；审计失败 MUST 停止接收通道。开发工作区 MUST NOT 执行服务或验证；REP-047–048 仅在 Actions 运行。
+
+本批不新增命令、自动续期调度器或 schema。Gateway daemon/生产配置、多仓库公网数据面、全局离线拒绝审计、Agent 会话能力交付、可信清理/恢复、readiness、rotation/READY、真实云端及 AGT-005 仍待完成。
+
 ## 8. Native Agent 安装
 
 目标目录：
