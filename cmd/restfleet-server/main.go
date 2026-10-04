@@ -36,6 +36,9 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
+	if len(os.Args) > 1 {
+		return runGatewayStartup(os.Args[1:])
+	}
 	config, err := control.LoadRuntimeConfig()
 	if err != nil {
 		return err

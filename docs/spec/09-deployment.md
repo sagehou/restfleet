@@ -303,7 +303,7 @@ Server 内部回放 listener 默认禁用。`RESTFLEET_GATEWAY_SIGNING_KEY_FILE`
 
 `ControlPlane.GatewayMaterialDelivery` 仅供可信中心协调器使用，不是公共 API。协调器 MUST 提供独立可信 binding/来源 pin，并串行化交付、授权投递及清理；来源私钥与中心验证公钥 MUST 从 Gateway 受保护本地配置取得，不信任 Agent 输入。中心事务最多 3s；交换最多 5s，先验证来源挑战，再提交当前状态核验、单次交付意图与访问审计，最后短时解密并签名加密。失败不回显底层错误或配置。
 
-Gateway 默认监听新建的服务所有 0700 目录内 0600 Unix socket，中心主动连接；双方 MUST 核验预期 SO_PEERCRED UID，中心还 MUST 验证预注册来源签名。原正向测试为同 UID；显式跨 UID 访问见 §7.16，不能据此声称完整生产 UID 隔离。来源创建与独立 pin/source 文件装载见 §7.17；完整可信 binding 配置、来源注册、进程启动器与数据面 command 仍未接线。
+Gateway 默认监听新建的服务所有 0700 目录内 0600 Unix socket，中心主动连接；双方 MUST 核验预期 SO_PEERCRED UID，中心还 MUST 验证预注册来源签名。原正向测试为同 UID；显式跨 UID 访问见 §7.16，不能据此声称完整生产 UID 隔离。来源创建与独立 pin/source 文件装载见 §7.17；中心受保护 binding/来源元数据与显式单次协调命令见 §7.18，Gateway 生产配置、进程启动器与数据面 command 仍未接线。
 
 帧 MUST 为 ASCII `RFGM`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度、wire，与回放的 `RFGR` 隔离。挑战与回执最多 2048 bytes，材料 wire 最多 512 KiB，config 最多 256 KiB；空帧、错误 runtime、版本或超长帧 MUST 拒绝。
 
@@ -341,6 +341,37 @@ restfleet-gateway source-public --source-key-file /var/lib/restfleet-gateway/ide
 中心签名公钥 MUST 从可信管理员取得，独立配置到 Gateway 私有目录内的 0400/0600 文件，内容为标准 base64 32-byte Ed25519 **公钥**，不能复制中心 seed/私钥。`LoadGatewayTrust` 与 `NewMaterialReceiverFromFiles` MUST 核验文件与目录的 canonical 路径、精确服务 UID/权限、regular/单链接及大小，拒绝特殊权限、symlink/hardlink、pending 痕迹和同一 seed 文件充当 pin。初始化 wire 仍不能选择验证信任；receiver 保持原单次生命周期，加载私钥副本在复制后清零。生成成功/公钥导出/加载均不代表来源已注册、可信 binding 已确认或数据面可运行。
 
 REP-043–044 MUST 在 Actions 运行。跨 UID 夹具由可信测试协调器独立安装公钥 pin，Gateway 子进程使用上述生产文件创建/装载 API；私钥不通过共享目录、argv、环境变量或中心进程。该验收不替代生产配置装载、来源注册、启动协调、续期/吊销、Agent 会话能力、恢复、数据面 command/readiness、rotation/READY、REP-016 或 AGT-005。
+
+### 7.18 中心单次初始化协调（ADR-0025）
+
+可信协调者 MUST 为已有已 ACK 仓库/占用及本次独立 Gateway 进程准备完整 binding，并独立取得该进程使用的来源公钥；metadata MUST NOT 来自 Agent、初始化请求或回放 wire。Gateway 本地受保护配置 MUST 独立绑定相同身份。本批只装载中心元数据，尚未实现 Gateway daemon 配置和启动器。
+
+中心 metadata MUST 在中心服务所有 canonical 0700 私有目录内，0400/0600 regular file、单链接、无特殊权限/symlink/hardlink/pending，最多 4096 bytes。JSON 字段顺序 MUST 为：
+
+| 字段 | 类型与约束 |
+|---|---|
+| version | 整数 1 |
+| binding | §7.11 的完整 binding，含 fresh runtime UUIDv7 |
+| source_public | 标准 base64 的 32-byte 来源 Ed25519 公钥，不能传入 seed/私钥 |
+| decision_id | 本次初次授权幂等键，规范 UUIDv7 |
+| lifetime_seconds | 整数 1–43200，实际授权不超过原 admission 到期时刻 |
+| socket_path | canonical absolute Unix socket 路径，最多 107 bytes；实际 owner/权限由通道验证 |
+| gateway_uid | uint32，预期 Gateway peer UID；生产非零、不同于中心 UID |
+| shared_group | uint32，生产显式专用非零 GID；非生产同 UID 私有模式为 0 |
+
+保留值 4294967295 MUST 拒绝。字段 MUST 全部显式给出；MAY 排版空白，其他编码 MUST 与 Go encoding/json 规范重新编码相同，未知/重复/遗漏/大小写替代/null/非规范 UUID 或数字 MUST 拒绝。私有模式 MUST 同 UID；共享模式 MUST 为不同非 root UID。元数据和私钥目录 MUST 与共享 IPC/Queue 分开，祖先路径由可信管理员维护。
+
+正式部署或 Actions MAY 以中心服务 UID 显式执行，开发工作区 MUST NOT 执行：
+
+```text
+restfleet-server gateway-start --config-file /var/lib/restfleet/gateway-startup/initialization.json
+```
+
+命令 MUST 复用完整中心运行配置、schema 14、master/signing/pending 受保护密钥文件，不生成 CA、启动服务/worker/子进程或增加 root 权限。生产 MUST 由非 root 中心 UID 执行且使用不同非 root Gateway UID 与显式共享组。先检查数据库/schema/审计，再认证 socket/SO_PEERCRED/来源签名挑战；成功后初次签发（expected revision = 0）、核验完整 committed binding、注册来源、提交单次交付意图和访问审计后加密交付，最后验证精确回执。单次交换最多 5s，命令总 context 最多 10s；失败仅输出固定分类。
+
+三个数据库阶段保留各自原子性，后续失败不回滚先前成功的授权或来源。意图提交后 MUST NOT 再交付，包括安装失败、回执丢失、重读相同 metadata 或新挑战。新 runtime MUST NOT 接管旧 admission；命令 MUST NOT 自动重试、等待 socket、续期、撤销、封存或释放占用。协调者 MUST 将其与同 admission 其他授权投递/清理串行化。普通 Server 启动 MUST NOT 自动执行该命令，服务管理器 MUST NOT 把旧文件当作重启配方；进程新鲜性仍须可信启动者证明，文件读取不能证明它。
+
+命令成功只确认初始化回执，不代表 Agent 会话能力、可用数据面、清理或 READY。REP-045–046 MUST 在 Actions 执行；Gateway 生产配置/daemon、多仓库数据面、续期/吊销、全局离线审计、Agent 能力、可信恢复/readiness、rotation/READY、真实云端与 AGT-005 仍待完成。
 
 ## 8. Native Agent 安装
 

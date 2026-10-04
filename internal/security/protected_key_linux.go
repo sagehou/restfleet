@@ -28,19 +28,12 @@ func ReadProtectedKey(path string, size int) ([]byte, error) {
 }
 
 func readProtectedKey(f *os.File, size int) ([]byte, error) {
-	info, err := f.Stat()
-	if err != nil || size < 1 || size > 64 || !info.Mode().IsRegular() ||
-		(info.Mode().Perm() != 0600 && info.Mode().Perm() != 0400) || info.Size() > 128 ||
-		info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+	if size < 1 || size > 64 {
 		return nil, ErrGatewayPending
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 {
-		return nil, ErrGatewayPending
-	}
-	raw, err := io.ReadAll(io.LimitReader(f, 129))
+	raw, err := readProtectedFile(f, 128)
 	defer clear(raw)
-	if err != nil || len(raw) > 128 {
+	if err != nil {
 		return nil, ErrGatewayPending
 	}
 	encoded := bytes.TrimSpace(raw)
@@ -51,4 +44,48 @@ func readProtectedKey(f *os.File, size int) ([]byte, error) {
 		return nil, ErrGatewayPending
 	}
 	return key[:n], nil
+}
+
+// ReadProtectedGatewayFile reads bounded local coordinator metadata from a
+// private directory under the same ownership/link policy as Gateway identity.
+// The caller must validate its versioned content; no path/error is returned.
+func ReadProtectedGatewayFile(path string, maxBytes int64) ([]byte, error) {
+	if maxBytes < 1 || maxBytes > 64<<10 {
+		return nil, ErrGatewayPending
+	}
+	root, dir, err := gatewayKeyDirectory(path)
+	if err != nil {
+		return nil, ErrGatewayPending
+	}
+	defer root.Close()
+	defer dir.Close()
+	name := filepath.Base(path)
+	if _, err := root.Lstat(name + ".pending"); !os.IsNotExist(err) {
+		return nil, ErrGatewayPending
+	}
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, ErrGatewayPending
+	}
+	defer f.Close()
+	return readProtectedFile(f, maxBytes)
+}
+
+func readProtectedFile(f *os.File, maxBytes int64) ([]byte, error) {
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() ||
+		(info.Mode().Perm() != 0600 && info.Mode().Perm() != 0400) || info.Size() > maxBytes ||
+		info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+		return nil, ErrGatewayPending
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 {
+		return nil, ErrGatewayPending
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil || int64(len(raw)) > maxBytes {
+		clear(raw)
+		return nil, ErrGatewayPending
+	}
+	return raw, nil
 }
