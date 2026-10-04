@@ -35,7 +35,7 @@ jobs:
           cache: true
       - name: Compile race-enabled isolated channel tests
         run: go test -race -c -o "${RUNNER_TEMP}/gatewaypending.test" ./internal/gatewaypending
-      - name: Test material and replay channels across non-root service UIDs
+      - name: Test material, authority and replay channels across non-root service UIDs
         run: |
           test_dir=$(mktemp -d /tmp/restfleet-isolation.XXXXXX)
           trap 'sudo rm -rf "$test_dir"' EXIT

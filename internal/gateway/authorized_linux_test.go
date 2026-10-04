@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"net/http"
 	"os"
@@ -373,7 +374,7 @@ func TestAuthorizedIdleOwnerClearsMaterialWithoutStartingBackup(t *testing.T) {
 				// Let actual wall/monotonic time expire a short signed grant; no
 				// request or explicit Status call is permitted to trigger cleanup.
 				statement.Revision++
-				statement.ExpiresAt = time.Now().Unix() + 1
+				statement.ExpiresAt = time.Now().Add(2 * time.Second).Unix()
 				if owner.authorization.Accept(statementWire(t, statement, key)) != nil {
 					t.Fatal("short idle grant")
 				}
@@ -433,4 +434,109 @@ func TestAuthorizedIdleOwnerClearsMaterialWithoutStartingBackup(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOwnerAuthorizationDeliveryCannotExtendFenceOrReviveFailure(t *testing.T) {
+	owner, _, queue, statement, key, _, _, _, _ := authorizedFixture(t, "success", 16)
+	ctx := context.Background()
+	statement.Revision++
+	statement.ExpiresAt = time.Now().Add(time.Minute).Unix()
+	wire := statementWire(t, statement, key)
+	for range 2 {
+		if owner.AcceptAuthorization(ctx, wire) != nil {
+			t.Fatal("valid renewal/exact replay rejected")
+		}
+	}
+	tooLong := statement
+	tooLong.Revision++
+	tooLong.ExpiresAt = owner.expires.Add(time.Minute).Unix()
+	if owner.AcceptAuthorization(ctx, statementWire(t, tooLong, key)) != ErrAuthorization {
+		t.Fatal("renewal extended the original admission")
+	}
+	foreign := statement
+	foreign.Binding.HostID = uuid.Must(uuid.NewV7())
+	if owner.AcceptAuthorization(ctx, statementWire(t, foreign, key)) != ErrAuthorization {
+		t.Fatal("cross-Host authority accepted")
+	}
+	if owner.authorization.Status() != AuthorizationValid {
+		t.Fatal("malformed delivery changed prior grant")
+	}
+	statement.Revision++
+	statement.Revoked, statement.ExpiresAt = true, 0
+	if owner.AcceptAuthorization(ctx, statementWire(t, statement, key)) != nil {
+		t.Fatal("verified revocation rejected")
+	}
+	select {
+	case <-owner.watchDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delivered revocation did not clean up idle material")
+	}
+	statement.Revision++
+	statement.Revoked, statement.ExpiresAt = false, time.Now().Add(time.Minute).Unix()
+	if owner.AcceptAuthorization(ctx, statementWire(t, statement, key)) != ErrAuthorization || len(owner.raw) != 0 ||
+		queue.CheckProducer(statement.Binding, owner.source, owner.authorization.key) != gatewaypending.ErrQueue {
+		t.Fatal("later grant revived the revoked owner")
+	}
+}
+
+func TestAuthorityChannelRevocationCancelsActiveOwnerAndJoinsCleanup(t *testing.T) {
+	owner, supervisor, queue, statement, key, _, _, state, root := authorizedFixture(t, "success", 16)
+	op := startAuthorized(t, owner, nil)
+	access := waitAccess(t, op)
+	access.Password = bytes.Clone(access.Password)
+	owner.material.Lock()
+	borrowed := owner.raw
+	owner.material.Unlock()
+	// This test isolates the local channel/owner seam. The real DB tests check
+	// the independently registered source pin before any central decision.
+	public, source, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(source)
+	dir, err := os.MkdirTemp("", "rfg-owner-authority-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "authority.sock")
+	l, err := gatewaypending.ListenReplay(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- gatewaypending.ServeAuthorization(ctx, l, uint32(os.Geteuid()), statement.Binding, source, key.Public().(ed25519.PublicKey),
+			owner.AcceptAuthorization, func(context.Context) error { return nil })
+	}()
+	defer func() {
+		cancel()
+		if <-done != nil {
+			t.Error("authority listener exit")
+		}
+	}()
+	statement.Revision++
+	statement.Revoked, statement.ExpiresAt = true, 0
+	wire := statementWire(t, statement, key)
+	if gatewaypending.SendAuthorization(ctx, path, uint32(os.Geteuid()), statement.Binding, public,
+		func(context.Context) ([]byte, error) { return wire, nil }, func(context.Context) error { return nil }) != nil {
+		t.Fatal("revocation delivery failed")
+	}
+	waitSupervised(t, op)
+	if op.err == nil {
+		t.Fatal("active backup survived delivered revocation")
+	}
+	select {
+	case <-owner.watchDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("owner cleanup did not join")
+	}
+	if len(owner.raw) != 0 || len(bytes.Trim(borrowed, "\x00")) != 0 || queue.CheckProducer(statement.Binding, owner.source, owner.authorization.key) != gatewaypending.ErrQueue {
+		t.Fatal("delivered revocation retained raw material or writable queue")
+	}
+	if supervisorRequest(supervisor, access, "config").Code == http.StatusOK {
+		t.Fatal("revoked session still routes")
+	}
+	assertSupervisorClean(t, state, root, backupFixture())
 }

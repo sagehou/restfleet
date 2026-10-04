@@ -88,6 +88,33 @@ func (a *AuthorizedBackup) ready() bool {
 		a.queue.CheckProducer(a.authorization.binding, a.source, a.authorization.key) == nil
 }
 
+// AcceptAuthorization updates this existing owner's state only; it cannot
+// reconstruct an expired/failed owner or extend the original admission. Wire
+// must arrive through the pinned local authority channel, never an Agent API.
+// Receipt of a revocation is not a cleanup acknowledgement: the lifetime
+// watchdog/each operation guard cancel and join work independently.
+func (a *AuthorizedBackup) AcceptAuthorization(ctx context.Context, wire []byte) error {
+	statement, err := security.VerifyGatewayStatement(wire, a.authorization.key)
+	if err != nil || statement.Binding != a.authorization.binding || ctx.Err() != nil ||
+		(!statement.Revoked && time.Unix(statement.ExpiresAt, 0).After(a.expires)) {
+		return ErrAuthorization
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.failed {
+		return ErrAuthorization
+	}
+	if !statement.Revoked && !a.ready() {
+		a.failed = true
+		a.stopOnce.Do(func() { close(a.stopWatch) })
+		return ErrAuthorization
+	}
+	if a.authorization.Accept(wire) != nil || ctx.Err() != nil {
+		return ErrAuthorization
+	}
+	return nil
+}
+
 // One lifetime watchdog covers idle owners AND active sessions. It first gates
 // new work and cancels the current session, then joins before clearing material.
 // Queue/fence recovery remains the caller's responsibility after it stops.

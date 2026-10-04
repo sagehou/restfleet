@@ -174,9 +174,11 @@
 
 第二十二批（#52，已合并）接入来源 seed 的本地无覆盖可靠创建、source-public 导出与独立中心公钥 pin 文件装载（ADR-0024 / REP-043–044）。最终 head `ab11d1b` 与合并后的 `ea8921e` 均通过 Actions 十项检查。复用 protected reader / MaterialReceiver，补充特殊权限拒绝和可清零解码；跨 UID 套件走生产文件 API。身份命令不启动数据面、不注册来源、不确认 binding 或释放 fence。
 
-第二十三批（#53，已合并）加入中心受保护初始化元数据、来源/UID 认证后首授权→来源注册→单次材料交付的实际协调与显式 `gateway-start` 命令（ADR-0025 / REP-045–046）。最终 head `71c3866` 的 Actions 十项通过，合并 commit `93e6aa1`。复用既有通道/事务，失败保留部分提交与 fence，不自动重读文件或重试；三后端夹具从无授权/来源开始。
+第二十三批（#53，已合并）加入中心受保护初始化元数据、来源/UID 认证后首授权→来源注册→单次材料交付的实际协调与显式 `gateway-start` 命令（ADR-0025 / REP-045–046）。最终 head `71c3866` 与合并 commit `93e6aa1` 均通过 Actions 十项。复用既有通道/事务，失败保留部分提交与 fence，不自动重读文件或重试；三后端夹具从无授权/来源开始。
 
-第二十四批（本分支，待 Actions 验证）修复空闲 owner 未主动清理过期材料的问题：复用唯一生命周期 watchdog 覆盖构造后、会话中与会话间空闲期，失效先阻止新会话，再取消/join、清零和冻结。扩展 REP-036 验证自然到期/吊销/时钟/Queue 关闭与耗尽、并发 Close、借用 buffer 清零、高版本续期和排空不复活。Gateway 生产配置/daemon、多仓库数据面、续期/吊销、全局离线审计、Agent 能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
+第二十四批（#54，已合并）修复空闲 owner 未主动清理过期材料的问题：复用唯一生命周期 watchdog 覆盖构造后、会话中与会话间空闲期，失效先阻止新会话，再取消/join、清零和冻结。最终 head `12fadab` 与合并 commit `5c13453` 均通过 Actions 十项。扩展 REP-036 验证自然到期/吊销/时钟/Queue 关闭与耗尽、并发 Close、借用 buffer 清零、高版本续期和排空不复活。
+
+第二十五批（本分支，待 Actions 验证）加入 metadata-only RFGA 续期/明确吊销通道和中心已注册来源核验后的决定交付（ADR-0026 / REP-047–048）。来源 fresh challenge 与精确回执独立签名，先验证 UID/pin/binding 才提交决定；回执丢失保留 fence，仅允许显式同一最新决定重放。更新同一 owner，不重发材料、延长原占用或复活失败；覆盖跨非 root UID、三后端 DB 和活动 owner 吊销清理。Gateway 生产配置/daemon、多仓库数据面、自动可靠续期/吊销分发、全局离线审计、Agent 能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
 
 ### Goal
 
@@ -201,7 +203,7 @@
 
 ### Tests/Exit
 
-- REP-001–046；
+- REP-001–048；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。
