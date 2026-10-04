@@ -21,18 +21,18 @@ var ErrReplayCommand = errors.New("gateway recovery replay unavailable or incons
 // It contains only public keys, identifiers and paths, never secret material.
 // It cannot register a source, append records, install an owner or release a fence.
 type ReplayConfig struct {
-	Version int `json:"version"`
-	Binding security.GatewayAuthorizationBinding `json:"binding,omitzero"`
-	AuditOrigin security.GatewayAuditBinding `json:"audit_origin,omitzero"`
-	SourcePublic ed25519.PublicKey `json:"source_public"`
-	RecipientPublic []byte `json:"recipient_public"`
-	CentralPinFile string `json:"central_pin_file"`
-	QueueDirectory string `json:"queue_directory"`
-	MaxBytes int64 `json:"max_bytes"`
-	MaxRecords int `json:"max_records"`
-	SocketPath string `json:"socket_path"`
-	ServerUID uint32 `json:"server_uid"`
-	SharedGroup uint32 `json:"shared_group"`
+	Version         int                                  `json:"version"`
+	Binding         security.GatewayAuthorizationBinding `json:"binding,omitzero"`
+	AuditOrigin     security.GatewayAuditBinding         `json:"audit_origin,omitzero"`
+	SourcePublic    ed25519.PublicKey                    `json:"source_public"`
+	RecipientPublic []byte                               `json:"recipient_public"`
+	CentralPinFile  string                               `json:"central_pin_file"`
+	QueueDirectory  string                               `json:"queue_directory"`
+	MaxBytes        int64                                `json:"max_bytes"`
+	MaxRecords      int                                  `json:"max_records"`
+	SocketPath      string                               `json:"socket_path"`
+	ServerUID       uint32                               `json:"server_uid"`
+	SharedGroup     uint32                               `json:"shared_group"`
 }
 
 func (s ReplayConfig) Validate() error {
@@ -80,11 +80,11 @@ func LoadReplayConfig(path string) (ReplayConfig, error) {
 // ReplayTail reports only an exactly acknowledged queue tail. Even after a
 // successful recovery this is NOT proof that old processes/appenders stopped.
 type ReplayTail struct {
-	Version int `json:"version"`
-	Binding security.GatewayAuthorizationBinding `json:"binding,omitzero"`
-	AuditOrigin security.GatewayAuditBinding `json:"audit_origin,omitzero"`
-	Sequence int64 `json:"sequence"`
-	WireHash string `json:"wire_hash"`
+	Version     int                                  `json:"version"`
+	Binding     security.GatewayAuthorizationBinding `json:"binding,omitzero"`
+	AuditOrigin security.GatewayAuditBinding         `json:"audit_origin,omitzero"`
+	Sequence    int64                                `json:"sequence"`
+	WireHash    string                               `json:"wire_hash"`
 }
 
 // ReplayFromConfig is one bounded recovery attempt using PUBLIC keys only.

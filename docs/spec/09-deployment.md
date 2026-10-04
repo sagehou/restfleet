@@ -403,7 +403,7 @@ Gateway MUST 核验中心签名与完整 binding，再调用该 owner 的 `Accep
 
 ### 7.21 Gateway 显式恢复回放（ADR-0028）
 
-崩溃后管理员 MAY 在 Gateway 服务身份下显式执行 `restfleet-gateway replay --config-file /absolute/path/replay.json`，每次处理一个既有仓库或全局 Queue。MUST 先停止旧 producer；活跃 flock、损坏或不确定记录阻塞恢复。命令只使用公钥，MUST NOT 读取来源 seed/中心私钥、申请或恢复授权、交付材料、启动子进程/公网 listener、修复文件、封存来源或释放占用。整个尝试 context 最多 1min，每帧 5s，取消关闭连接并退出；失败不自动重试。重试 MUST 保留原 wire 和可靠回执，不重新加密或按失败丢弃未确认记录。
+崩溃后管理员 MAY 在 Gateway 服务身份下显式执行 `restfleet-gateway replay --config-file /absolute/path/replay.json`，每次处理一个既有仓库或全局 Queue。MUST 先停止旧 producer；活跃 flock、损坏或不确定记录阻塞恢复。命令只使用公钥，MUST NOT 读取来源 seed/中心私钥、申请或恢复授权、交付材料、启动子进程/公网 listener、修复损坏/不确定文件、封存来源或释放占用；可靠回执已经精确确认的遗留文件继续按既有恢复规则回收。整个尝试 context 最多 1min，每帧 5s，取消关闭连接并退出；失败不自动重试。重试 MUST 保留原 wire 和可靠回执，不重新加密或按失败丢弃未确认记录。
 
 配置文件 MUST 位于 canonical、Gateway 服务所有的 0700 私有目录中，文件 MUST 0400/0600、regular、单链接、无 symlink/特殊权限，最多 4096 bytes；同名 `.pending` 阻塞读取。字段及顺序 MUST 为 `version`（1）、`binding`（仅仓库域，完整 §7.11 绑定）或 `audit_origin`（仅全局域，§7.20 绑定）、`source_public`、`recipient_public`、`central_pin_file`、`queue_directory`、`max_bytes`、`max_records`、`socket_path`、`server_uid`、`shared_group`。另一个域 MUST 省略，两个同时存在或两个均缺失拒绝。两公钥使用标准 base64、解码正好 32 bytes，recipient 不得全零；pin 文件为独立配置的中心 Ed25519 公钥，沿用 §7.17 的私有文件/目录策略，MUST NOT 从 wire/peer/Queue 自选 pin。允许排版空白，MUST 按规范重新编码拒绝未知/重复/缺失/null/大小写替代/替代数字等输入。
 

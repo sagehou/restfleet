@@ -33,15 +33,6 @@ jobs:
         with:
           go-version: 1.27.1
           cache: true
-      - name: Prepare recovery replay formatting patch in Actions
-        run: |
-          gofmt -w cmd/restfleet-gateway/main.go cmd/restfleet-gateway/replay_linux.go cmd/restfleet-gateway/replay_linux_test.go internal/gatewaypending/replay_config_linux.go internal/gatewaypending/replay_config_linux_test.go internal/gatewaypending/cross_uid_linux_test.go internal/security/gateway_source_linux.go internal/security/gateway_source_linux_test.go
-          git diff --binary > "${RUNNER_TEMP}/gateway-replay-format.patch"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: gateway-replay-format
-          path: ${{ runner.temp }}/gateway-replay-format.patch
-          retention-days: 1
       - name: Compile race-enabled isolated channel tests
         run: go test -race -c -o "${RUNNER_TEMP}/gatewaypending.test" ./internal/gatewaypending
       - name: Test material, authority and replay channels across non-root service UIDs
