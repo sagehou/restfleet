@@ -34,6 +34,9 @@ type AuthorizedBackup struct {
 	closed, busy, failed bool
 	cancel               context.CancelFunc
 	running              sync.WaitGroup
+	stopWatch            chan struct{}
+	watchDone            chan struct{}
+	stopOnce             sync.Once
 	material             sync.Mutex
 	raw                  []byte // Current token revision, never a Restic password.
 }
@@ -72,14 +75,45 @@ func NewAuthorizedBackup(supervisor *Supervisor, authorization *Authorization, q
 		closeRecorder()
 		return nil, ErrAuthorization
 	}
-	return &AuthorizedBackup{supervisor: supervisor, authorization: authorization, queue: queue,
+	owner := &AuthorizedBackup{supervisor: supervisor, authorization: authorization, queue: queue,
 		source: append(ed25519.PublicKey(nil), origin.PublicKey...), expires: a.ExpiresAt, record: record,
-		persist: persist, closeRecorder: closeRecorder, raw: append([]byte(nil), raw...), remote: remote}, nil
+		persist: persist, closeRecorder: closeRecorder, raw: append([]byte(nil), raw...), remote: remote,
+		stopWatch: make(chan struct{}), watchDone: make(chan struct{})}
+	go owner.watch()
+	return owner, nil
 }
 
 func (a *AuthorizedBackup) ready() bool {
 	return a.authorization.Status() == AuthorizationValid && time.Now().Before(a.expires) &&
 		a.queue.CheckProducer(a.authorization.binding, a.source, a.authorization.key) == nil
+}
+
+// One lifetime watchdog covers idle owners AND active sessions. It first gates
+// new work and cancels the current session, then joins before clearing material.
+// Queue/fence recovery remains the caller's responsibility after it stops.
+func (a *AuthorizedBackup) watch() {
+	defer close(a.watchDone)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+watching:
+	for {
+		select {
+		case <-a.stopWatch:
+			break watching
+		case <-ticker.C:
+			if !a.ready() {
+				break watching
+			}
+		}
+	}
+	a.mu.Lock()
+	a.failed = true
+	if a.cancel != nil {
+		a.cancel()
+	}
+	a.mu.Unlock()
+	a.running.Wait()
+	a.clearMaterial()
 }
 
 // WithBackup creates a fresh session capability using trusted local operation
@@ -100,44 +134,29 @@ func (a *AuthorizedBackup) WithBackup(ctx context.Context, operation uuid.UUID, 
 	if !a.ready() {
 		a.failed = true
 		a.mu.Unlock()
+		a.stopOnce.Do(func() { close(a.stopWatch) })
+		<-a.watchDone
 		return ErrAuthorization
 	}
 	work, cancel := context.WithDeadline(ctx, a.expires)
 	a.busy, a.cancel = true, cancel
 	a.running.Add(1)
 	a.mu.Unlock()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-work.Done():
-				return
-			case <-ticker.C:
-				if !a.ready() {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
 	defer func() {
 		usable := work.Err() == nil && a.ready()
 		cancel()
-		<-done
 		if result == nil && !usable {
 			result = ErrAuthorization
-		}
-		if result != nil {
-			a.clearMaterial()
 		}
 		a.mu.Lock()
 		a.busy, a.cancel = false, nil
 		a.failed = a.failed || result != nil
 		a.mu.Unlock()
 		a.running.Done()
+		if result != nil {
+			a.stopOnce.Do(func() { close(a.stopWatch) })
+			<-a.watchDone
+		}
 	}()
 	b := a.authorization.binding
 	a.material.Lock()
@@ -170,8 +189,8 @@ func (a *AuthorizedBackup) Close() {
 		a.cancel()
 	}
 	a.mu.Unlock()
-	a.running.Wait()
-	a.clearMaterial()
+	a.stopOnce.Do(func() { close(a.stopWatch) })
+	<-a.watchDone
 }
 
 // Called only after all work joined, including every final recorder callback.
