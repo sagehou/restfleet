@@ -1,11 +1,11 @@
 package security
 
 import (
+	"bytes"
 	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 )
 
@@ -24,8 +24,14 @@ func ReadProtectedKey(path string, size int) ([]byte, error) {
 		return nil, ErrGatewayPending
 	}
 	defer f.Close()
+	return readProtectedKey(f, size)
+}
+
+func readProtectedKey(f *os.File, size int) ([]byte, error) {
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || (info.Mode().Perm() != 0600 && info.Mode().Perm() != 0400) || info.Size() > 128 {
+	if err != nil || size < 1 || size > 64 || !info.Mode().IsRegular() ||
+		(info.Mode().Perm() != 0600 && info.Mode().Perm() != 0400) || info.Size() > 128 ||
+		info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
 		return nil, ErrGatewayPending
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
@@ -37,10 +43,12 @@ func ReadProtectedKey(path string, size int) ([]byte, error) {
 	if err != nil || len(raw) > 128 {
 		return nil, ErrGatewayPending
 	}
-	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
-	if err != nil || len(key) != size {
+	encoded := bytes.TrimSpace(raw)
+	key := make([]byte, base64.StdEncoding.DecodedLen(len(encoded)))
+	n, err := base64.StdEncoding.Decode(key, encoded)
+	if err != nil || n != size {
 		clear(key)
 		return nil, ErrGatewayPending
 	}
-	return key, nil
+	return key[:n], nil
 }

@@ -163,6 +163,13 @@ Gateway 单次加密材料初始化验收（ADR-0022；同 UID 内部通道，�
 | REP-041 | P0 | 共享组仅显式启用；精确 0710 owner/group 目录与 0660 socket；错误 owner/group、权限、特殊位、多个 GID 和非规范 UID 配置拒绝；私有默认不接受共享目录，已有 socket 不接管，peer UID 验证与签名不削弱。 |
 | REP-042 | P0 | Actions 运行不同非 root UID 的中心/Gateway 实际进程，Gateway 本地产生来源私钥、中心仅获公钥；独立 pin 下加密初始化及可靠签名回放/确认成功，借用明文清零；两个服务不能读取另一服务私钥或替换其 socket，同组第三 UID 不触发回写 handler。进程取消/失败必须等待退出再清理测试文件。 |
 
+来源身份文件验收（ADR-0024，GitHub Actions 执行；不替代生产启动协调）：
+
+| ID | P | Given / When / Then |
+|---|---:|---|
+| REP-043 | P0 | source-init 仅在服务所有 canonical 0700 私有目录生成新 0600 seed，三处 fsync 后只输出公钥；并发只有一个身份，旧文件不覆盖；fsync/发布不确定保留证据并拒绝自动重建；source-public 只导出已有公钥。错误/stdout 不含 seed、原始路径/argv/IO 错误；拒绝特殊权限、symlink/hardlink/pending。 |
+| REP-044 | P0 | 来源 seed 与独立中心公钥 pin 从两个受保护文件装载，坏 pin 不返回私钥副本，不能从初始化 wire 选择信任；receiver 复制后临时来源副本清零。实际跨 UID 夹具由 Gateway 使用生产文件创建/装载 API，中心仅取得公钥；其他服务/第三 UID 不能读取 Gateway 私有 seed/pin，原加密初始化和持久签名回写全部通过。 |
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |
