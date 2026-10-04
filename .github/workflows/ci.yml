@@ -92,6 +92,17 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
+      - name: Prepare material startup formatting patch
+        run: |
+          gofmt -w internal/gatewaypending/material_linux.go internal/gatewaypending/material_linux_test.go
+          git diff -- internal/gatewaypending/material_linux.go internal/gatewaypending/material_linux_test.go > "${RUNNER_TEMP}/gateway-material-format.patch"
+          if test -s "${RUNNER_TEMP}/gateway-material-format.patch"; then
+            git apply --reverse "${RUNNER_TEMP}/gateway-material-format.patch"
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gateway-material-format
+          path: ${{ runner.temp }}/gateway-material-format.patch
       - name: Extract pinned central rclone for offline conformance tests
         run: |
           docker create --name restfleet-rclone-conformance rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5

@@ -259,3 +259,223 @@ func TestMaterialChannelVersionBoundsAndReceiptLoss(t *testing.T) {
 		})
 	}
 }
+
+func TestMaterialStartupWaitDoesNotConsumeExchangeDeadline(t *testing.T) {
+	f := newQueueFixture(t)
+	r, err := NewMaterialReceiver(f.binding, f.source, f.confirmation.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	path := replaySocket(t)
+	l, err := ListenReplay(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- r.ReceiveWaiting(ctx, l, uint32(os.Geteuid()), 10*time.Second,
+			func(work context.Context, _ security.GatewayMaterial) (func(), error) {
+				deadline, ok := work.Deadline()
+				if remaining := time.Until(deadline); !ok || remaining <= time.Second || remaining > 5*time.Second {
+					t.Error("startup waiting consumed or extended exchange deadline")
+				}
+				return func() {}, nil
+			}, func(context.Context) error { t.Error("successful startup denied"); return nil })
+	}()
+	// Reproduce a central coordinator starting after the old total 5s budget.
+	select {
+	case err := <-done:
+		t.Fatalf("receiver stopped while waiting: %v", err)
+	case <-time.After(5100 * time.Millisecond):
+	}
+	if err := SendMaterial(ctx, path, uint32(os.Geteuid()), f.binding, f.public,
+		func(_ context.Context, challenge []byte) ([]byte, error) { return materialDelivery(t, f, challenge), nil },
+		func(context.Context) error { return nil }); err != nil || <-done != nil {
+		t.Fatal("bounded startup wait did not preserve authenticated exchange")
+	}
+}
+
+func TestMaterialStartupWaitFailureConsumesAndClearsReceiver(t *testing.T) {
+	for _, wait := range []time.Duration{0, -time.Second, 5*time.Minute + 1, 20*time.Millisecond} {
+		t.Run(wait.String(), func(t *testing.T) {
+			f := newQueueFixture(t)
+			r, err := NewMaterialReceiver(f.binding, f.source, f.confirmation.Public().(ed25519.PublicKey))
+			if err != nil {
+				t.Fatal(err)
+			}
+			l, err := ListenReplay(replaySocket(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = r.ReceiveWaiting(context.Background(), l, uint32(os.Geteuid()), wait,
+				func(context.Context, security.GatewayMaterial) (func(), error) { t.Error("unexpected install"); return nil, nil },
+				func(audit context.Context) error {
+					deadline, ok := audit.Deadline()
+					if audit.Err() != nil || !ok || time.Until(deadline) > 3*time.Second {
+						t.Error("expired wait canceled or unbounded denial audit")
+					}
+					return nil
+				})
+			r.Close()
+			if err != ErrChannel || len(bytes.Trim(r.source, "\x00")) != 0 || r.recipient != ([32]byte{}) {
+				t.Fatal("failed wait left receiver available or retained private keys")
+			}
+			if _, err := l.AcceptUnix(); err == nil {
+				t.Fatal("failed wait retained listener")
+			}
+		})
+	}
+}
+
+func TestMaterialStartupWaitKeepsFiveSecondExchangeLimit(t *testing.T) {
+	f := newQueueFixture(t)
+	r, err := NewMaterialReceiver(f.binding, f.source, f.confirmation.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	path := replaySocket(t)
+	l, err := ListenReplay(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- r.ReceiveWaiting(ctx, l, uint32(os.Geteuid()), 5*time.Minute,
+			func(context.Context, security.GatewayMaterial) (func(), error) { t.Error("stalled peer installed"); return nil, nil },
+			func(audit context.Context) error {
+				if audit.Err() != nil {
+					t.Error("exchange deadline canceled audit")
+				}
+				return nil
+			})
+	}()
+	conn, err := net.DialTimeout("unix", path, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := readChannelFrame(conn, "RFGM", 2048); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != ErrChannel {
+			t.Fatal("stalled exchange accepted")
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("startup wait extended exchange beyond five seconds")
+	}
+}
+
+func TestMaterialReceiverCloseJoinsIndependentDenialAudit(t *testing.T) {
+	f := newQueueFixture(t)
+	r, err := NewMaterialReceiver(f.binding, f.source, f.confirmation.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := replaySocket(t)
+	l, err := ListenReplay(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- r.ReceiveWaiting(ctx, l, uint32(os.Geteuid()), 5*time.Minute,
+			func(context.Context, security.GatewayMaterial) (func(), error) { t.Error("unexpected install"); return nil, nil },
+			func(audit context.Context) error {
+				deadline, ok := audit.Deadline()
+				if audit.Err() != nil || !ok || time.Until(deadline) > 3*time.Second {
+					t.Error("shutdown canceled or unbounded audit")
+				}
+				close(entered)
+				select {
+				case <-release:
+				case <-audit.Done():
+					return audit.Err()
+				}
+				return nil
+			})
+	}()
+	conn, err := net.DialTimeout("unix", path, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := readChannelFrame(conn, "RFGM", 2048); err != nil {
+		t.Fatal(err)
+	}
+	closed := make(chan struct{})
+	go func() { r.Close(); close(closed) }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("Close did not audit observed failure")
+	}
+	select {
+	case <-closed:
+		t.Fatal("Close returned before audit joined")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	if <-done != ErrChannel {
+		t.Fatal("Close accepted incomplete exchange")
+	}
+	<-closed
+}
+
+func TestMaterialSenderCancellationPreservesDenialAudit(t *testing.T) {
+	f := newQueueFixture(t)
+	path := replaySocket(t)
+	l, err := ListenReplay(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		conn, err := l.AcceptUnix()
+		if err != nil {
+			done <- err
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+		challenge, err := security.NewGatewayMaterialChallenge(f.binding, f.recipient)
+		if err != nil {
+			done <- err
+			return
+		}
+		proof, err := security.SignGatewayMaterialChallenge(challenge, f.source)
+		if err == nil {
+			err = writeChannelFrame(conn, "RFGM", f.binding.RuntimeID, proof)
+		}
+		done <- err
+	}()
+	var audited bool
+	err = SendMaterial(ctx, path, uint32(os.Geteuid()), f.binding, f.public,
+		func(context.Context, []byte) ([]byte, error) { cancel(); return nil, errors.New("private-delivery-canary") },
+		func(audit context.Context) error {
+			deadline, ok := audit.Deadline()
+			if audit.Err() != nil || !ok || time.Until(deadline) > 3*time.Second {
+				t.Error("sender cancellation lost denial audit")
+			}
+			audited = true
+			return nil
+		})
+	if err != ErrChannel || !audited || <-done != nil {
+		t.Fatal("sender failed without independent denial audit or exposed private error")
+	}
+}

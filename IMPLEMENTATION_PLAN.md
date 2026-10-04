@@ -182,7 +182,9 @@
 
 第二十六批（#56，已合并）补齐独立全局离线拒绝审计（schema 15 / ADR-0027 / REP-049–051）。复用有界加密 Queue、fsync/确认及 Unix 回放，独立 audit-only 来源/签名域不猜测 Host/Repository 或授予数据访问；固定观察和中央接收历史原子提交。全局生产者失败同时停止本地 owner，取消/join 后清零/冻结，排空不复活。最终 head `5d2eb98` 与合并 commit `7985c20` 均通过 Actions 十项，格式化补丁由 Actions 生成并同步。Gateway 生产配置/daemon、多仓库数据面、自动可靠续期/吊销分发、Agent 能力、可信恢复/readiness、rotation/READY、真实云和 AGT-005 继续待完成。
 
-第二十七批（#57）接入显式 `restfleet-gateway replay --config-file`（ADR-0028 / REP-052–053）：受保护规范 metadata 与独立中央公钥 pin，仅恢复/回放既有两类 Queue，不读取私钥或启动旧数据面。原密文/精确回执支持丢 ACK 后显式重放；活跃 flock、换身份/pin/上限、取消、篡改和不确定证据拒绝并保留，输出只报告已确认 tail。跨非 root UID fixture 经生产配置装载与恢复路径；格式化由 Actions 生成补丁，最终提交必须通过精确 head 十项检查后合并。完整 daemon、可信进程清理/恢复、自动授权与 Agent 能力、readiness/rotation/READY、真实云及 AGT-005 仍待完成。
+第二十七批（#57，已合并）接入显式 `restfleet-gateway replay --config-file`（ADR-0028 / REP-052–053）：受保护规范 metadata 与独立中央公钥 pin，仅恢复/回放既有两类 Queue，不读取私钥或启动旧数据面。原密文/精确回执支持丢 ACK 后显式重放；活跃 flock、换身份/pin/上限、取消、篡改和不确定证据拒绝并保留，输出只报告已确认 tail。跨非 root UID fixture 经生产配置装载与恢复路径；最终 head `12b8e1c` 与合并 commit `79c89c6` 均通过 Actions 十项检查。完整 daemon、可信进程清理/恢复、自动授权与 Agent 能力、readiness/rotation/READY、真实云及 AGT-005 仍待完成。
+
+第二十八批推进 Gateway 启动前置修复（ADR-0029 / REP-054–055）：显式有界等待与每次 5s 材料交换分开，既有 Receive 保持总 5s；失败审计独立最多 3s，Close/退出等待完成再清零。单次意图、拒绝旧来源接管和失败保留 fence 的边界不变。格式化/测试/编译均交 Actions，精确 head 全绿后才合并；生产 daemon、全局审计注册 command、Agent 能力、可信恢复/readiness、rotation/READY、真实云及 AGT-005 继续待完成。
 
 ### Goal
 
@@ -207,7 +209,7 @@
 
 ### Tests/Exit
 
-- REP-001–053；
+- REP-001–055；
 - DEP-005/006；
 - real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
 - public deletion/overwrite negative suite。

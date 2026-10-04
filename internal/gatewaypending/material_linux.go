@@ -88,13 +88,26 @@ func (r *MaterialReceiver) Receive(ctx context.Context, listener *net.UnixListen
 	install func(context.Context, security.GatewayMaterial) (func(), error), denied func(context.Context) error,
 	sharedGroup ...uint32,
 ) (failure error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return r.ReceiveWaiting(ctx, listener, centerUID, 5*time.Second, install, denied, sharedGroup...)
+}
+
+// ReceiveWaiting separates bounded startup waiting from the five-second
+// exchange. Waiting MUST be explicitly chosen by the trusted startup owner,
+// at most five minutes; the parent context and Close still cancel both phases.
+// A failed wait or exchange consumes the receiver and preserves the fence.
+func (r *MaterialReceiver) ReceiveWaiting(ctx context.Context, listener *net.UnixListener, centerUID uint32, wait time.Duration,
+	install func(context.Context, security.GatewayMaterial) (func(), error), denied func(context.Context) error,
+	sharedGroup ...uint32,
+) (failure error) {
 	r.mu.Lock()
 	if r.used {
 		r.mu.Unlock()
 		return ErrChannel
 	}
 	r.used = true
-	work, cancel := context.WithTimeout(ctx, 5*time.Second)
+	lifetime, cancel := context.WithCancel(ctx)
 	r.cancel = cancel
 	r.mu.Unlock()
 	defer close(r.done)
@@ -104,21 +117,32 @@ func (r *MaterialReceiver) Receive(ctx context.Context, listener *net.UnixListen
 	if listener != nil {
 		defer listener.Close()
 	}
-	if listener == nil || install == nil || denied == nil || !privateReplayPath(listener.Addr().String(), uint32(os.Geteuid()), true, sharedGroup...) {
+	if wait <= 0 || wait > 5*time.Minute || listener == nil || install == nil || denied == nil || !privateReplayPath(listener.Addr().String(), uint32(os.Geteuid()), true, sharedGroup...) {
 		return ErrChannel
 	}
 	defer func() {
 		if failure != nil {
-			_ = denied(work)
+			audit, finish := context.WithTimeout(context.WithoutCancel(lifetime), 3*time.Second)
+			defer finish()
+			_ = denied(audit)
 		}
 	}()
-	stopListener := context.AfterFunc(work, func() { _ = listener.Close() })
+	waiting, stopWaiting := context.WithTimeout(lifetime, wait)
+	defer stopWaiting()
+	stopListener := context.AfterFunc(waiting, func() { _ = listener.Close() })
 	defer stopListener()
 	conn, err := listener.AcceptUnix()
 	if err != nil {
 		return ErrChannel
 	}
 	defer conn.Close()
+	if waiting.Err() != nil {
+		return ErrChannel
+	}
+	stopListener()
+	stopWaiting()
+	work, finish := context.WithTimeout(lifetime, 5*time.Second)
+	defer finish()
 	stop := context.AfterFunc(work, func() { _ = conn.Close() })
 	defer stop()
 	deadline, _ := work.Deadline()
@@ -177,7 +201,9 @@ func SendMaterial(ctx context.Context, path string, gatewayUID uint32, binding s
 	defer cancel()
 	defer func() {
 		if failure != nil {
-			_ = denied(ctx)
+			audit, finish := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+			defer finish()
+			_ = denied(audit)
 		}
 	}()
 	dialer := net.Dialer{}
