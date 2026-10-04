@@ -354,7 +354,7 @@ func TestAuthorizedIdleOwnerClearsMaterialWithoutStartingBackup(t *testing.T) {
 			if failure == "admission_expired" {
 				lifetime = []time.Duration{2 * time.Second}
 			}
-			owner, supervisor, queue, statement, key, source, private, state, root := authorizedFixture(t, "success", capacity, lifetime...)
+			owner, _, queue, statement, key, source, private, state, root := authorizedFixture(t, "success", capacity, lifetime...)
 			// Borrow the existing buffer: nil alone would not prove secret erasure.
 			owner.material.Lock()
 			borrowed := owner.raw
