@@ -21,6 +21,13 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci --ignore-scripts
         working-directory: web
+      - name: Prepare dependency lock repair for review
+        run: npm audit fix --package-lock-only --ignore-scripts
+        working-directory: web
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web-lock-repair
+          path: web/package-lock.json
       - run: npm audit --audit-level=high
         working-directory: web
 
