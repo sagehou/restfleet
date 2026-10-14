@@ -75,7 +75,7 @@
 | REP-008 | P0 | 错误 master key 启动；Server fail closed，危险操作不可执行。 |
 | REP-009 | P0 | Gateway rclone config materialize；位于 tmpfs、0600、重启后重新生成。 |
 | REP-010 | P0 | rclone 自动刷新 OAuth token；新 revision 加密回 DB，重启后仍可访问。 |
-| REP-011 | P1 | Gateway password rotation；Agent ACK 新 revision 后旧 secret 在 overlap 后失效，备份不中断。 |
+| REP-011 | P1 | Gateway 复用 Agent 本机密钥；自动续证后继续连接，管理员吊销经中心授权分发生效，旧会话不能访问新会话；普通故障不要求重新配对。此要求按 ADR-0033 替代原 Gateway 密码轮换，原 ID 保留。 |
 | REP-012 | P0 | 请求 Shared Repository；V1 API 返回明确不支持。 |
 
 多后端扩展验收：
@@ -99,7 +99,7 @@ Gateway 临时锁例外验收（用户确认的安全模型变更，见 ADR-0014
 
 | ID | P | Given / When / Then |
 |---|---:|---|
-| REP-020 | P0 | 锁归属绑定可信 Host/Repository/Operation 与独立会话能力；上传失败不授权，取消/过期/重启及删除响应丢失不恢复删除权，旧会话凭据不能删除新会话对象。 |
+| REP-020 | P0 | 锁归属绑定证书认证及中心授权的 Host/Repository 与 Gateway 生成的独立会话路径；上传失败不授权，取消/过期/重启及删除响应丢失不恢复删除权，旧会话路径不能删除新会话对象。 |
 | REP-021 | P0 | 公共写入先验证完整内容 SHA-256、大小和规范路径，config/keys 只读；并发重复/畸形/跨 Host/未知方法/错误 TLS/后端非 404 探测均 fail closed，审计失败不执行锁删除。 |
 
 Gateway supervisor 生命周期验收：

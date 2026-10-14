@@ -1,0 +1,131 @@
+openapi: 3.1.0
+info:
+  title: RestFleet Gateway 会话协议
+  version: 1.0.0
+  description: |
+    独立数据面，复用已配对 Agent 的 mTLS 身份。只接受中心预先授权的本 Host
+    Repository，不接收云端配置、密码或 callback。operation_id 仅用于请求去重；
+    Gateway 生成 session_id 并限定数据路径。备份文件直接进入 Gateway。
+security:
+  - agentMTLS: []
+paths:
+  /gateway/v1/readiness:
+    get:
+      operationId: gatewayReadiness
+      responses:
+        "200":
+          description: 所有已配置 owner 及可靠审计可用；不表示 Repository READY
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready]
+                properties:
+                  ready:
+                    type: boolean
+        "403":
+          description: 身份未绑定任何已授权 owner
+        "503":
+          description: Gateway 不可用
+  /gateway/v1/repositories/{repository_id}/backup-sessions/{operation_id}:
+    parameters:
+      - name: repository_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: operation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: openGatewayBackupSession
+      description: |
+        ID 必须为规范 UUIDv7。重复 POST 返回原会话，不延长期限、不重复运行；
+        同 ID 改变 Repository 或 deadline 返回 409。期限取请求 deadline、开始后
+        24h 和原中心占用到期的较早值。无需在线请求 Control API。
+        每次 Gateway 运行最多保留 4096 条会话去重记录；达到上限返回 503。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [deadline]
+              properties:
+                deadline:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: 返回原会话
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupSession"
+        "202":
+          description: 会话已接收；STARTING 时通过 GET 等待 ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupSession"
+        "400":
+          description: 非规范路径或无效请求
+        "403":
+          description: 非本 Host 仓库或中心授权失效
+        "409":
+          description: 幂等参数冲突或同仓库已有活动会话
+        "503":
+          description: Gateway 或容量不可用
+    get:
+      operationId: getGatewayBackupSession
+      responses:
+        "200":
+          description: 本 Agent 的会话状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupSession"
+        "403":
+          description: 无权访问
+        "404":
+          description: 本次运行没有该会话
+    delete:
+      operationId: closeGatewayBackupSession
+      description: |
+        结束本 Agent 的会话并等待请求、子进程及临时材料清理。重复删除幂等。
+        不删除仓库对象，不释放中心占用，不产生备份成功结果。
+      responses:
+        "204":
+          description: 会话已清理；原 ID 不能再次打开
+        "403":
+          description: 无权访问
+        "404":
+          description: 本次运行没有该会话
+        "503":
+          description: 清理失败或未完成
+components:
+  securitySchemes:
+    agentMTLS:
+      type: mutualTLS
+  schemas:
+    BackupSession:
+      type: object
+      required: [session_id, state, endpoint_path, expires_at]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [STARTING, ACTIVE, CLOSED, FAILED]
+        endpoint_path:
+          type: string
+          description: ACTIVE 时为 /restic/{gateway_id}/{repository_id}/{session_id}/
+        expires_at:
+          type: string
+          format: date-time

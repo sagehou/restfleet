@@ -1,0 +1,29 @@
+[Unit]
+Description=RestFleet Repository Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=restfleet-gateway
+Group=restfleet-gateway
+SupplementaryGroups=restfleet-ipc
+ExecStart=/usr/local/bin/restfleet-gateway run --config-file /var/lib/restfleet-gateway/metadata/service.json
+# A fresh run needs central cleanup and new protected bindings, not old files.
+Restart=no
+UMask=0077
+StateDirectory=restfleet-gateway
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/restfleet-gateway /run/restfleet-gateway /run/restfleet-ipc
+
+[Install]
+WantedBy=multi-user.target

@@ -10,6 +10,15 @@
 - 跨里程碑验收 MUST 归属于其实现依赖已具备的阶段；调度组件测试不等于真实备份成功，移动验收归属 MUST 保留原 Acceptance ID、要求及 V1 发布门禁；
 - 当前计划记录能力、剩余交付与退出条件；历史批次记录 MUST 与当前状态分开。
 
+## 当前执行顺序（2026-10-14）
+
+近期目标是交付可用的 Agent 备份链路，按 **M4 → M5 → M6** 顺序推进，每次只实施一个 Milestone。当前只展开 M4 的三次剩余交付；M5/M6 到开工时再细化，M7–M12 保留既有范围与验收要求，不提前开工或扩展设计。
+
+- 每次交付 MUST 围绕一个可验收流程，开始时列明目标、影响范围与 Acceptance IDs，结束时报告结果、Actions 证据及剩余项；SHOULD 用一个 PR 完成。修复归入对应交付，不另开内部组件阶段。
+- MUST 优先连接已有组件。只有现有实现无法满足当前流程的明确要求时，才增加必要接口或状态；新增抽象、ADR 或验收编号本身不构成交付完成。
+- 新发现的问题 MUST 说明影响、最小修复与所属交付；不得静默扩大范围。安全不变量及已有验收要求 MUST 保留，协议、信任边界、持久化或 API 变更按仓库规则同批更新规范与 ADR。
+- 按用户当前指示，先实现功能，暂不新增或改写测试用例。编译、测试、认证及运行验证 MUST 仅在 GitHub Actions 执行；复用已有质量门禁，新增行为的验收保持待验证，不因源码完成而标记通过。
+
 ## M0 — Repository Scaffold
 
 **Status: COMPLETE**
@@ -144,46 +153,47 @@
 
 基线：已合并 `07a85e3`（#60）。[分批交付历史](docs/development/m4-delivery-history.md) 保存三十批记录；[规格审阅](docs/development/m4-spec-review-2026-10-08.md) 记录依赖和协议缺口。内部组件完成与产品链路完成 MUST 分开描述。
 
-| 能力 | 已有实现 | 尚需交付或验收 |
+已有凭据导入/测试、三后端校验、per-Host 仓库记录与中心初始化、Agent 凭据交付/ACK、Gateway Service/TLS/会话锁隔离、签名授权和可靠加密回写。后续 MUST 复用这些实现，保持现有安全边界；新仓库仍为 PROVISIONING，不能因组件测试或 Agent ACK 就宣称可备份。
+
+### 配对与认证：复用已有能力（2026-10-14）
+
+用户明确要求采用一次配对、长期密钥身份、可吊销的通信方式。现有 M2 已实现这个流程，M4 MUST 复用，不重做注册或另建 Agent 身份体系：
+
+1. 首次注册使用随机、短期、单次 enrollment token，中心只保存 hash 并原子消费。
+2. Agent 首次在本机生成并持久保存 Ed25519 密钥对；私钥 MUST NOT 离开 Host。中心验证 CSR 并绑定 Agent/Host 身份。
+3. 后续主动连接使用已有 mTLS，断线后复用本机身份自动重连。长期私钥与证书有效期分开，证书按现有协议自动续期，不要求用户重新配对。
+4. 管理员吊销 Agent 身份后，中心拒绝其连接和操作。普通断线、备份失败或授权窗口到期不撤销配对、不删除密钥。
+
+撤回前述新增长期密码 verifier、单次 bearer 凭据配发与候选长期密码切换的推荐方案。数据面目标是复用 Agent 密钥身份认证；Gateway 仍须验证该身份只对应自己的 Repository，按当前备份的非秘密会话标识跟踪临时锁归属，拒绝旧会话、预存和维护锁删除。MUST NOT 把每次备份变成重新配对或在线请求 Control API；备份内容仍直接进入 Gateway。
+
+改为 mTLS 身份与显式会话范围时，MUST 在实现同一批修订 ADR、安全/协议/部署规范及对应契约。负向验收要求保留，测试用例按用户指示暂缓新增；未经 Actions 验证 MUST NOT 声称当前会话锁隔离已验收。现有 Gateway 密码轮换要求随认证方式明确替代，保留原验收编号。Restic 仓库加密密码仍按 Host 独立保存，与通信身份分开；云端秘密仍只在中心。
+
+### 剩余实现的最小处理
+
+2026-10-14 源码进度：已接入复用 Agent mTLS 的 daemon/直接会话入口、非秘密独立会话路径、运行内请求去重、Agent 会话客户端及统一 24h 截止。新 capability 不再下发 Gateway 密码；旧 schema 引用保持兼容。PR #67 原 Actions 的 schema 负向失败已定位，并在统一检查补齐连续迁移校验，未改写测试。以上尚待新提交的 Actions 结果；真正 Agent 调度/Restic 执行、中心持续协调/恢复、Repository READY 仍未完成，M4 保持 IN PROGRESS。
+
+- **期限**：在统一会话入口将一次备份截止限制到任务期限、开始后 24h、原占用截止的较早值；授权有效性继续由现有 guard/watchdog 检查。保留默认 72h 的离线窗口，不把它当一次备份的运行时长。
+- **停止恢复**：中心复用现有停止/join、可靠回写、来源封存与释放接口，验证本次运行已完成清理后再建立新运行。证据不足时保持占用，由中心受控维护恢复，不建设自动接管框架或离线冷启动。
+- **可用状态**：接通初始化、Agent 凭据确认及 Gateway 就绪的真实状态，完整条件满足才设置 READY。身份续期和吊销复用现有 M2；不再预设整套候选密码状态机作为交付前置条件。
+
+### 剩余三次交付
+
+下次开工只实施第一项；第一项验收通过后再实施第二项，随后第三项。契约与必要实现 MUST 在所属交付内完成，不再追加独立的内部原语批次。
+
+| 顺序 | 完成交付 | Actions 验收与退出证据 |
 |---|---|---|
-| 存储凭据与仓库 | 三后端显式校验、envelope store、test/init jobs、per-Host Repository、中心隔离初始化 | 部署后 Actions 的真实三后端认证、刷新与备份/恢复验收 |
-| Agent 仓库凭据 | outbound mTLS 下发、保护文件原子保存、精确 ACK | 长期身份到单次会话能力的生产申请/交付协议、rotation overlap/retirement |
-| Gateway 数据面 | 会话锁归属、append-only、supervisor、TLS、固定引擎备份读回 | 真实会话入口、可部署 daemon command、独立 readiness |
-| 离线授权与回写 | 签名授权历史、原占用期限内续期、RFGA、两类可靠加密 Queue/RFGR | 自动可靠续期/吊销分发、离线会话准入与真实 Agent 集成 |
-| 启动与退出 | protected source/pin/config、单次材料初始化、跨 UID 隔离、多仓库 Service、取消/join/清零 | 中央可信清理/封存/释放与新运行协调；显式 replay 仅恢复记录 |
-| Repository 可用状态 | 初始化与 Agent ACK 独立记录，保持 PROVISIONING | 完整 provisioning/rotation UI 与经过完整条件核验的 READY |
+| 1. 身份到一次备份 | 复用现有 Agent 密钥身份，修订 Gateway 数据认证与当前备份范围的最小契约；连接生产入口、Gateway daemon command、保护配置与独立 readiness，正确限制单次备份期限 | 固定 Restic/rclone 客户端经正式入口完成备份、读回和本会话锁清理；跨 Host、删除/覆盖、旧会话及错误 TLS 被拒绝，重复请求不重复执行。无需重新配对或每次在线请求 Control API；不提前宣称长期运行或 Repository READY |
+| 2. 连续运行与停止恢复 | 由可信中央协调者接入既有续期/吊销分发与可靠回写；完成正常/失败停止后的清理证明、来源封存、占用释放及建立新运行，在原占用截止前协调正常换运行 | 客户端在控制 API/DB 失联、Gateway 持续在线时于剩余授权内继续备份，恢复后可靠回写；覆盖授权到期、确认丢失、取消及停止/中心恢复。无清理证明不释放，不因到期、排空或重连复活失败 owner；普通故障保留 Agent 配对与配置 |
+| 3. 身份生命周期与仓库可用 | 复用已有自动续证/吊销，完成 Gateway 侧状态应用；在既有仓库页面展示初始化、确认与 Gateway 就绪，仅完整条件满足时设置 READY | 创建仓库→中心初始化→Agent 凭据确认→Gateway 核验的状态准确；经修订的认证契约验证续期、吊销及旧会话拒绝，REP-011 的旧 Gateway 密码轮换要求 MUST 同批明确替代验收且保留原 ID。缺失条件不误报 READY，界面不回显秘密 |
 
-剩余工作 MUST 围绕以下完整流程收敛，复用现有 Service、授权、fence 与回写；内部接缝或测试夹具不能替代产品入口：
+### 范围与退出边界
 
-1. **身份到会话**：先明确长期 gateway identity、单次能力与可信 Operation 的关系，以及离线准入、受保护交付、重复/取消/失效处理，再连接生产会话入口与 daemon/readiness。协议、信任边界或持久化变更 MUST 同批记录 ADR 和相关规范；禁止将每次定时备份改成必须在线请求 Control API。
-2. **运行到恢复**：明确可信中央协调者及证据，串接正常停止、可靠回写、来源封存、占用释放与建立新运行。普通断线、备份失败或授权到期 MUST 保留 Agent 身份与 last-known-good 配置，中心恢复后重新核验并安全恢复，不要求重新 enrollment。占用到期或队列排空 MUST NOT 代替清理证明；不能仅添加 `run` 命令就宣称长期服务可用。
-3. **轮换到可用状态**：交付 credential revision/ACK/overlap/retirement、活动会话行为及 provisioning UI，只有完整条件满足才设置 READY。
-4. **后端与故障验收**：Actions 经生产入口、保护配置和固定引擎验证备份读回、删除/覆盖拒绝、轮换及停止/恢复；客户端夹具 MUST 明确标识，不能宣称产品 Agent 已完成。真实三后端改为部署后的 Actions 验收，不作为前续源码交付的阻塞条件；完成前不得标记相应后端生产验证通过。
+- 已按用户决定采用 ADR-0032：离线窗口可配置，默认从最后中心签发起 72h，并受原占用截止限制；单次会话仍最多 24h。原占用不延长、到期不释放 fence、失败 owner 不复活。Gateway 不可达则暂停备份并报错，保留配对和配置；MUST NOT 将每次定时备份改成必须在线请求 Control API。
+- M4 MUST 提供 M5/M6 可依赖的会话协议与离线基础。M4 客户端夹具 MUST 明确标识；真正的 Agent 调度执行、离线 Operation 补报与 AGT-005/006 完整产品集成在 M6 验收，仍是 V1 发布门禁。
+- 本轮 MUST NOT 扩展后端、离线冷启动恢复、新服务依赖、通用编排框架或额外管理界面；只补当前流程必需的入口、协调和既有仓库页面状态。
+- REP-016 的真实三后端认证、刷新、备份/索引/恢复及 rclone 兼容性仍在部署后的 GitHub Actions 验证，不作为前续源码交付的阻塞条件。源码交付与部署验收 MUST 分开记录，未验收不得声称相应后端生产验证通过。
 
-已按用户决定采用 ADR-0032：离线窗口可配置，默认从最后中心签发起 72h；Gateway 不可达则暂停备份并报错，保留配对和配置，不实现离线冷启动恢复。schema 16 扩展旧 24h/12h 期限上限，原占用不延长、到期不释放 fence 和失败 owner 不复活保持不变。新增测试只补关键权限与期限边界；rclone 真实兼容性在部署后的 GitHub Actions 验证，不再以重复模拟测试扩展 M4。
-
-M4 MUST 提供 M5/M6 可依赖的 Gateway 协议与离线基础；真正的 Agent 调度执行、离线 Operation 补报与 AGT-005 完整产品集成在 M6 验收，仍是 V1 发布门禁。M4 的测试客户端不替代 M6 的真实 Agent。
-
-### Goal
-
-在中心安全接入 OneDrive / Google Drive / HTTPS WebDAV + rclone crypt，创建 per-Host append-only Repository。
-
-### Server/Gateway
-
-- envelope secret store；
-- StorageCredential import/test/replace；
-- rclone config tmpfs materialization + token watcher；
-- `restfleet-gateway` supervisor/wrapper；
-- append-only/private repo；
-- Repo provisioning/init/index smoke test；
-- gateway credential rotation protocol。
-
-### Web
-
-- Credential/Repository list/detail；
-- import/test/status；
-- no secret echo；
-- provisioning progress。
+三次交付只组织剩余工作，不删减规范或验收要求。每次 MUST 复用已有安全负向套件；当前暂不新增测试用例，不为每个 provider 扩建模拟套件。源码交付、已有 Actions 结果和未验证的新行为 MUST 分开记录。仅有 command、组件测试或队列排空不构成 M4 完成。
 
 ### Tests/Exit
 
@@ -469,15 +479,23 @@ M4 MUST 提供 M5/M6 可依赖的 Gateway 协议与离线基础；真正的 Agen
 - examples only synthetic；
 - acceptance IDs in PR。
 
-## 首个 Codex 开发指令模板
+## 当前 Codex 开发指令模板
 
 ```text
-Implement M0 only from IMPLEMENTATION_PLAN.md.
+Implement only M4 delivery 1 (identity to one backup) from IMPLEMENTATION_PLAN.md.
 
-Read AGENTS.md and all referenced specs first. Do not implement later milestones.
-Create the monorepo scaffold, reproducible dev environment, contract/codegen layout,
-CI, multi-arch build skeleton, PostgreSQL migration skeleton, and empty Web shell.
-Run every relevant test/build locally and report exact results. If a requested
-implementation would violate a security invariant or needs an unspecified choice,
-stop and surface that conflict instead of guessing.
+Read AGENTS.md, the security model, affected subsystem specs and the M4 plan first.
+Reuse the existing Service, authorization, fencing and protected delivery adapters.
+Reuse the existing enrollment and Agent mTLS identity; do not add another Agent
+pairing or bearer-token lifecycle. Revise the affected Gateway authentication
+contracts/ADR before replacing its current session-capability mechanism, preserving
+per-Host scope and current-backup lock isolation. Do not implement later deliveries.
+Complete the minimal backup-scope contract, production entry, daemon/readiness and
+pinned-client backup/readback path together. Update affected specs/contracts/ADR
+in the same change. Do not implement delivery 2/3 or later milestones.
+Keep existing acceptance requirements and negative tests. Do not add or rewrite
+test cases yet, as currently requested by the user. Compile, test, authenticate
+and validate runtime only in GitHub Actions; the workspace is for
+source/document edits and read-only inspection. Report Actions evidence and
+remaining items. Surface actual specification conflicts; do not bypass them.
 ```

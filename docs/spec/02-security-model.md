@@ -43,7 +43,7 @@ V1 不声称抵御：
 | Maintenance Worker | 最高数据权限 | Repo password、rclone config 的短时明文 |
 | Public Gateway | 高数据路径权限 | rclone materialized config、gateway auth verifier |
 | PostgreSQL | 敏感但不单独可信 | 密文、token hash、metadata |
-| Agent | 单 Host 范围可信 | Agent private key、本 Host Repo password/gateway secret |
+| Agent | 单 Host 范围可信 | Agent private key、本 Host Repo password |
 | OneDrive / Google Drive / WebDAV | 外部依赖 | rclone crypt 后的 repository objects |
 
 ## 4. 威胁与控制
@@ -107,6 +107,8 @@ Agent mTLS 身份只允许：
 - 申请自己的证书轮换；
 - 获取绑定给自己的 Repo runtime credential revision。
 
+Gateway 数据面 MAY 复用该身份，为中心已经授权的本 Host Repository 开启/查询/结束有界会话及读/创建对象。MUST 独立核验当前中心 owner 授权及会话范围，MUST NOT 经控制 stream 传输备份内容。
+
 禁止：
 
 - 指定任意 `agent_id`/`host_id`；
@@ -123,21 +125,21 @@ Agent mTLS 身份只允许：
 每个默认 per-Host Repository 具有：
 
 1. 随机 Restic repository password；
-2. 独立 gateway username；
-3. 随机 gateway password；
+2. 独立 Gateway path identity，绑定本 Host 的 Agent mTLS 身份；
+3. Gateway 生成的非秘密当前会话 ID；
 4. 不可变 repo UUID/path；
 5. 指向中心 CA 的 gateway TLS trust。
 
 Agent 持有 1–5 中完成 backup 所需的值，但不持有 rclone config。凭据在 Agent 上以 root/service-user 可读的 `0600` 文件保存。没有 TPM/keyring 时，V1 不承诺抵御 Host root 窃取。
 
-Gateway 必须验证 username 与路径前缀匹配。只验证“密码正确”但允许任意路径是严重漏洞。
+Gateway MUST 验证证书链、当前有效期与规范 Agent 身份，并匹配中心授权的 Agent/Host/Repository 与当前会话路径。MUST NOT 以 Basic 密码、代理头或自报 ID 代替身份。旧会话路径 MUST NOT 被新会话复用，锁归属保持独立，见 ADR-0033。
 
 ### 7.1 轮换
 
-- gateway password 支持旧/新 overlap，默认 15 分钟；
-- Server 下发 credential revision，Agent 持久化并确认后才撤销旧 secret；
+- Gateway 通信 MUST 复用 §5 的长期本机密钥、自动续证和可吊销身份，不新增长期密码、逐次秘密能力或候选密码激活；
+- Server 下发 Repository credential revision，Agent MUST 持久化并确认；ACK 不代替会话授权；
 - Repo password rotation 通过 Restic key 管理完成，但旧 key 删除属于 maintenance 操作；
-- V1 提供 gateway secret rotation；Repo password rotation 可以为 V1.1，但 Schema 必须支持多个 key revision。
+- V1 MUST 提供身份续证/吊销；Repo password rotation 可以为 V1.1，但 Schema 必须支持多个 key revision。旧 Gateway secret 引用保留兼容，MUST NOT 用于生产密码回退。
 
 ## 8. 中心 Secret 管理
 
@@ -203,6 +205,8 @@ ADR-0031 / 09 §7.23 的内部 `Service` MUST 从受保护 metadata、独立 pin
 公网 TLS MUST 仅在全部单次材料交换与 owner/global 可用性核验成功后绑定；部分初始化失败 MUST 取消/join 全部回调和 rollback，保留已创建 Queue/fence。RFGA 更新原 owner，RFGR 丢失确认重试原密文；非法确认、不可可靠读写、全局 producer 或任一 owner 永久失效 MUST 停止整次运行。退出 MUST 在所有入口、会话、子进程组、回写及最终审计 join 后清零材料、冻结/关闭 Queue；Close 不封存来源或释放占用。可信进程内 WithBackup 不得由 Agent 选择云端配置或任意 callback；生产会话协议、可部署 daemon 与 READY 仍待完成。
 
 ## 9. Web 安全
+
+ADR-0033 已接入生产 daemon/mTLS 会话入口，替代 §8.7 末尾对应的待实现说明；持续授权分发、可信停止恢复、Repository READY 及新入口的 Actions 验收仍待完成。
 
 - 首个管理员只可通过一次性 bootstrap secret 创建；使用后删除/作废；
 - 密码使用 Argon2id，参数存储并支持升级；

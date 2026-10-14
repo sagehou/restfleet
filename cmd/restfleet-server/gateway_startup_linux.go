@@ -63,6 +63,7 @@ func runGatewayCommand(args []string, output io.Writer) error {
 	}
 	defer store.Close()
 	c, err := control.NewControlPlane(store, control.Settings{MasterKey: config.MasterKey, GatewayPublicURL: config.GatewayPublicURL,
+		GatewayOfflineWindow: config.GatewayOfflineWindow,
 		GatewaySigningKey: config.GatewaySigningKey, GatewayPendingDecryptionKey: config.GatewayPendingDecryptionKey,
 		ExpectedSchema: postgres.ExpectedSchemaVersion, Enrollment: control.EnrollmentSettings{ServerCABundlePEM: config.ServerCABundlePEM}})
 	if err != nil {

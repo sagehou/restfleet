@@ -299,16 +299,18 @@ health_checks[]
 Server 只下发该 Repository 的：
 
 - gateway endpoint；
-- gateway username/password；
+- 本 Host Gateway path identity；通信认证复用 Agent 本机密钥/证书；
 - Restic repository password/key；
 - CA bundle；
 - revision、valid_from、retire_after。
 
 不下发 rclone remote、OAuth token、crypt password或 admin endpoint。
 
-Agent 将 secret 写到专用 mode 0600 文件/加密 local store，回 ACK 后 Server 才进入旧 secret retirement。Secret 消息不得写入一般 message trace。
+Agent MUST 将 Restic secret 写到专用 mode 0600 文件/加密 local store；通信续证复用既有身份协议。Secret 消息不得写入一般 message trace。
 
 ### 13.1 M4 初始交付与确认（ADR-0015）
+
+ADR-0033 更新：新 Agent MUST 同时声明 `repository_identity_v1` 与 `repository_credentials_v1`。中心 MUST 不解密或下发 Gateway password；原字段号保留，新模式该字段为空。Gateway revision/reference 保留旧 schema 兼容，不授予认证权。旧 capability 的两密码交付只为兼容，生产 daemon 无密码认证回退。Agent MAY 在其他内容完全相同时单向清除同 revision 的旧密码；回滚或同 revision 重新加入密码 MUST 拒绝。下文两密码校验仅适用于 legacy 交付。
 
 本批 MUST 通过 Hello capability `repository_credentials_v1` 协商；1.0 / 0.9 无该 capability 的旧 Agent 不接收新消息。Server MUST 从 mTLS 证书身份查找该 Host 的已初始化仓库，不接受 payload 指定目标。CredentialRevision 含 delivery_id、单调 revision、Agent/Host/Repository/Gateway UUID、两种 secret revision、无 userinfo 的 HTTPS endpoint、CA bundle、两份仓库密码与 valid_from；不包含任何 rclone/OAuth/Crypt/中心维护材料。
 
@@ -317,6 +319,14 @@ Server MUST 在解密前提交准入与秘密访问审计；当前交付 metadat
 Agent MUST 校验规范 UUID、身份/路径绑定、独立 256-bit 密码、CA 和 HTTPS origin，以 0700 目录下专用 0600 `repository-credential.json` 保存；MUST 先 fsync+rename+目录 fsync 再 ACK，重复也重新确保落盘。MUST 拒绝回滚、同 revision 不同内容、无 key revision 的密码变更、跨仓库替换、不安全文件或 symlink；错误 MUST 保留 last-known-good。秘密不写 bbolt/outbound、DesiredState 或通用 trace；缓冲在处理后清理。
 
 ACK 仅含 delivery_id/revision，MUST 精确匹配当前绑定、密钥引用和 Gateway 配置指纹；重复 ACK 幂等，确认、outbox 和审计同事务。ACK 不授予 backup lease，不改变 Repository 为 READY，不撤销旧密码。本批未交付 rotation overlap/retirement、Gateway session admission 或 AGT-005 离线备份验收。
+
+### 13.2 Gateway 会话
+
+`api/openapi/gateway-v1.yaml` 定义独立数据面。Agent MUST 用既有 mTLS 身份，对本 Host 已授权 Repository 执行 POST/GET/DELETE `/gateway/v1/repositories/{repository_id}/backup-sessions/{operation_id}`。请求只含规范 UUIDv7 与 UTC deadline，不含云端材料或可信身份声明。Gateway 自行生成 session_id，ACTIVE 后返回独立 endpoint_path，最多保留 4096 条运行内去重记录。
+
+响应丢失 MUST 使用相同 operation_id/参数查询或重试；重复 POST 不重复启动、不延长期限，参数冲突返回 409。CLOSED/FAILED 不能重新打开。DELETE MUST join 请求、后端进程与材料清理，不代表备份成功或占用释放。期限取任务 deadline、开始后 24h、原 admission 到期的较早值；旧会话路径不能清理新会话的锁。
+
+接口使用已有中心授权，不要求每次在线请求 Control API；Gateway 丢失/授权到期按 §15 暂停并保留身份/配置，不离线冷启动或复活失败 owner。
 
 ## 14. Certificate Rotation
 

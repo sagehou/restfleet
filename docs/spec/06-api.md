@@ -116,10 +116,11 @@ GET    /api/v1/hosts/{host_id}/agents
 
 GET    /api/v1/agents/{agent_id}
 POST   /api/v1/agents/{agent_id}/revoke
-POST   /api/v1/agents/{agent_id}/rotate-gateway-credential
 ```
 
 Host 创建不自动创建 Repository/Plan，初始 `PENDING`。
+
+ADR-0033：Gateway 通信复用 Agent 本机密钥和自动续证/吊销，不提供独立 Gateway 密码轮换 API。数据面会话契约在 `api/openapi/gateway-v1.yaml`，不能通过 Control API/gRPC 代理备份内容。
 
 Agent revoke：
 

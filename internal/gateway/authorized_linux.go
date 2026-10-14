@@ -166,7 +166,13 @@ func (a *AuthorizedBackup) WithBackup(ctx context.Context, operation uuid.UUID, 
 		<-a.watchDone
 		return ErrAuthorization
 	}
-	work, cancel := context.WithDeadline(ctx, a.expires)
+	// Offline authority can outlive one backup. Bound every session here so
+	// callers without a task deadline cannot accidentally request a 72h run.
+	deadline := time.Now().Add(24 * time.Hour)
+	if a.expires.Before(deadline) {
+		deadline = a.expires
+	}
+	work, cancel := context.WithDeadline(ctx, deadline)
 	a.busy, a.cancel = true, cancel
 	a.running.Add(1)
 	a.mu.Unlock()
