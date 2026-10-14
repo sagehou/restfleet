@@ -35,6 +35,7 @@ type ServiceConfig struct {
 	RcloneBinary        string                       `json:"rclone_binary"`
 	CertificateFile     string                       `json:"certificate_file"`
 	TLSKeyFile          string                       `json:"tls_key_file"`
+	ClientCAFile        string                       `json:"client_ca_file,omitempty"`
 	ListenAddress       string                       `json:"listen_address"`
 	MaxSessions         int                          `json:"max_sessions"`
 	ServerUID           uint32                       `json:"server_uid"`
@@ -75,6 +76,10 @@ func (s ServiceConfig) Validate() error {
 	paths := []string{s.CentralPinFile, s.AuditSourceFile, s.AuditQueueDirectory, s.RuntimeDirectory, s.RcloneBinary, s.CertificateFile, s.TLSKeyFile, s.ReplaySocket}
 	privateDirs := []string{s.AuditQueueDirectory, s.RuntimeDirectory}
 	keyDirs := []string{filepath.Dir(s.CentralPinFile), filepath.Dir(s.AuditSourceFile), filepath.Dir(s.CertificateFile), filepath.Dir(s.TLSKeyFile)}
+	if s.ClientCAFile != "" {
+		paths = append(paths, s.ClientCAFile)
+		keyDirs = append(keyDirs, filepath.Dir(s.ClientCAFile))
+	}
 	ipcDirs := []string{filepath.Dir(s.ReplaySocket)}
 	var ids [4]map[uuid.UUID]bool
 	for i := range ids {

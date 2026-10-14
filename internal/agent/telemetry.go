@@ -46,7 +46,7 @@ func inventorySnapshot(
 		Containerized:  isContainerized(),
 		AvailableBytes: map[string]uint64{"agent_state": free},
 		ClockOffsetMs:  clockOffset.Milliseconds(),
-		Capabilities:   []string{"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability},
+		Capabilities:   []string{"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability, domain.RepositoryIdentityCapability},
 	}
 }
 

@@ -436,7 +436,9 @@ REP-056–057 MUST 在 Actions 执行，包含实际命令入口、保护文件/
 
 metadata MUST 位于 Gateway 所有 canonical 0700 私有目录内，以单链接 0400/0600 regular file 保存，最多 64 KiB；特殊权限、symlink/hardlink/pending、未知/重复/遗漏/null/大小写替代及非规范编码 MUST 拒绝。MAY 有排版空白；其他编码 MUST 与 Go encoding/json 规范重编码相同。字段及顺序 MUST 为：
 
-`version`、`environment`、`central_pin_file`、`audit_origin`、`audit_source_file`、`recipient_public`、`audit_queue_directory`、`max_bytes`、`max_records`、`runtime_directory`、`rclone_binary`、`certificate_file`、`tls_key_file`、`listen_address`、`max_sessions`、`server_uid`、`shared_group`、`replay_socket`、`startup_wait_seconds`、`repositories`。
+`version`、`environment`、`central_pin_file`、`audit_origin`、`audit_source_file`、`recipient_public`、`audit_queue_directory`、`max_bytes`、`max_records`、`runtime_directory`、`rclone_binary`、`certificate_file`、`tls_key_file`、`client_ca_file`、`listen_address`、`max_sessions`、`server_uid`、`shared_group`、`replay_socket`、`startup_wait_seconds`、`repositories`。
+
+ADR-0033 增加 `client_ca_file`：生产 daemon MUST 提供 Gateway 所有、受保护的 Agent CA PEM 文件，最多 64 KiB。旧内部 adapter/conformance 夹具 MAY 省略该新增字段，生产 command MUST 拒绝缺失，MUST NOT 回退 Basic。该 CA 只验证客户端，Gateway 的 server certificate/trust 仍沿用原 TLS 要求。
 
 version MUST 为 1；environment MUST 为 production/development/test；audit_origin 为 §7.20 的完整来源，recipient_public 为标准 base64 的非全零 32-byte 中心 X25519 公钥，独立 Ed25519 pin 继续从 central_pin_file 加载。max_bytes/max_records 沿用 §7.13，各 Queue 上限相同；max_sessions 为 1–32，startup_wait_seconds 为 1–300，每次 Accept 后交换仍最多 5s。私有/共享 server_uid/shared_group 规则沿用 §7.16，保留值拒绝。listen_address MUST 为 literal IP 与规范十进制端口，不能使用 DNS；生产端口 MUST 非零。
 
@@ -451,6 +453,26 @@ repositories MUST 为 1–32 项，字段依序为 `binding`、`source_file`、`
 关闭 MUST 取消/关闭入口，等待材料/授权回调、会话、TLS 请求、后端进程组和回写 worker；最终审计 join 后清零来源/云端明文，冻结/关闭两类 Queue，最后关闭 runtime。重复/并发 Close MUST join 同一退出，MUST NOT 删除证据、封存来源、释放占用或自动重启。WithBackup 仅供可信进程内调用方使用，不能把云端材料/config/callback 暴露给 Agent 请求。
 
 REP-058–060 MUST 仅在 Actions 执行。跨 UID job 从 protected production config 经 Service 完成材料、RFGA、TLS、两类回写及吊销清理，第三 UID 仍无 effect；固定引擎验收增加 Service 路径并保留原两种路径。Agent 长期 gateway password 与每次 session password 的生产交付协议未连接，本批不提供可部署 daemon command。自动授权分发、Agent 会话能力、可信恢复/readiness、rotation/READY、真实三后端与 AGT-005 继续待完成，离线时长与 Gateway 不可达暂停的合同已按 ADR-0032 明确。
+
+### 7.24 复用 Agent 身份的 daemon 与会话入口（ADR-0033）
+
+本节替代 §7 及历史批次中 htpasswd、生产会话密码分发、daemon 未接线的描述，保留原中央授权、隔离、材料/回写与清理边界。生产入口为：
+
+```text
+restfleet-gateway run --config-file /var/lib/restfleet-gateway/metadata/service.json
+```
+
+command MUST 读取 §7.23 的受保护 metadata，强制加载 Agent CA 并启用 mTLS；无证书、错误 CA 或身份不匹配 MUST 拒绝。Server TLS 与 Agent TLS 验证 MUST 保持启用。SIGINT/SIGTERM MUST 取消并 join 原 Service；服务管理器 MUST NOT 用旧配置自动重启，退出后的来源封存/占用释放仍须可信中心协调。
+
+Gateway MAY 直接暴露 TLS 或使用四层 TLS passthrough；边缘 MUST NOT 终止 Agent mTLS 后以 header 转发身份。备份仍直接进入 Gateway，控制 API/gRPC 不转发数据。
+
+`GET /gateway/v1/readiness` MUST 使用已配置 owner 的 Agent mTLS 身份，仅在当前 Service、全部 owner 和可靠全局审计有效时返回 200。readiness MUST NOT 代表 Repository READY、中心确认最新授权、来源封存或可释放 fence；无身份不允许经代理头探测。
+
+会话入口及字段见 `api/openapi/gateway-v1.yaml`。Gateway MUST 只选择中心预初始化且绑定证书身份的 owner，不允许传入 config、remote、密码或 callback。请求 operation_id 仅用于运行内去重；Gateway MUST 生成新的 UUIDv7 session_id，在独立路径发布已探测成功的只读/创建数据入口。重复请求不启动新后端、不延寿；每次运行最多 4096 条记录，上限后拒绝新会话。DELETE 只结束并清理该会话，不能删除仓库、执行 unlock、写入备份成功或释放中心占用。
+
+Agent 客户端 MUST 复用本机 TLSIdentity 和已保存 Repository credential，验证 Gateway CA/域名、拒绝跳转，按 session_id 核验返回路径；不访问 Control API、不重配对或清除身份。Restic 客户端 MUST 经受保护的 CA/client certificate 文件使用这个 HTTPS endpoint，私钥/仓库密码不能出现在 argv。单次期限取任务 deadline、开始后 24h、原 admission 到期的较早值；guard/watchdog 继续控制默认 72h 离线授权。
+
+本批按用户指示暂不写新测试。新入口的 Actions 验证、持续授权分发、可信停止恢复和 Repository READY 仍待完成；历史夹具通过不等于生产 mTLS 链路跑通。真实三后端继续按 REP-016 在部署 Actions 验收。
 
 ## 8. Native Agent 安装
 

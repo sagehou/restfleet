@@ -1,5 +1,9 @@
 # 07 — PostgreSQL 数据库规范
 
+ADR-0033 兼容说明：schema 16 的 Gateway secret 引用继续保留，不新增身份表、verifier 或候选密码状态；生产认证复用 AgentCertificate/Agent 身份，Gateway secret MUST NOT 用于生产密码回退。新 capability 仅接收 Restic 密码，其余交付/ACK/占用 fencing 仍复用原事务。
+
+readiness MUST 检查当前连续编号的全部迁移已应用，不能只取最大已应用版本；后续版本 MUST NOT 掩盖缺失/未应用的前置迁移。Goose 同一版本有多条历史记录时，MUST 以最新记录判断当前应用状态。
+
 ## 1. 选择 PostgreSQL
 
 V1 使用 PostgreSQL，而非生产 SQLite，原因：

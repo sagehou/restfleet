@@ -133,7 +133,7 @@ Sections：
 - Operations；
 - Danger zone（disable，不直接 delete data）。
 
-Actions：Test、Refresh Index、Check、Retention Preview、Prune、Unlock Preview、Rotate Gateway Credential。
+Actions：Test、Refresh Index、Check、Retention Preview、Prune、Unlock Preview。Gateway 通信身份复用 Agent 自动续证与管理员吊销（ADR-0033），MUST NOT 再提供独立密码轮换操作。
 
 UI 必须解释 `restore size`、`raw data`、`provider used` 三者差异。
 

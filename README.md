@@ -2,7 +2,7 @@
 
 RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面。它通过轻量 Agent 统一下发备份计划、采集运行状态、浏览快照、触发恢复并集中执行仓库维护，同时把 rclone 与云存储凭据严格留在中心节点。
 
-> 当前 M0–M3 已完成，M4 正分批开发：已提供凭据管理/异步读取测试、独立仓库记录与初始化适配器；后端扩展为 OneDrive、Google Drive、HTTPS WebDAV + Crypt。初始化任务接线、Gateway 与备份执行仍待后续交付；`docs/spec/` 中的规范是 V1 实现约束。
+> 当前 M0–M3 已完成，M4 正在收敛：已有凭据管理、中心仓库初始化、Agent 凭据交付/ACK、Gateway Service 及可靠回写。当前源码接入复用 Agent mTLS 身份的 Gateway daemon/会话入口；运行验收、持续协调/恢复与 Repository READY 尚未完成。M5–M12 的功能仍需按计划实施。
 
 开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
 
@@ -28,7 +28,7 @@ make test
 make build cross-build
 ```
 
-当前 Server 需要已经迁移到 schema v9 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。开发 Compose 也拆分了 migrator/runtime 数据库身份，并且不向宿主机发布 PostgreSQL 或 metrics 端口。
+当前 Server 需要已经迁移到 schema v16 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。编译、测试、认证及运行验证 MUST 只在 GitHub Actions 执行；开发工作区只用于源码/文档编辑和只读检查。Compose 拆分 migrator/runtime 身份，不向宿主机发布 PostgreSQL 或 metrics 端口。
 
 首次启动：
 

@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sagehou/restfleet/internal/domain"
 	"golang.org/x/net/netutil"
 )
 
@@ -25,6 +27,7 @@ var (
 type PublicServer struct {
 	http        *http.Server
 	supervisor  *Supervisor
+	handler     http.Handler
 	connections int
 	rate        int
 
@@ -40,8 +43,8 @@ type PublicServer struct {
 // NewPublicServer validates the borrowed PEM key pair before the caller binds a
 // public socket. The parsed key is retained for the server lifetime. Load it
 // from protected files; never log PEM, paths, handshake errors or raw requests.
-func NewPublicServer(s *Supervisor, certificatePEM, privateKeyPEM []byte) (*PublicServer, error) {
-	if s == nil {
+func NewPublicServer(s *Supervisor, certificatePEM, privateKeyPEM []byte, clientCAPEM ...[]byte) (*PublicServer, error) {
+	if s == nil || len(clientCAPEM) > 1 {
 		return nil, ErrInvalidSession
 	}
 	certificate, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
@@ -49,13 +52,22 @@ func NewPublicServer(s *Supervisor, certificatePEM, privateKeyPEM []byte) (*Publ
 		return nil, ErrPublicTLS
 	}
 	p := &PublicServer{supervisor: s, connections: 128, rate: 256}
+	transport := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}}
+	if len(clientCAPEM) == 1 {
+		roots := x509.NewCertPool()
+		if !domain.ValidCredentialCA(clientCAPEM[0]) || !roots.AppendCertsFromPEM(clientCAPEM[0]) {
+			return nil, ErrPublicTLS
+		}
+		transport.ClientAuth, transport.ClientCAs = tls.RequireAndVerifyClientCert, roots
+		s.identityAuth = true
+	}
 	// ponytail: HTTP/1.1 bounds in-flight work by the TCP connection cap. Enable
 	// HTTP/2 only with explicit stream limits and pinned Restic conformance.
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	p.http = &http.Server{
 		Handler:           http.HandlerFunc(p.serveHTTP),
-		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}},
+		TLSConfig:         transport,
 		Protocols:         protocols,
 		ReadHeaderTimeout: 5 * time.Second,
 		// Authenticated object transfers extend these via ResponseController.
@@ -152,5 +164,9 @@ func (p *PublicServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// Direct dispatch preserves malformed paths for the existing security guard;
 	// do not add ServeMux cleaning, redirects, proxy-header trust or admin routes.
-	p.supervisor.ServeHTTP(w, r)
+	if p.handler != nil {
+		p.handler.ServeHTTP(w, r)
+	} else {
+		p.supervisor.ServeHTTP(w, r)
+	}
 }

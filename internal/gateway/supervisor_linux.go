@@ -48,6 +48,7 @@ type Access struct {
 
 type activeBackup struct {
 	binding      Binding
+	agentID      uuid.UUID
 	credentialID uuid.UUID
 	cancel       context.CancelFunc
 	session      *BackupSession
@@ -59,14 +60,15 @@ type activeBackup struct {
 // job queue or lease authority. Use ONE supervisor per gateway runtime; close
 // the listener, then this supervisor, then the caller-owned credential runtime.
 type Supervisor struct {
-	mu         sync.Mutex
-	runtime    *rclone.Runtime
-	limit      int
-	audit      func(context.Context, Event) error
-	auditReady func() bool
-	active     map[uuid.UUID]*activeBackup
-	closed     bool
-	running    sync.WaitGroup
+	mu           sync.Mutex
+	runtime      *rclone.Runtime
+	limit        int
+	audit        func(context.Context, Event) error
+	auditReady   func() bool
+	identityAuth bool // Set before serving or starting work; no password fallback.
+	active       map[uuid.UUID]*activeBackup
+	closed       bool
+	running      sync.WaitGroup
 }
 
 func NewSupervisor(runtime *rclone.Runtime, maxSessions int, audit func(context.Context, Event) error, auditReady ...func() bool) (*Supervisor, error) {
@@ -97,6 +99,9 @@ func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
 	if run == nil || persist == nil {
 		return ErrInvalidSession
 	}
+	if s.identityAuth && local == nil {
+		return ErrAuthorization
+	}
 	deadline, ok := ctx.Deadline()
 	if !ok || time.Until(deadline) > 24*time.Hour {
 		return rclone.ErrGatewayLifetime
@@ -113,6 +118,9 @@ func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
 	defer cancel()
 	entry := &activeBackup{binding: request.Binding, credentialID: request.CredentialID, cancel: cancel, audit: s.audit}
 	if local != nil {
+		if s.identityAuth {
+			entry.agentID = local.authorization.binding.AgentID
+		}
 		entry.guard = local.ready
 		entry.audit = func(ctx context.Context, event Event) error {
 			if err := local.record(ctx, event); err != nil {
@@ -226,7 +234,7 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 	if entry.guard != nil && !entry.guard() {
 		return ErrAuthorization
 	}
-	session, password, err := NewBackupSession(backendCtx, entry.binding, socket, entry.audit)
+	session, password, err := newBackupSession(backendCtx, entry.binding, socket, entry.audit, entry.agentID)
 	if err != nil {
 		return err
 	}

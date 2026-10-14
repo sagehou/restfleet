@@ -221,6 +221,8 @@ created_at / updated_at / revision
 
 V1 不允许一个 Host 同时绑定多个 active Repository，也不允许多个 Host 绑定同一 Repository。Schema 可以为 V2 预留 join table，但 API 必须拒绝 Shared Repo。
 
+ADR-0033：`gateway_username` 是不可变路径身份，生产认证复用绑定 Agent 的 mTLS。`gateway_secret_ref/revision` 及 GATEWAY credential revision 暂保留旧 schema/客户端兼容；MUST NOT 用于生产密码回退或新增候选密码生命周期。
+
 未归档 Repository MUST 独占 Host；DISABLED/ERROR 不释放归属，避免通过状态变化隐式创建第二个仓库。初始化尚未验证时 format_version MUST 为空。
 
 ### RepositoryCredentialRevision

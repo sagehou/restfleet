@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -25,9 +26,8 @@ type serviceRepository struct {
 }
 
 // Service owns one runtime/supervisor, global audit producer, TLS transport and
-// all configured repository owners/channels. WithBackup is a trusted in-process
-// seam; Agent session admission/delivery and a deployable command still need
-// their protocol. Never expose a config/run callback to an Agent request.
+// all configured repository owners/channels. Agent requests can only open a
+// session for an already authorized owner, never supply config/run callbacks.
 type Service struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -35,6 +35,8 @@ type Service struct {
 	workers      sync.WaitGroup
 	mu           sync.Mutex
 	failure      error
+	stopping     bool
+	sessions     map[uuid.UUID]*serviceBackup
 	config       ServiceConfig
 	runtime      *rclone.Runtime
 	supervisor   *Supervisor
@@ -62,7 +64,7 @@ func StartService(ctx context.Context, config ServiceConfig) (_ *Service, failur
 		}
 	}
 	work, cancel := context.WithCancel(ctx)
-	s := &Service{ctx: work, cancel: cancel, done: make(chan struct{}), config: config}
+	s := &Service{ctx: work, cancel: cancel, done: make(chan struct{}), config: config, sessions: make(map[uuid.UUID]*serviceBackup)}
 	defer func() {
 		if failure != nil {
 			cancel()
@@ -116,7 +118,19 @@ func StartService(ctx context.Context, config ServiceConfig) (_ *Service, failur
 		return nil, ErrService
 	}
 	defer clear(key)
-	s.public, err = NewPublicServer(s.supervisor, cert, key)
+	if config.ClientCAFile != "" {
+		ca, readErr := security.ReadProtectedGatewayFile(config.ClientCAFile, 64<<10)
+		if readErr != nil {
+			return nil, ErrService
+		}
+		s.public, err = NewPublicServer(s.supervisor, cert, key, ca)
+		clear(ca)
+		if err == nil {
+			s.public.handler = http.HandlerFunc(s.serveHTTP)
+		}
+	} else {
+		s.public, err = NewPublicServer(s.supervisor, cert, key)
+	}
 	if err != nil {
 		return nil, ErrService
 	}
@@ -284,6 +298,9 @@ func (s *Service) Wait() error {
 // finish while the global producer and all queues remain open. No central seal,
 // queue deletion, admission release or runtime restart occurs during cleanup.
 func (s *Service) cleanup() {
+	s.mu.Lock()
+	s.stopping = true
+	s.mu.Unlock()
 	if s.listener != nil {
 		_ = s.listener.Close()
 	}
