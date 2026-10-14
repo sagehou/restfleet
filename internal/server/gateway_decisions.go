@@ -19,8 +19,11 @@ type GatewayDecisionStore interface {
 // and final cleanup/release for this runtime; a signature is not a new admission.
 // The key is loaded centrally and MUST NOT be passed to a Gateway runner.
 func (c *ControlPlane) DecideGatewayAuthorization(ctx context.Context, r domain.GatewayDecisionRequest) ([]byte, error) {
+	if !r.Revoke && r.Lifetime == 0 {
+		r.Lifetime = c.gatewayOfflineWindow
+	}
 	store, ok := c.store.(GatewayDecisionStore)
-	if !ok || len(c.gatewaySigningKey) == 0 || c.gatewayPublicURL == "" || r.Validate() != nil {
+	if !ok || len(c.gatewaySigningKey) == 0 || c.gatewayPublicURL == "" || r.Validate() != nil || r.Lifetime > c.gatewayOfflineWindow {
 		return nil, domain.ErrGatewayDecision
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)

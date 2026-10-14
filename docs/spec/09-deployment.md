@@ -182,13 +182,13 @@ rclone OAuth token 更新：
 
 `WithBackup` MUST 只由可信中心调用方使用，不是 HTTP 创建会话 API。调用前 MUST 验证持久化绑定、记录秘密访问审计、取得并续租 backup lease，排斥同仓库维护和同凭据的测试/初始化/刷新写入者；进程内互斥 MUST NOT 代替数据库 fencing。一个 runtime MUST 只对应一个 supervisor，MUST NOT 新建多个 supervisor 或多个 runtime 目录绕过限制。
 
-supervisor MUST 复用 Credential Runtime 的配置校验、tmpfs、WebDAV 固定出站、运行中 token watcher/CAS 与退出清理。Gateway 专用入口 MUST 接受明确且不超过 24h 的授权截止时间；原有连接测试 1min、普通中心命令 5min 上限保持不变。不得无期限 materialize，也不得自动重新授权或重启失败会话。
+supervisor MUST 复用 Credential Runtime 的配置校验、tmpfs、WebDAV 固定出站、运行中 token watcher/CAS 与退出清理。Gateway 单次备份会话入口 MUST 接受明确且不超过 24h 的会话截止时间；原有连接测试 1min、普通中心命令 5min 上限保持不变。不得无期限 materialize，也不得自动重新授权或重启失败会话。
 
 启动 MUST 使用固定 argv、固定环境、append-only 与 cache-objects=false，并仅绑定 UUID-scoped 私有 Unix socket；不继承 RCLONE/proxy/LISTEN_* 变量或 socket activation。只有受限 socket 验证通过且只读 HEAD config 成功，才 MAY 安装路由和借出会话能力；此探测只证明 backend 可访问，MUST NOT 表示云凭据健康、完整仓库校验或 Agent ACK。不存在仓库时 MUST NOT 自动 init。
 
 正常结束、超时、取消、后端退出或 refresh/CAS 失败 MUST 撤销能力、移除路由、等待在途请求结束、终止并回收子进程组，再删除 materialized 目录；`WithBackup` 返回前 MUST 完成清理，之后才允许调用方释放持久化 fencing。启动/结束审计与请求拒绝审计 MUST 只包含可信 ID 和固定分类；原始 provider/callback 错误 MUST NOT 外泄。shutdown MUST 先停外部 listener，再 Close supervisor，最后关闭 runtime；Close MUST 拒绝新会话并等待已有清理完成。
 
-supervisor 批次不提供公网部署就绪声明、备份会话能力下发/ACK 或离线持久化准入。独立的仓库初始凭据下发/ACK 见 §7.5，不能替代会话准入。刷新无法安全回写时仍 fail closed，不能据此宣称控制面离线 12h 验收已完成；后续接线 MUST 继续满足 AGT-005，不能删掉该验收来绕过协调问题。
+supervisor 批次不提供公网部署就绪声明、备份会话能力下发/ACK 或离线持久化准入。独立的仓库初始凭据下发/ACK 见 §7.5，不能替代会话准入。刷新无法安全回写时仍 fail closed，不能据此宣称配置窗口内的控制面离线验收已完成；后续接线 MUST 继续满足 AGT-005，不能删掉该验收来绕过协调问题。
 
 ### 7.5 Agent 仓库凭据交付开关
 
@@ -232,22 +232,17 @@ schema 11 的持久化备份占用原语已接入现有中心写入口互斥，�
 
 此接线仍是在线中央材料服务；公网 command、数据面审计持久化、独立 Gateway 进程的受保护材料交付、owner 恢复与 AGT-005 离线协调未完成。不得将它直接暴露为 Agent API 或据此标记 READY。
 
-### 7.10 有界离线授权与待回写目标
+### 7.10 可配置离线窗口与故障行为
 
-用户已接受 ADR-0017 的独立 Gateway 方案；本节是待实现约束，不是公网部署步骤。§7.8 的在线轮询与 §7.9 的同步 DB 回写在替代协调器完成验证前保持原行为，MUST NOT 直接关闭这些检查以模拟离线成功。
+用户已接受 ADR-0017 的独立 Gateway 方案，并以 [ADR-0032](../adr/0032-configurable-offline-window.md) 修订期限和交付边界。`RESTFLEET_GATEWAY_OFFLINE_WINDOW` 默认 `72h`，允许 `1m`..`720h` 的整秒时长；Compose 透传同名变量。中心普通授权请求的 `Lifetime=0` 或启动 metadata 的 `lifetime_seconds=0` 使用该配置，显式更长请求 MUST 拒绝。修改配置只影响后续中心决定，已签发权限仍按原截止时间失效。
 
-后续在 M4 内按以下依赖顺序交付：
+窗口 MUST 从最后一次中心签发计算，不从检测失联、接收、重放或重连重新计算；实际截止为授权与原占用截止的较早者。因此它表示剩余授权窗口，不承诺任意失联时刻之后另有完整 72h。中心 MUST 在线核验当前身份、ACK、配置和占用后才续期；撤销/禁用在失联时最多延迟配置窗口生效。schema 16 将占用与授权请求上限扩到 30d，避免旧 24h 上限截断 72h；单次备份会话仍最多 24h。续期 MUST NOT 改原占用期限，也不释放再抢占。
 
-1. **授权与连续 fence**：中心签发、在线续期、Gateway 验证和防回滚 MUST 绑定同一可信运行实例及完整资源/配置版本。新授权 MUST 先经中心事务验证当前状态、精确 ACK 和未释放占用；禁止预发可在撤销后无限延寿的未来授权。按 ADR-0019，现有授权续期 MUST 限制在 schema 11 的原占用截止时间内，MUST NOT 更新占用期限，也不能通过释放再抢占制造维护空窗。授权续期不等于占用延长；若未来采用连续延长占用的方案，MUST 另行明确 ADR、显式迁移、旧 writer 升级约束与并发负向测试。停止后建立新运行仍 MUST 先完成可信清理、回写与来源封存，并按既有释放条件处理；本项不提供恢复或接管协议。
-2. **受保护通道与持久化**：独立 Gateway MUST 通过有身份验证、版本和大小限制的本地通道获取必要材料，不获取中心 DB/master key。待回写区 MUST 在受保护持久卷上有字节/记录数硬上限，可靠落盘后才确认接受；MUST NOT 丢弃未确认记录来腾空间。加密封装与来源认证 MUST 独立验证，秘密不得进入审计 payload、日志或 artifact。
-3. **回写与恢复**：每条记录 MUST 有可信 owner/运行实例/占用绑定、唯一标识和有序版本；中心 MUST 拒绝冲突重放、跳序、篡改、跨绑定和非 token-only 配置变化。DB 提交后才 MAY 确认对应记录并回收本地空间，确认丢失 MUST 幂等重放；刷新仍执行加密 revision CAS。记录全部接收不等于进程清理，释放占用仍需确认全部请求、子进程和持久化工作结束。失败保留 fence，不自动重启或接管。
-4. **生产接线与验收**：再接入 command、独立 readiness、会话交付及恢复状态。readiness MUST 区分控制面不可达、剩余授权不足、待回写容量和恢复阻塞；不得把监听 socket 存在或 Agent ACK 当作 Repository READY。
+这里的离线指中心控制 API/DB 不可用、Agent 仍可连接持续运行的 Gateway。Gateway 不可达、停止、重启后材料丢失或授权不足时，Agent MUST 暂停备份并报告可识别的错误，按 Plan retry policy 有界重试。MUST 保留 Agent 身份、私钥、证书和 last-known-good 配置，不要求重新 enrollment；V1 不实现 Gateway 离线冷启动恢复或额外材料恢复机制。
 
-离线测试 MUST 覆盖签发/续期前后断网、接收延迟、旧授权重放、时钟回拨、授权到期、撤销/禁用、连续多次本地计划备份、OAuth refresh、磁盘满/写入失败、损坏记录、中心提交后确认丢失，以及 Gateway 崩溃重启与维护竞争。MUST 验证已授予权限不会超过签发后 12h，且 fence 不因超时或崩溃自动释放。
+复用既有受保护材料通道、有界加密 Queue 和有序幂等回写；可靠保存失败、容量耗尽、时钟不可信或明确吊销 MUST 停止授权使用。中心恢复后 MUST 重新核验授权并完成可信清理、回写、来源封存与释放，再建立新运行；队列排空或占用到期不能证明旧数据面已退出，也不能复活失败 owner。生产会话入口、daemon/readiness 和完整停止协调仍待交付，现有在线适配器不能直接关闭 DB 检查来模拟成功。
 
-AGT-005 的 12h 离线备份要求保持未完成：MUST 明确记录实验的签发、续期、失联和备份时间，不得把“授权最多 12h”当成“任意时刻失联后还剩 12h”。若完整可用性要求与撤销上限无法同时满足，MUST 报告取舍并请求决定，不得静默改动验收或通过重置离线计时掩盖差异。真实三后端刷新/认证/恢复仍需安全环境验收；上述设计与模拟测试均不替代人工证据。
-
-这里的离线是中心控制 API/DB 不可用但 Agent 仍能连接 Gateway；授权有效期不是 Agent 配对有效期。普通断线、备份失败或授权到期 MUST 保留既有 Agent 身份与 last-known-good 配置，不要求重新 enrollment。授权不足暂停备份；中心恢复后 MUST 重新核验身份/配置/授权并经可信清理与恢复协调继续。当前完整协调流程尚未交付，MUST NOT 将手工重新配对当作恢复方案，也不能用自动重启旧 owner 绕过清理证明、来源封存或 fence。
+新增自动测试 SHOULD 限于配置默认值/上限、签名期限和拒绝越权的关键边界，复用现有安全负向测试；期限边界 MAY 使用受控时钟，不要求真实等待 72h。rclone/provider 的真实认证、刷新、备份读回与兼容性 MUST 在部署后的 GitHub Actions 安全环境验证，不再为每种 provider 扩展重复模拟套件；未验证的后端不能声称生产验证通过。本地开发区仍只编辑源码与文档。
 
 ### 7.11 签名授权决定与本地状态（内部 v1 契约）
 
@@ -255,7 +250,7 @@ ADR-0018 交付 security 签名编解码与 Gateway 本地状态原语；MUST NO
 
 wire MUST 为规范 JSON payload 后直接拼接 64-byte Ed25519 签名，总长最多 2048 bytes；签名内容为 ASCII 前缀 `restfleet:gateway-authorization:v1`、一个 NUL 字节和 payload。使用独立中心签名密钥，验证公钥 MUST 经受保护配置交付；wire 没有公钥、算法或可自选版本。payload MUST 精确匹配 `security.GatewayStatement` 的字段顺序和 Go encoding/json 紧凑编码，未知/重复字段、额外空白、替代 UUID 表示及非规范数字 MUST 拒绝，不进行宽松归一化。
 
-字段顺序为 binding、revision、issued_at、expires_at、revoked。binding 内字段依序为 admission_id、owner、runtime_id、agent_id、host_id、repository_id、gateway_id、storage_credential_id、delivery_id、gateway_secret_ref、restic_secret_ref、configuration_hash；ID 均为规范 UUIDv7，hash 为 64 位小写 hex 的现有 Gateway origin/CA 指纹。revision 为 1..MaxInt64 的无损十进制整数；时间为 UTC Unix 整秒，issued_at 必须为正且不晚于 9999 年末。普通授权要求 issued_at < expires_at <= issued_at + 12h 且不晚于 9999 年末；明确吊销必须 revoked=true、expires_at=0。绑定只含引用，不含秘密；云端材料及版本仍须由后续受保护交付与连续占用检查保证，签名 metadata 本身不是材料校验。
+字段顺序为 binding、revision、issued_at、expires_at、revoked。binding 内字段依序为 admission_id、owner、runtime_id、agent_id、host_id、repository_id、gateway_id、storage_credential_id、delivery_id、gateway_secret_ref、restic_secret_ref、configuration_hash；ID 均为规范 UUIDv7，hash 为 64 位小写 hex 的现有 Gateway origin/CA 指纹。revision 为 1..MaxInt64 的无损十进制整数；时间为 UTC Unix 整秒，issued_at 必须为正且不晚于 9999 年末。普通授权要求 issued_at < expires_at <= issued_at + 720h（编码上限；中心签发 MUST 同时受配置窗口限制，默认 72h） 且不晚于 9999 年末；明确吊销必须 revoked=true、expires_at=0。绑定只含引用，不含秘密；云端材料及版本仍须由后续受保护交付与连续占用检查保证，签名 metadata 本身不是材料校验。
 
 Gateway MUST 从可信配置构造唯一运行绑定并复制验证公钥，不信任 wire 提供的新绑定。只有验签、精确绑定和时间检查通过的单调 revision 才能更新状态；相同 revision 仅允许完整相同内容的幂等重放，重放不重置截止时间。旧 revision、同版本改参、签发时间倒退、未来签发及初次收到已过期授权 MUST 拒绝；普通续期不得复活已知吊销的同一绑定。中心 MUST 只签发已经提交的、经过当前身份/ACK/占用核验的决定，签名工具函数不代替事务授权。
 
@@ -265,7 +260,7 @@ Gateway MUST 从可信配置构造唯一运行绑定并复制验证公钥，不�
 
 ### 7.12 中心事务签发与连续占用
 
-schema 12 / ADR-0019 将授权决定追加持久化，原占用 ID/owner、释放状态和截止时间保持不变。在线续期只更新签名授权决定，实际有效期 MUST 不超过签发后 12h 或原占用剩余期限；不能据此宣称任意失联时刻之后都有完整 12h。超过原占用期限的长期运行仍需后续生命周期协调，MUST NOT 自动释放或重开占用。
+schema 12 / ADR-0019 将授权决定追加持久化，原占用 ID/owner、释放状态和截止时间保持不变。在线续期只更新签名授权决定，实际有效期 MUST 不超过配置窗口或原占用剩余期限；窗口默认 72h，从签发起计算，不从失联起重新计时（ADR-0032）。超过原占用期限的长期运行仍需后续生命周期协调，MUST NOT 自动释放或重开占用。
 
 `ControlPlane.DecideGatewayAuthorization` 只向可信中心运行协调器开放，无新 HTTP/gRPC 路由；调用方 MUST 控制运行实例身份，并串行化签发投递与最终清理/释放。服务使用最多 3s 的上下文，事务提交后重验请求/绑定/版本/期限，再使用独立 Ed25519 key 签名；DB 失败、取消或过期不返回签名。重放同一最新决定不延寿；旧决定被后续版本取代后不再重新签发。
 
@@ -358,7 +353,7 @@ REP-043–044 MUST 在 Actions 运行。跨 UID 夹具由可信测试协调器�
 | binding | §7.11 的完整 binding，含 fresh runtime UUIDv7 |
 | source_public | 标准 base64 的 32-byte 来源 Ed25519 公钥，不能传入 seed/私钥 |
 | decision_id | 本次初次授权幂等键，规范 UUIDv7 |
-| lifetime_seconds | 整数 1–43200，实际授权不超过原 admission 到期时刻 |
+| lifetime_seconds | 整数 0–2592000；0 使用中心配置（默认 72h），显式值不得超过配置，实际授权不超过原 admission 到期时刻 |
 | socket_path | canonical absolute Unix socket 路径，最多 107 bytes；实际 owner/权限由通道验证 |
 | gateway_uid | uint32，预期 Gateway peer UID；生产非零、不同于中心 UID |
 | shared_group | uint32，生产显式专用非零 GID；非生产同 UID 私有模式为 0 |
@@ -455,7 +450,7 @@ repositories MUST 为 1–32 项，字段依序为 `binding`、`source_file`、`
 
 关闭 MUST 取消/关闭入口，等待材料/授权回调、会话、TLS 请求、后端进程组和回写 worker；最终审计 join 后清零来源/云端明文，冻结/关闭两类 Queue，最后关闭 runtime。重复/并发 Close MUST join 同一退出，MUST NOT 删除证据、封存来源、释放占用或自动重启。WithBackup 仅供可信进程内调用方使用，不能把云端材料/config/callback 暴露给 Agent 请求。
 
-REP-058–060 MUST 仅在 Actions 执行。跨 UID job 从 protected production config 经 Service 完成材料、RFGA、TLS、两类回写及吊销清理，第三 UID 仍无 effect；固定引擎验收增加 Service 路径并保留原两种路径。Agent 长期 gateway password 与每次 session password 的生产交付协议未连接，本批不提供可部署 daemon command。自动授权分发、Agent 会话能力、可信恢复/readiness、rotation/READY、真实三后端与 AGT-005 继续待完成，12h 取舍不得推定或改写。
+REP-058–060 MUST 仅在 Actions 执行。跨 UID job 从 protected production config 经 Service 完成材料、RFGA、TLS、两类回写及吊销清理，第三 UID 仍无 effect；固定引擎验收增加 Service 路径并保留原两种路径。Agent 长期 gateway password 与每次 session password 的生产交付协议未连接，本批不提供可部署 daemon command。自动授权分发、Agent 会话能力、可信恢复/readiness、rotation/READY、真实三后端与 AGT-005 继续待完成，离线时长与 Gateway 不可达暂停的合同已按 ADR-0032 明确。
 
 ## 8. Native Agent 安装
 

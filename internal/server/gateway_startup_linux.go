@@ -35,7 +35,7 @@ type GatewayStartupConfig struct {
 
 func (s GatewayStartupConfig) Validate() error {
 	if s.Version != 1 || s.Binding.Validate() != nil || len(s.SourcePublic) != ed25519.PublicKeySize ||
-		s.LifetimeSeconds < 1 || s.LifetimeSeconds > security.MaxGatewayAuthorizationSeconds ||
+		s.LifetimeSeconds < 0 || s.LifetimeSeconds > security.MaxGatewayAuthorizationSeconds ||
 		!filepath.IsAbs(s.SocketPath) || filepath.Clean(s.SocketPath) != s.SocketPath || len(s.SocketPath) > 107 || strings.IndexByte(s.SocketPath, 0) >= 0 ||
 		s.GatewayUID == ^uint32(0) || s.SharedGroup == ^uint32(0) {
 		return ErrGatewayStartup
@@ -45,7 +45,11 @@ func (s GatewayStartupConfig) Validate() error {
 		(s.SharedGroup != 0 && (uid == 0 || s.GatewayUID == 0 || s.GatewayUID == uid)) {
 		return ErrGatewayStartup
 	}
-	if s.decision().Validate() != nil {
+	r := s.decision()
+	if r.Lifetime == 0 {
+		r.Lifetime = domain.DefaultGatewayOfflineWindow
+	}
+	if r.Validate() != nil {
 		return ErrGatewayStartup
 	}
 	return nil
