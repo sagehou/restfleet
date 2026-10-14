@@ -146,7 +146,7 @@
 
 | 能力 | 已有实现 | 尚需交付或验收 |
 |---|---|---|
-| 存储凭据与仓库 | 三后端显式校验、envelope store、test/init jobs、per-Host Repository、中心隔离初始化 | 真实三后端认证、刷新、重启与备份/恢复证据 |
+| 存储凭据与仓库 | 三后端显式校验、envelope store、test/init jobs、per-Host Repository、中心隔离初始化 | 部署后 Actions 的真实三后端认证、刷新与备份/恢复验收 |
 | Agent 仓库凭据 | outbound mTLS 下发、保护文件原子保存、精确 ACK | 长期身份到单次会话能力的生产申请/交付协议、rotation overlap/retirement |
 | Gateway 数据面 | 会话锁归属、append-only、supervisor、TLS、固定引擎备份读回 | 真实会话入口、可部署 daemon command、独立 readiness |
 | 离线授权与回写 | 签名授权历史、原占用期限内续期、RFGA、两类可靠加密 Queue/RFGR | 自动可靠续期/吊销分发、离线会话准入与真实 Agent 集成 |
@@ -158,9 +158,9 @@
 1. **身份到会话**：先明确长期 gateway identity、单次能力与可信 Operation 的关系，以及离线准入、受保护交付、重复/取消/失效处理，再连接生产会话入口与 daemon/readiness。协议、信任边界或持久化变更 MUST 同批记录 ADR 和相关规范；禁止将每次定时备份改成必须在线请求 Control API。
 2. **运行到恢复**：明确可信中央协调者及证据，串接正常停止、可靠回写、来源封存、占用释放与建立新运行。普通断线、备份失败或授权到期 MUST 保留 Agent 身份与 last-known-good 配置，中心恢复后重新核验并安全恢复，不要求重新 enrollment。占用到期或队列排空 MUST NOT 代替清理证明；不能仅添加 `run` 命令就宣称长期服务可用。
 3. **轮换到可用状态**：交付 credential revision/ACK/overlap/retirement、活动会话行为及 provisioning UI，只有完整条件满足才设置 READY。
-4. **后端与故障验收**：Actions 经生产入口、保护配置和固定引擎验证备份读回、删除/覆盖拒绝、轮换及停止/恢复；客户端夹具 MUST 明确标识，不能宣称产品 Agent 已完成。真实三后端仍需 MANUAL/secure integration 证据，未提供时对应门禁保持未通过。
+4. **后端与故障验收**：Actions 经生产入口、保护配置和固定引擎验证备份读回、删除/覆盖拒绝、轮换及停止/恢复；客户端夹具 MUST 明确标识，不能宣称产品 Agent 已完成。真实三后端改为部署后的 Actions 验收，不作为前续源码交付的阻塞条件；完成前不得标记相应后端生产验证通过。
 
-签发后最多 12h、原占用不可变且最多 24h、到期不释放 fence 和失败 owner 不复活均继续按已接受 ADR 执行。任意断线后完整可用 12h 与签发后 12h 上限的取舍仍待明确决定；MUST NOT 从继续开发指令推定同意降低 AGT-005 或延长授权。授权续期与占用延长 MUST 区分，完整恢复/下一运行协议不能保持未定义。
+已按用户决定采用 ADR-0032：离线窗口可配置，默认从最后中心签发起 72h；Gateway 不可达则暂停备份并报错，保留配对和配置，不实现离线冷启动恢复。schema 16 扩展旧 24h/12h 期限上限，原占用不延长、到期不释放 fence 和失败 owner 不复活保持不变。新增测试只补关键权限与期限边界；rclone 真实兼容性在部署后的 GitHub Actions 验证，不再以重复模拟测试扩展 M4。
 
 M4 MUST 提供 M5/M6 可依赖的 Gateway 协议与离线基础；真正的 Agent 调度执行、离线 Operation 补报与 AGT-005 完整产品集成在 M6 验收，仍是 V1 发布门禁。M4 的测试客户端不替代 M6 的真实 Agent。
 
@@ -187,9 +187,9 @@ M4 MUST 提供 M5/M6 可依赖的 Gateway 协议与离线基础；真正的 Agen
 
 ### Tests/Exit
 
-- REP-001–060；
+- REP-001–060 的适用功能与关键安全边界，复用已有测试；REP-016 按下述部署验收执行；
 - DEP-005/006；
-- real OneDrive / Google Drive token refresh 与 WebDAV 认证、备份恢复 MANUAL/secure integration；
+- REP-016 的真实 OneDrive / Google Drive 刷新与 WebDAV 认证、备份恢复改为部署后的 Actions 验收；不阻塞前续源码交付；
 - public deletion/overwrite negative suite。
 
 ## M5 — Templates, Plans and Local Scheduler
@@ -226,7 +226,7 @@ M4 MUST 提供 M5/M6 可依赖的 Gateway 协议与离线基础；真正的 Agen
 - AGT-003/004；
 - API-003；
 - 控制面离线时本地调度持久化、触发与去重；只证明调度行为；
-- AGT-005/006 的真实备份、离线结果补报及完整 12h 集成由 M6 验收，原要求与 V1 发布门禁保持。
+- AGT-005/006 的真实备份、离线结果补报及配置窗口内的完整离线集成由 M6 验收，原要求与 V1 发布门禁保持。
 
 ## M6 — Backup Execution
 
@@ -262,7 +262,7 @@ M4 MUST 提供 M5/M6 可依赖的 Gateway 协议与离线基础；真正的 Agen
 
 - BAK-001–012；
 - AGT-005–008（包含原 M5 的真实备份与离线 Operation 补报依赖）；
-- center control outage 12h scheduled backup test：真实 Agent、Gateway、授权边界、结果持久化与重连 reconciliation；时长合同未明确决定前 AGT-005 保持未完成；
+- 配置窗口内的控制面离线备份集成（默认 72h，可用受控时钟验证期限）：真实 Agent、Gateway、结果持久化与重连 reconciliation；另验 Gateway 不可达时暂停并报错、保留配对；
 - API-001/002/006；
 - DR-001–003。
 

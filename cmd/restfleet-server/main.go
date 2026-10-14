@@ -92,6 +92,7 @@ func run(logger *slog.Logger) error {
 		BootstrapToken:              config.BootstrapToken,
 		MasterKey:                   config.MasterKey,
 		GatewayPublicURL:            config.GatewayPublicURL,
+		GatewayOfflineWindow:        config.GatewayOfflineWindow,
 		GatewaySigningKey:           config.GatewaySigningKey,
 		GatewayPendingDecryptionKey: config.GatewayPendingDecryptionKey,
 		ExpectedSchema:              postgres.ExpectedSchemaVersion,

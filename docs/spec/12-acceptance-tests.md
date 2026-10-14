@@ -43,7 +43,7 @@
 | AGT-002 | P0 | 证书 agent A，payload 自报 agent B；Server 仍只按 A 授权。 |
 | AGT-003 | P1 | Plan revision 42；Agent 原子保存后 ACK 42，Server 显示 accepted。 |
 | AGT-004 | P0 | 新配置非法；Agent 拒绝并继续使用 last-known-good，不部分应用。 |
-| AGT-005 | P0 | 中心控制 API/DB 离线 12h，但 Gateway 在线；Agent 按本地计划成功备份。补充覆盖普通断线、备份失败与授权到期：身份/私钥及 last-known-good 配置保留，不重新 enrollment；授权不足暂停，中心恢复后重新核验并经可信清理/恢复继续，明确撤销、过期授权和失败 owner 不得借此复活。 |
+| AGT-005 | P0 | 离线窗口可配置、默认 72h，从最后中心签发起计算并受原占用限制；控制 API/DB 不可用但 Gateway 在线时，Agent 在剩余窗口内按 last-known-good 计划成功备份。Gateway 不可达或授权不足时暂停并报错；普通断线和备份失败保留身份/私钥及配置，不重新 enrollment。中心恢复后重新核验并经可信清理恢复，明确吊销、过期授权和失败 owner 不得复活；V1 不要求 Gateway 离线冷启动恢复。 |
 | AGT-006 | P1 | Agent 离线产生 Operation；重连后幂等补报，Server 无重复 Operation。 |
 | AGT-007 | P0 | 同一 JobDispatch 重复 3 次；Restic 仅执行一次，重复请求得到同一结果。 |
 | AGT-008 | P1 | 日志消息乱序/重复；Server 以 sequence 去重并正确显示。 |
@@ -85,7 +85,7 @@
 | REP-013 | P0 | OneDrive/Google Drive/WebDAV 导入与独立仓库记录创建；provider 自动识别，metadata 无目标或秘密回显，旧 OneDrive 数据兼容。 |
 | REP-014 | P0 | Google Drive token 更新加密 CAS 回写；folder/team/scope/client 改写被 watcher 拒绝，WebDAV 静态秘密不能伪装成 OAuth refresh。 |
 | REP-015 | P0 | WebDAV 内网、metadata、混合 DNS、重绑定、socket 注入和不可信 TLS 被拒绝；重定向不能选择非固定网络目的地。 |
-| REP-016 | P0 MANUAL_INTEGRATION | 三种后端分别完成真实云端写入、备份、索引和恢复；OAuth 两种后端完成刷新/重启验收，WebDAV 完成认证失效/替换与服务兼容性验收。 |
+| REP-016 | P0 MANUAL_INTEGRATION | 部署后在 GitHub Actions 安全环境验证三种后端的真实云端写入、备份、索引和恢复；OAuth 后端验证刷新/重启，WebDAV 验证认证失效/替换与兼容性。此项为部署验收，不阻塞前续源码功能交付；完成前不得声称相应后端生产验证通过。 |
 
 初始化任务验收（不替代 REP-016）：
 

@@ -27,7 +27,7 @@ func (r BackupAdmissionRequest) Validate() error {
 	}
 	hash, err := hex.DecodeString(r.ConfigurationHash)
 	if err != nil || len(hash) != 32 || hex.EncodeToString(hash) != r.ConfigurationHash ||
-		r.Lifetime < time.Minute || r.Lifetime > 24*time.Hour || r.Lifetime%time.Second != 0 {
+		r.Lifetime < time.Minute || r.Lifetime > MaxGatewayOfflineWindow || r.Lifetime%time.Second != 0 {
 		return ErrBackupAdmission
 	}
 	return nil

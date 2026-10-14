@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/security"
@@ -35,6 +36,7 @@ type RuntimeConfig struct {
 	RcloneBinary                string
 	ResticBinary                string
 	GatewayPublicURL            string
+	GatewayOfflineWindow        time.Duration
 	GatewaySigningKey           ed25519.PrivateKey
 	GatewayPendingDecryptionKey []byte
 	GatewayReplaySocket         string
@@ -69,6 +71,10 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 	}
 	if config.DatabaseURL == "" {
 		return RuntimeConfig{}, errors.New("database URL is required")
+	}
+	config.GatewayOfflineWindow, err = time.ParseDuration(envOrDefault("RESTFLEET_GATEWAY_OFFLINE_WINDOW", "72h"))
+	if err != nil || config.GatewayOfflineWindow < time.Minute || config.GatewayOfflineWindow > domain.MaxGatewayOfflineWindow || config.GatewayOfflineWindow%time.Second != 0 {
+		return RuntimeConfig{}, errors.New("RESTFLEET_GATEWAY_OFFLINE_WINDOW must be whole seconds between 1m and 720h")
 	}
 	config.BootstrapToken, err = readSecretSetting("RESTFLEET_BOOTSTRAP_TOKEN", config.Environment, &config.Warnings)
 	if err != nil {

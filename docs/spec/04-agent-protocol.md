@@ -330,6 +330,8 @@ ACK 仅含 delivery_id/revision，MUST 精确匹配当前绑定、密钥引用�
 
 ## 15. Reconnect 与恢复
 
+Gateway 不可达或授权窗口不足时 MUST 暂停备份并报告错误，按 Plan retry policy 有界重试；中心控制面离线但 Gateway 在线时，MAY 在剩余授权窗口内使用 last-known-good 计划继续备份。窗口默认 72h、由中心配置，详见 ADR-0032；V1 不实现 Gateway 离线冷启动恢复。
+
 Enrollment 身份、控制连接与备份授权 MUST 分开。普通断线、单次备份失败或 Gateway 授权到期 MUST NOT 自动撤销 Agent、删除本地私钥/证书、清除 last-known-good 配置或要求重新 enrollment。授权不足时 MUST 暂停相应备份；中心恢复后 MUST 重新核验当前身份和授权，并按可信 Gateway 清理/恢复协议继续，MUST NOT 复活已失败 owner、跳过 fence 或重放过期授权。这个流程不延长证书或授权期限；已明确撤销的身份 MUST 继续拒绝。身份丢失或证书失效的处置按证书/注册流程处理，不能与普通备份异常混同。
 
 Server 重启或网络断开：
