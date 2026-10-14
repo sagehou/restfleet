@@ -19,6 +19,15 @@ jobs:
           node-version: 24.20.0
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Generate compatible dependency audit repair for review
+        run: npm audit fix --package-lock-only --ignore-scripts
+        working-directory: web
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reviewed-web-audit-lock
+          path: web/package-lock.json
+          if-no-files-found: error
       - run: npm ci --ignore-scripts
         working-directory: web
       - run: npm audit --audit-level=high
