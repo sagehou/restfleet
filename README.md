@@ -2,7 +2,7 @@
 
 RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面。它通过轻量 Agent 统一下发备份计划、采集运行状态、浏览快照、触发恢复并集中执行仓库维护，同时把 rclone 与云存储凭据严格留在中心节点。
 
-> 当前 M0–M3 已完成，M4 正在收敛：已有凭据管理、中心仓库初始化、Agent 凭据交付/ACK、Gateway Service 及可靠回写。当前源码接入复用 Agent mTLS 身份的 Gateway daemon/会话入口；运行验收、持续协调/恢复与 Repository READY 尚未完成。M5–M12 的功能仍需按计划实施。
+> 当前 M0–M3 已完成，M4 正在收敛：已有凭据管理、中心仓库初始化、Agent 凭据交付/ACK、复用 Agent mTLS 的 Gateway 会话入口、持续授权、可靠回写、正常停止清理及显式启动交接。新生产流程的专门运行验收、受控故障恢复、期限前换运行与 Repository READY 尚未完成。M5–M12 的功能仍需按计划实施。
 
 开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
 
