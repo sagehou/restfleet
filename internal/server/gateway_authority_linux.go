@@ -18,9 +18,54 @@ import (
 func (c *ControlPlane) DeliverGatewayAuthorization(ctx context.Context, path string, gatewayUID uint32,
 	binding security.GatewayAuthorizationBinding, source ed25519.PublicKey, r domain.GatewayDecisionRequest, sharedGroup ...uint32,
 ) error {
+	if r.Validate() != nil || r.ExpectedRevision < 1 || r.AdmissionID != binding.AdmissionID || r.Owner != binding.Owner || r.RuntimeID != binding.RuntimeID {
+		return security.ErrGatewayAuthority
+	}
+	return c.deliverGatewayStatement(ctx, path, gatewayUID, binding, source, func(ctx context.Context) ([]byte, error) {
+		wire, err := c.DecideGatewayAuthorization(ctx, r)
+		if err != nil {
+			return nil, security.ErrGatewayAuthority
+		}
+		statement, err := security.VerifyGatewayStatement(wire, c.gatewaySigningKey.Public().(ed25519.PublicKey))
+		if err != nil || statement.Binding != binding || statement.Revision != uint64(r.ExpectedRevision+1) || statement.Revoked != r.Revoke {
+			return nil, security.ErrGatewayAuthority
+		}
+		return wire, nil
+	}, sharedGroup...)
+}
+
+// ReplayGatewayAuthorization sends only the exact latest committed decision,
+// including revision 1. It cannot create a first grant or extend any timestamp.
+func (c *ControlPlane) ReplayGatewayAuthorization(ctx context.Context, path string, gatewayUID uint32,
+	binding security.GatewayAuthorizationBinding, source ed25519.PublicKey, revision int64, sharedGroup ...uint32,
+) error {
+	reader, ok := c.store.(GatewayDecisionReader)
+	if !ok || revision < 1 {
+		return security.ErrGatewayAuthority
+	}
+	return c.deliverGatewayStatement(ctx, path, gatewayUID, binding, source, func(ctx context.Context) ([]byte, error) {
+		d, err := reader.LatestGatewayAuthorization(ctx, binding.AdmissionID, binding.RuntimeID)
+		if err != nil || d.Revision != revision || d.Admission.ReleasedAt != nil || d.IssuedAt.After(c.clock()) ||
+			(!d.Revoked && (!d.ExpiresAt.After(c.clock()) || d.ExpiresAt.After(d.Admission.ExpiresAt))) {
+			return nil, security.ErrGatewayAuthority
+		}
+		wire, err := c.signGatewayDecision(d)
+		if err != nil {
+			return nil, security.ErrGatewayAuthority
+		}
+		s, err := security.VerifyGatewayStatement(wire, c.gatewaySigningKey.Public().(ed25519.PublicKey))
+		if err != nil || s.Binding != binding {
+			return nil, security.ErrGatewayAuthority
+		}
+		return wire, nil
+	}, sharedGroup...)
+}
+
+func (c *ControlPlane) deliverGatewayStatement(ctx context.Context, path string, gatewayUID uint32,
+	binding security.GatewayAuthorizationBinding, source ed25519.PublicKey, decide func(context.Context) ([]byte, error), sharedGroup ...uint32,
+) error {
 	store, ok := c.store.(GatewayPendingStore)
-	if !ok || binding.Validate() != nil || len(source) != 32 || len(c.gatewaySigningKey) != 64 ||
-		r.Validate() != nil || r.ExpectedRevision < 1 || r.AdmissionID != binding.AdmissionID || r.Owner != binding.Owner || r.RuntimeID != binding.RuntimeID {
+	if !ok || binding.Validate() != nil || len(source) != 32 || len(c.gatewaySigningKey) != 64 {
 		return security.ErrGatewayAuthority
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -34,15 +79,7 @@ func (c *ControlPlane) DeliverGatewayAuthorization(ctx context.Context, path str
 		if err != nil || o.ClosedAt != nil || o.Admission.ReleasedAt != nil || pendingBinding(o) != binding || !bytes.Equal(o.PublicKey, source) {
 			return nil, security.ErrGatewayAuthority
 		}
-		wire, err := c.DecideGatewayAuthorization(ctx, r)
-		if err != nil {
-			return nil, security.ErrGatewayAuthority
-		}
-		statement, err := security.VerifyGatewayStatement(wire, c.gatewaySigningKey.Public().(ed25519.PublicKey))
-		if err != nil || statement.Binding != binding || statement.Revision != uint64(r.ExpectedRevision+1) || statement.Revoked != r.Revoke {
-			return nil, security.ErrGatewayAuthority
-		}
-		return wire, nil
+		return decide(ctx)
 	}, c.RecordGatewayAuthorityDenied, sharedGroup...)
 	if err != nil {
 		return security.ErrGatewayAuthority

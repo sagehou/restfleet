@@ -384,7 +384,28 @@ Gateway MUST 核验中心签名与完整 binding，再调用该 owner 的 `Accep
 
 回执丢失 MUST 保留中心已提交决定和原 fence。MAY 显式重放同一最新 committed 决定/幂等键，MUST 保留签发与到期时刻；不得自动签发新授权、重发初始化材料或恢复失败 owner。单次交付无自动重试。取消 MUST 关闭活跃连接并等待当前 callback 退出；callback MUST 响应 context。拒绝审计 MUST 使用固定无资源 `GATEWAY_AUTHORIZATION_DELIVERY_DENIED` / `REJECTED`，不得记录 wire、未认证身份、路径或原始错误；已观察到的拒绝 MUST 另用最多 3s 的独立 context 完成审计，调用方取消 MUST NOT 丢弃该观察，listener 退出 MUST 等待审计 callback。审计失败 MUST 停止接收通道。开发工作区 MUST NOT 执行服务或验证；REP-047–048 仅在 Actions 运行。
 
-本批不新增命令、自动续期调度器或 schema。Gateway daemon/生产配置、多仓库公网数据面、全局离线拒绝审计、Agent 会话能力交付、可信清理/恢复、readiness、rotation/READY、真实云端及 AGT-005 仍待完成。
+初始批次不新增命令或 schema；2026-10-16 接入 Server 内置持续投递 worker。`RESTFLEET_GATEWAY_AUTHORITY_FILE` 可选；不设置则保持原显式投递行为。设置时 MUST 同时配置 enrollment、签名/待回写密钥及 replay listener。生产 MUST 使用不同非 root 服务 UID 和专用组。
+
+该文件 MUST 使用中心服务所有的 canonical regular 0400/0600 受保护文件，最多 64KiB；以下为字段顺序，实际 ID、公钥与路径 MUST 来自可信已初始化运行 metadata，不得使用 Agent 请求：
+
+```json
+{
+  "version": 1,
+  "targets": [{
+    "binding": "与初次初始化相同的完整 GatewayAuthorizationBinding 对象",
+    "source_public": "已注册来源 Ed25519 公钥的 base64",
+    "socket_path": "/run/restfleet-gateway/ipc/authority.sock",
+    "gateway_uid": 1002,
+    "shared_group": 1003
+  }]
+}
+```
+
+`binding` 的实际值 MUST 为对象，以上字符串仅示意；嵌套字段顺序沿用初次初始化。targets MUST 为 1..32 个不同 admission，peer UID/组 MUST 与中心 replay 配置一致；重复/未知/遗漏字段、非规范编码 MUST 拒绝。配置只在 Server 启动读取，修改后须重启 Server；MUST NOT 据此启动或恢复 Gateway。同 admission MUST 仅有一个协调者，初始化、其他决定投递及清理 MUST 与 worker 互斥。
+
+worker MUST 每目标串行、每 10s 检查原数据库决定与明确禁用/吊销。普通续期 MUST 在原 grant 实际有效期过半、仍未过期、原 admission 尚有更长期限且上一决定已获匹配回执时，经原 CAS 事务重新核验授权。明确撤回 MAY 覆盖未确认 grant；网络/数据库故障或到期 MUST NOT 转成吊销。所有决定 MUST 仍在来源 fresh challenge/UID/注册 pin 验证后提交。
+
+启动/丢失回执 MUST 优先精确重送最新 committed 决定；`ReplayGatewayAuthorization` MAY 重送 revision 1，但 MUST NOT 首次签发、重新注册或交付材料。重送 MUST 保持原签发/到期，不受新配置窗口改写；过期/失败 owner MUST NOT 续发复活。内存确认版本只是投递优化，PostgreSQL 决定为持久依据。单次 RFGA 尝试仍无内部重试。服务退出 MUST 取消并 join 全部投递；未确认清理 MUST 保留 fence。新增行为未新增测试，Actions 验收仍待完成；可信清理/恢复、Repository READY、真实云端及 AGT-005 继续待完成。
 
 ### 7.20 全局离线拒绝审计（schema 15 / ADR-0027）
 

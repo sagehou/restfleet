@@ -10,7 +10,7 @@
 - 跨里程碑验收 MUST 归属于其实现依赖已具备的阶段；调度组件测试不等于真实备份成功，移动验收归属 MUST 保留原 Acceptance ID、要求及 V1 发布门禁；
 - 当前计划记录能力、剩余交付与退出条件；历史批次记录 MUST 与当前状态分开。
 
-## 当前执行顺序（2026-10-14）
+## 当前执行顺序（2026-10-16）
 
 近期目标是交付可用的 Agent 备份链路，按 **M4 → M5 → M6** 顺序推进，每次只实施一个 Milestone。当前只展开 M4 的三次剩余交付；M5/M6 到开工时再细化，M7–M12 保留既有范围与验收要求，不提前开工或扩展设计。
 
@@ -170,7 +170,7 @@
 
 ### 剩余实现的最小处理
 
-2026-10-14 源码进度：已接入复用 Agent mTLS 的 daemon/直接会话入口、非秘密独立会话路径、运行内请求去重、Agent 会话客户端及统一 24h 截止。新 capability 不再下发 Gateway 密码；旧 schema 引用保持兼容。PR #67 原 Actions 的 schema 负向失败已定位，并在统一检查补齐连续迁移校验，未改写测试。以上尚待新提交的 Actions 结果；真正 Agent 调度/Restic 执行、中心持续协调/恢复、Repository READY 仍未完成，M4 保持 IN PROGRESS。
+2026-10-14 源码进度：已接入复用 Agent mTLS 的 daemon/直接会话入口、非秘密独立会话路径、运行内请求去重、Agent 会话客户端及统一 24h 截止。新 capability 不再下发 Gateway 密码；旧 schema 引用保持兼容。PR #67 原 Actions 的 schema 负向失败已定位，并在统一检查补齐连续迁移校验，未改写测试。该提交 `d8a122a` 的既有 Actions 全部通过（run 38543186889）；新生产 mTLS 链路尚未专门验收；真正 Agent 调度/Restic 执行、中心持续协调/恢复、Repository READY 仍未完成，M4 保持 IN PROGRESS。
 
 - **期限**：在统一会话入口将一次备份截止限制到任务期限、开始后 24h、原占用截止的较早值；授权有效性继续由现有 guard/watchdog 检查。保留默认 72h 的离线窗口，不把它当一次备份的运行时长。
 - **停止恢复**：中心复用现有停止/join、可靠回写、来源封存与释放接口，验证本次运行已完成清理后再建立新运行。证据不足时保持占用，由中心受控维护恢复，不建设自动接管框架或离线冷启动。
@@ -178,7 +178,9 @@
 
 ### 剩余三次交付
 
-下次开工只实施第一项；第一项验收通过后再实施第二项，随后第三项。契约与必要实现 MUST 在所属交付内完成，不再追加独立的内部原语批次。
+第一项已有源码及既有 Actions 通过，新增 mTLS 行为验收保持待验证；按用户先功能后新增测试的指示，当前继续第二项必要接线，第三项随后进行。契约与必要实现 MUST 在所属交付内完成，不再追加独立的内部原语批次。
+
+2026-10-16 源码进度：第二项已接入可选 Server 授权 worker，复用已注册来源、RFGA 与 PostgreSQL 决定；明确吊销优先撤回，回执丢失/Server 重启精确重送原决定，普通失败保留配对与授权原期限。未新增 schema、Agent 身份或测试用例。可信停止清理证明、最终回写/封存、占用释放与新运行仍未完成；本次新增协调行为的 Actions 验收保持待验证。
 
 | 顺序 | 完成交付 | Actions 验收与退出证据 |
 |---|---|---|
@@ -482,20 +484,14 @@
 ## 当前 Codex 开发指令模板
 
 ```text
-Implement only M4 delivery 1 (identity to one backup) from IMPLEMENTATION_PLAN.md.
-
+Continue M4 delivery 2 (continuous authority delivery and trusted stop recovery).
 Read AGENTS.md, the security model, affected subsystem specs and the M4 plan first.
-Reuse the existing Service, authorization, fencing and protected delivery adapters.
-Reuse the existing enrollment and Agent mTLS identity; do not add another Agent
-pairing or bearer-token lifecycle. Revise the affected Gateway authentication
-contracts/ADR before replacing its current session-capability mechanism, preserving
-per-Host scope and current-backup lock isolation. Do not implement later deliveries.
-Complete the minimal backup-scope contract, production entry, daemon/readiness and
-pinned-client backup/readback path together. Update affected specs/contracts/ADR
-in the same change. Do not implement delivery 2/3 or later milestones.
-Keep existing acceptance requirements and negative tests. Do not add or rewrite
-test cases yet, as currently requested by the user. Compile, test, authenticate
-and validate runtime only in GitHub Actions; the workspace is for
-source/document edits and read-only inspection. Report Actions evidence and
-remaining items. Surface actual specification conflicts; do not bypass them.
+Reuse existing Agent enrollment/mTLS, Service, RFGA/RFGR and PostgreSQL decisions.
+Do not add Agent identity, passwords, bearer-token lifecycles or service dependencies.
+Preserve exact-decision replay, original deadlines and cleanup-before-release.
+Do not reconstruct failed owners or infer cleanup from expiry, receipts or queues.
+Finish only the next necessary functional connection; keep later milestones queued.
+Update affected specs/ADR with code. Do not add or rewrite test cases yet.
+Compile, test, authenticate and validate runtime only in GitHub Actions.
+Report actual Actions evidence separately from unverified new behavior.
 ```

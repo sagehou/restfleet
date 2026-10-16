@@ -6,12 +6,18 @@ import (
 	"crypto/ed25519"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/security"
 )
 
 type GatewayDecisionStore interface {
 	DecideGatewayAuthorization(context.Context, domain.GatewayDecisionRequest, string) (domain.GatewayDecision, error)
+}
+
+// GatewayDecisionReader reads committed metadata without creating or renewing a grant.
+type GatewayDecisionReader interface {
+	LatestGatewayAuthorization(context.Context, uuid.UUID, uuid.UUID) (domain.GatewayDecision, error)
 }
 
 // DecideGatewayAuthorization is for the trusted CENTRAL runtime coordinator,
@@ -41,6 +47,15 @@ func (c *ControlPlane) DecideGatewayAuthorization(ctx context.Context, r domain.
 		d.ExpiresAt.After(a.ExpiresAt) || d.ExpiresAt.Sub(d.IssuedAt) > r.Lifetime) {
 		return nil, domain.ErrGatewayDecision
 	}
+	wire, err := c.signGatewayDecision(d)
+	if err != nil || ctx.Err() != nil {
+		return nil, domain.ErrGatewayDecision
+	}
+	return wire, nil
+}
+
+func (c *ControlPlane) signGatewayDecision(d domain.GatewayDecision) ([]byte, error) {
+	a := d.Admission
 	s := security.GatewayStatement{Binding: security.GatewayAuthorizationBinding{
 		AdmissionID: a.ID, Owner: a.Owner, RuntimeID: d.RuntimeID, AgentID: a.AgentID, HostID: a.HostID, RepositoryID: a.RepositoryID,
 		GatewayID: a.GatewayID, StorageCredentialID: a.StorageCredentialID, DeliveryID: a.DeliveryID,
@@ -50,7 +65,7 @@ func (c *ControlPlane) DecideGatewayAuthorization(ctx context.Context, r domain.
 		s.ExpiresAt = d.ExpiresAt.Unix()
 	}
 	wire, err := security.SignGatewayStatement(s, c.gatewaySigningKey)
-	if err != nil || ctx.Err() != nil {
+	if err != nil {
 		return nil, domain.ErrGatewayDecision
 	}
 	return wire, nil

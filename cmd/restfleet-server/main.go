@@ -45,6 +45,18 @@ func run(logger *slog.Logger) error {
 	}
 	defer clear(config.GatewaySigningKey)
 	defer clear(config.GatewayPendingDecryptionKey)
+	var authorityTargets []control.GatewayAuthorityTarget
+	if config.GatewayAuthorityFile != "" {
+		authorityTargets, err = control.LoadGatewayAuthorityTargets(config.GatewayAuthorityFile)
+		if err != nil {
+			return err
+		}
+		for _, target := range authorityTargets {
+			if target.GatewayUID != config.GatewayReplayPeerUID || target.SharedGroup != config.GatewayReplayGroup {
+				return security.ErrGatewayAuthority
+			}
+		}
+	}
 	for _, warning := range config.Warnings {
 		logger.Warn(warning, "component", "server", "event", "insecure_development_configuration")
 	}
@@ -168,7 +180,7 @@ func run(logger *slog.Logger) error {
 		agentv1.RegisterAgentControlServiceServer(grpcServer, agentService)
 	}
 
-	serverErrors := make(chan error, 5)
+	serverErrors := make(chan error, 6)
 	replayDone := make(chan struct{})
 	if config.GatewayReplaySocket != "" {
 		listener, err := gatewaypending.ListenReplay(config.GatewayReplaySocket, config.GatewayReplayGroup)
@@ -185,6 +197,20 @@ func run(logger *slog.Logger) error {
 		close(replayDone)
 	}
 	defer func() { stop(); <-replayDone }()
+	authorityDone := make(chan struct{})
+	if len(authorityTargets) != 0 {
+		go func() {
+			defer close(authorityDone)
+			if err := controlPlane.RunGatewayAuthorityWorker(ctx, authorityTargets, func() {
+				logger.Warn("gateway authorization delivery will retry", "component", "gateway_authority", "event", "delivery_retry", "error_code", "GATEWAY_AUTHORITY_RETRY")
+			}); err != nil {
+				serverErrors <- err
+			}
+		}()
+	} else {
+		close(authorityDone)
+	}
+	defer func() { stop(); <-authorityDone }()
 	workerDone := make(chan struct{})
 	if credentialRuntime != nil {
 		go func() {

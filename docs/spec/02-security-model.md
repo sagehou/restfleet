@@ -190,7 +190,7 @@ ADR-0022 / 09 §7.15 的内部通道 MUST 使用预注册来源签名挑战、�
 
 ### 8.5 Gateway 授权决定交付
 
-ADR-0026 / 09 §7.19 的 `RFGA` 通道 MUST 仅交付中心签名 metadata，不携带云端材料、接收私钥或 Agent 能力。中心 MUST 在 peer UID、来源 fresh challenge 和已注册完整 binding/公钥验证后提交续期或明确吊销；普通授权继续检查当前身份/ACK/配置，禁用后仍允许明确吊销。Gateway MUST 更新同一已初始化 owner，保持原占用期限与失败不可复活边界。来源回执 MUST 匹配本次挑战和精确 statement；回执丢失不回滚、不重新发材料、不签发新 grant。显式精确重放 MUST 保持原到期，失败 owner 可以拒绝。接收回执不证明 cleanup、READY 或可释放 fence，完整生产协调与全局离线审计仍待接线。
+ADR-0026 / 09 §7.19 的 `RFGA` 通道 MUST 仅交付中心签名 metadata，不携带云端材料、接收私钥或 Agent 能力。中心 MUST 在 peer UID、来源 fresh challenge 和已注册完整 binding/公钥验证后提交续期或明确吊销；普通授权继续检查当前身份/ACK/配置，禁用后仍允许明确吊销。Gateway MUST 更新同一已初始化 owner，保持原占用期限与失败不可复活边界。来源回执 MUST 匹配本次挑战和精确 statement；回执丢失不回滚、不重新发材料、不签发新 grant。显式精确重放 MUST 保持原到期，失败 owner 可以拒绝。接收回执不证明 cleanup、READY 或可释放 fence，全局离线审计已接入既有 Service；持续投递按 09 §7.19 接线，可信清理与恢复仍待完成。
 
 ### 8.6 Gateway 全局离线审计
 
@@ -206,7 +206,7 @@ ADR-0031 / 09 §7.23 的内部 `Service` MUST 从受保护 metadata、独立 pin
 
 ## 9. Web 安全
 
-ADR-0033 已接入生产 daemon/mTLS 会话入口，替代 §8.7 末尾对应的待实现说明；持续授权分发、可信停止恢复、Repository READY 及新入口的 Actions 验收仍待完成。
+ADR-0033 已接入生产 daemon/mTLS 会话入口，替代 §8.7 末尾对应的待实现说明；持续授权分发已接入可选中心 worker（09 §7.19）；可信停止恢复、Repository READY 及新增行为的 Actions 验收仍待完成。
 
 - 首个管理员只可通过一次性 bootstrap secret 创建；使用后删除/作废；
 - 密码使用 Argon2id，参数存储并支持升级；
