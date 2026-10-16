@@ -204,6 +204,10 @@ ADR-0031 / 09 §7.23 的内部 `Service` MUST 从受保护 metadata、独立 pin
 
 公网 TLS MUST 仅在全部单次材料交换与 owner/global 可用性核验成功后绑定；部分初始化失败 MUST 取消/join 全部回调和 rollback，保留已创建 Queue/fence。RFGA 更新原 owner，RFGR 丢失确认重试原密文；非法确认、不可可靠读写、全局 producer 或任一 owner 永久失效 MUST 停止整次运行。退出 MUST 在所有入口、会话、子进程组、回写及最终审计 join 后清零材料、冻结/关闭 Queue；Close 不封存来源或释放占用。可信进程内 WithBackup 不得由 Agent 选择云端配置或任意 callback；生产会话协议、可部署 daemon 与 READY 仍待完成。
 
+### 8.8 生产停止终结记录
+
+[ADR-0034](../adr/0034-gateway-terminal-cleanup.md) 允许生产 `RunService` 在全部入口、handler、会话、子进程组与 callback join、最后 token 同步、材料清零/移除及 runtime 关闭均确认后，使用原已注册来源在冻结 Queue 追加唯一固定 `runtime_cleanup/joined` 终结记录。普通 Append、Agent、恢复公钥与 replay tail MUST NOT 生成或替代该证明。中心 MUST 按原签名/绑定/连续序列核验，仓库终结记录的提交、runtime 授权撤回、来源封存、占用释放、审计与 outbox MUST 原子完成；全局终结记录仅封存自己的来源。清理/刷新/可靠落盘不确定 MUST 保留 fence。回执丢失 MUST 精确重放，不能补造证明或重建 owner；详见 09 §7.25。
+
 ## 9. Web 安全
 
 ADR-0033 已接入生产 daemon/mTLS 会话入口，替代 §8.7 末尾对应的待实现说明；持续授权分发已接入可选中心 worker（09 §7.19）；可信停止恢复、Repository READY 及新增行为的 Actions 验收仍待完成。

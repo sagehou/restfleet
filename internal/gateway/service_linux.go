@@ -36,6 +36,8 @@ type Service struct {
 	mu           sync.Mutex
 	failure      error
 	stopping     bool
+	managed      bool
+	initialized  bool
 	sessions     map[uuid.UUID]*serviceBackup
 	config       ServiceConfig
 	runtime      *rclone.Runtime
@@ -53,6 +55,21 @@ type Service struct {
 // ctx owns the complete lifetime; Close joins shutdown. It never takes over an
 // existing source, registers centrally, renews authority or releases admission.
 func StartService(ctx context.Context, config ServiceConfig) (_ *Service, failure error) {
+	return startService(ctx, config, false)
+}
+
+// RunService owns the production daemon lifecycle, including the final signed
+// cleanup records. Embedded StartService callers retain explicit seal/release
+// ownership and therefore do not produce those records automatically.
+func RunService(ctx context.Context, config ServiceConfig) error {
+	s, err := startService(ctx, config, true)
+	if err != nil {
+		return err
+	}
+	return s.Wait()
+}
+
+func startService(ctx context.Context, config ServiceConfig, managed bool) (_ *Service, failure error) {
 	config.RecipientPublic = bytes.Clone(config.RecipientPublic)
 	config.Repositories = append([]ServiceRepository(nil), config.Repositories...)
 	if config.Validate() != nil || ctx.Err() != nil || !serviceDurableDirectory(config.AuditQueueDirectory) {
@@ -64,7 +81,7 @@ func StartService(ctx context.Context, config ServiceConfig) (_ *Service, failur
 		}
 	}
 	work, cancel := context.WithCancel(ctx)
-	s := &Service{ctx: work, cancel: cancel, done: make(chan struct{}), config: config, sessions: make(map[uuid.UUID]*serviceBackup)}
+	s := &Service{ctx: work, cancel: cancel, done: make(chan struct{}), config: config, sessions: make(map[uuid.UUID]*serviceBackup), managed: managed}
 	defer func() {
 		if failure != nil {
 			cancel()
@@ -203,6 +220,7 @@ func StartService(ctx context.Context, config ServiceConfig) (_ *Service, failur
 		}
 	})
 	s.workers.Go(s.replay)
+	s.initialized = true
 	go func() {
 		<-work.Done()
 		s.cleanup()
@@ -295,8 +313,9 @@ func (s *Service) Wait() error {
 }
 
 // Ingress/session cancellation precedes joins; final channel denial/end audits
-// finish while the global producer and all queues remain open. No central seal,
-// queue deletion, admission release or runtime restart occurs during cleanup.
+// finish while the global producer and all queues remain open. Production then
+// sends terminal cleanup evidence; embedded callers retain explicit finalization.
+// Queue deletion and runtime restart never occur here.
 func (s *Service) cleanup() {
 	s.mu.Lock()
 	s.stopping = true
@@ -327,19 +346,58 @@ func (s *Service) cleanup() {
 	if s.global != nil && !s.global.Ready() {
 		s.fail()
 	}
+	if s.global != nil {
+		s.global.Close()
+	}
+	clean := true
+	if s.managed && s.initialized {
+		s.supervisor.mu.Lock()
+		clean = s.supervisor.closed && len(s.supervisor.active) == 0 && !s.supervisor.cleanupFailed
+		s.supervisor.mu.Unlock()
+		clean = s.runtime.CheckCleanup() == nil && clean
+	}
+	if s.runtime != nil && s.runtime.Close() != nil {
+		clean = false
+		s.fail()
+	}
+	if s.managed && s.initialized && (!clean || s.finish() != nil) {
+		s.fail()
+	}
 	for _, r := range s.repositories {
 		clear(r.source)
 		if r.queue != nil && r.queue.Close() != nil {
 			s.fail()
 		}
 	}
-	if s.global != nil {
-		s.global.Close()
-	}
 	if s.globalQueue != nil && s.globalQueue.Close() != nil {
 		s.fail()
 	}
-	if s.runtime != nil && s.runtime.Close() != nil {
-		s.fail()
+}
+
+// Only reached after all producers, engines and TLS handlers joined and the
+// runtime verified plaintext removal. A failed delivery leaves the ORIGINAL
+// signed marker in the encrypted queue for the existing replay command.
+func (s *Service) finish() error {
+	if s.globalQueue.Finish(0) != nil {
+		return ErrService
 	}
+	for _, r := range s.repositories {
+		r.owner.authorization.mu.Lock()
+		revision := int64(r.owner.authorization.lastGrant.Revision)
+		r.owner.authorization.mu.Unlock()
+		if r.queue.Finish(revision) != nil {
+			return ErrService
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if gatewaypending.Drain(ctx, s.globalQueue, s.config.ReplaySocket, s.config.ServerUID, s.config.AuditOrigin.RuntimeID, s.config.SharedGroup) != nil {
+		return ErrService
+	}
+	for _, r := range s.repositories {
+		if gatewaypending.Drain(ctx, r.queue, s.config.ReplaySocket, s.config.ServerUID, r.config.Binding.RuntimeID, s.config.SharedGroup) != nil {
+			return ErrService
+		}
+	}
+	return nil
 }

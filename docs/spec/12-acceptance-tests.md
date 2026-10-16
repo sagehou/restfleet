@@ -221,6 +221,9 @@ Gateway 单次启动生命周期验收（ADR-0031）：
 | REP-059 | P0 | 一个 Service 支持两个隔离仓库、连续会话和 verified TLS；控制面失联保留两类加密审计，恢复后丢 ACK 精确 wire 重试。非法 ACK、全局容量与 RFGA 吊销停止全部 owner，取消/join 活动 callback/请求/后端进程组，清零来源及云端材料，重复 Close 等待同一退出。原 Queue 可恢复回放，运行失败或排空不复活，不封存/释放 fence。 |
 | REP-060 | P0 | 跨非 root UID 的 protected production config→Service→材料/RFGA/TLS/两类回写→活动吊销与清理；Gateway 本地产生独立来源/TLS 私钥，中心秘密仅匿名 stdin 到中心，第三 UID/私钥读取/socket 替换拒绝且无 effect。固定 Restic/rclone 保留 online/signed-local 并增加 Service，连续两次备份及读回、各 session 锁清理、wrong CA、删除/覆盖/预存锁拒绝全部通过；不据此宣称 Agent 会话协议、READY、真实云或 AGT-005 完成。 |
 
+ADR-0034 对 REP-052/053、REP-059/060 增加生产终结流程要求：普通记录、tail、排空、到期及公钥恢复 MUST NOT 生成清理证明或释放占用；只有生产 `RunService` 在完整 join、最后刷新同步和材料检查后生成的已注册来源终结记录，经连续序列验证后，才 MAY 原子封存/撤回 runtime/释放原占用。全局终结只封存自身来源。普通 Append、伪造/错来源/跳序、未完成清理、刷新不确定、满/坏队列 MUST 不触发释放；确认丢失 MUST 精确重放并幂等。原嵌入式 `StartService` 的显式收尾要求和所有既有负向边界保留。按用户指示暂不新增或改写测试用例，这些新增行为的专门验收保持待验证。
+
+
 ## 7. Backup 与 Restic 解析
 
 | ID | P | Given / When / Then |

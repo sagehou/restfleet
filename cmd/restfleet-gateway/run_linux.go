@@ -24,9 +24,5 @@ func runService(arguments []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	service, err := gateway.StartService(ctx, config)
-	if err != nil {
-		return gateway.ErrService
-	}
-	return service.Wait()
+	return gateway.RunService(ctx, config)
 }

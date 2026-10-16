@@ -495,6 +495,20 @@ Agent 客户端 MUST 复用本机 TLSIdentity 和已保存 Repository credential
 
 本批按用户指示暂不写新测试。新入口的 Actions 验证、持续授权分发、可信停止恢复和 Repository READY 仍待完成；历史夹具通过不等于生产 mTLS 链路跑通。真实三后端继续按 REP-016 在部署 Actions 验收。
 
+### 7.25 生产 Gateway 停止与最终回写（ADR-0034）
+
+生产 command MUST 调用 `RunService`，在 SIGINT/SIGTERM 或运行失败后先关闭全部入口、取消/join 请求、会话、子进程组、RFGA、刷新/审计 callback 和原回放循环。MUST 在 rclone 已退出后，以最多 3s 的独立 context 同步最后 token-only 配置；授权/校验失败或写入不确定 MUST 阻止完成证明。MUST 核验 runtime 仅剩自身 `.lock`、无组清理失败和未确认刷新，并成功关闭 runtime。原 owner 云端明文 MUST 已清零，全部 producer MUST 冻结。
+
+随后 `Queue.Finish` MUST 使用原来源签名，加密追加唯一固定无身份 `runtime_cleanup/joined` 事件，沿用 `audit`（仓库）或 `global_audit`（全局）kind 和原 header/序列/哈希链；不新增字段、签名域、schema 或 Agent 能力。仓库记录 MUST 引用最后普通授权 revision。普通 Append/记录 callback MUST 拒绝终结事件，恢复 Queue 只有公钥 MUST 无法追加。已失败、关闭、未认领或未冻结队列 MUST 拒绝；容量不足或不确定写入 MUST 保留占用。
+
+生产 daemon MUST 在证明落盘后用独立最多 1min context，经既有 RFGR 先排空全局、再排空仓库队列，按原回执可靠保存后回收记录。服务管理器 MUST 允许该有界停止过程（systemd `TimeoutStopSec=120s`）；MUST 继续 `Restart=no`，不能把旧 metadata 当重启配方。嵌入式 `StartService` 保持由可信调用方显式收尾，不自动产生终结记录。
+
+中心 MUST 核验注册来源、签名/解密、完整 binding、连续 sequence/previous hash、原 grant revision 与时间后，才接受终结事件。仓库事务 MUST 同时写入最后接收历史/审计、撤回该 runtime 剩余授权、封存来源、释放原占用并写 outbox；并发续期/维护 MUST 继续由原 credential/admission/source 锁串行。精确重复 MUST 幂等，封存后的新记录 MUST 拒绝。全局记录只 MAY 封存自己的来源，不能授予任何仓库访问或释放权。runtime 完成 MUST NOT 吊销 Agent 配对或删除其已接受配置。
+
+本节扩展 §7.13/7.20 的固定审计事件 allowlist，并替代 §7.21 关于 replay 永不触发封存/释放的绝对表述：replay 只有重送既有已签名终结记录时，中心才执行上述事务；tail、普通记录、回执或排空本身仍不构成证明。中心不可达/确认丢失时 MUST 保存原 wire；恢复后 MAY 用原 replay 命令精确重送，不得重签、补造或恢复失败 owner。升级 MUST 先中心后 Gateway，旧中心 MUST 拒绝未知事件并保持未确认状态。
+
+硬崩溃、SIGKILL、队列损坏/已满、最终刷新或清理不确定且没有终结记录时 MUST 保留占用，后续需可信中心受控恢复。新 runtime 预置/初始化、期限前换运行、Repository READY 和真实产品备份仍待接通。本次未新增测试用例，新终结流程的专门验收保持待验证；既有 Actions 通过不能替代它。
+
 ## 8. Native Agent 安装
 
 目标目录：

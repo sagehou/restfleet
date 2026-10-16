@@ -116,8 +116,11 @@ func (c *ControlPlane) RunGatewayAuthorityWorker(ctx context.Context, targets []
 func (c *ControlPlane) coordinateGatewayAuthority(ctx context.Context, t GatewayAuthorityTarget, acknowledged int64) (int64, error) {
 	d, err := c.store.(GatewayDecisionReader).LatestGatewayAuthorization(ctx, t.Binding.AdmissionID, t.Binding.RuntimeID)
 	if err != nil || d.Revision < 1 || pendingBinding(domain.GatewayPendingOrigin{Admission: d.Admission, RuntimeID: d.RuntimeID}) != t.Binding ||
-		d.Admission.ReleasedAt != nil || d.IssuedAt.After(c.clock()) {
+		d.IssuedAt.After(c.clock()) {
 		return acknowledged, security.ErrGatewayAuthority
+	}
+	if d.Admission.ReleasedAt != nil {
+		return d.Revision, nil // A completed runtime is never renewed/reconstructed.
 	}
 	if d.Revoked && acknowledged == d.Revision {
 		return acknowledged, nil
