@@ -538,6 +538,8 @@ Agent 客户端 MUST 复用本机 TLSIdentity 和已保存 Repository credential
 
 成功 MUST 通过原注册仓库来源 Queue 追加 scoped `backend_ready/verified`，仍为原 `audit` kind/签名域。真实会话原有 HEAD 成功后同样记录观察。失败不能生成健康证据，且不改变原 owner 失败、授权/时钟/Queue watchdog 和最后刷新/清理要求。生产停止 MUST join 观察 worker 后才可产生终结清理记录；嵌入式 `StartService` 保持原显式调用契约。
 
+探测忙碌 MUST 返回 `Retry-After: 1`。Agent 只对该明确响应最多在 30s 内以相同 operation ID、Repository 和原 deadline 重试；其他冲突或响应不确定沿用原失败/清理路径。取消及任务 deadline 继续限制整个会话，不新增任务或延长期限。
+
 中心 MUST 按原 RFGR 来源/签名/解密/序列/时间接收，scoped event 的 Host/Repository/Gateway 必须与原 header 一致；全局来源不得产生该观察。仓库 list/detail 只 MAY 从这些已提交记录构建 READY 读模型：当前初始化/ACK、身份/凭据/配置指纹、完整交付/秘密引用匹配，原占用及该 runtime 的最新普通授权未到期/撤回，来源未封存/占用未释放；用于观察的原 grant 在探测时有效，且观察不在未来、距今小于 10min。曾有观察但条件不满足 MUST 显示 DEGRADED。LOCKED/DISABLED/ERROR 保持优先，无观察不得因回执或 ACK 显示 READY。
 
 该读模型 MUST 不更新配置 revision/updated_at、不产生授权/维护/清理/备份结果。控制面不可用时本地备份仍按原窗口执行；恢复后的过期历史回放不能重新 READY，实际新探测才能恢复可用显示。必须按预期观察/备份/刷新量配置原有 Queue 上限，满/坏/不确定队列继续停止使用并保留 fence，不为健康记录丢弃其他证据。升级先中心后 Gateway；旧 reader 拒绝未知事件。按用户要求未新增/改写测试，新生产观察和状态投影仍待专门验收。

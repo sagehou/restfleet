@@ -173,6 +173,7 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 	}
 	if owner.probing {
 		s.mu.Unlock()
+		w.Header().Set("Retry-After", "1")
 		http.Error(w, "gateway repository busy", http.StatusConflict)
 		return
 	}

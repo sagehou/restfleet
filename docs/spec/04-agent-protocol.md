@@ -326,6 +326,8 @@ ACK 仅含 delivery_id/revision，MUST 精确匹配当前绑定、密钥引用�
 
 响应丢失 MUST 使用相同 operation_id/参数查询或重试；重复 POST 不重复启动、不延长期限，参数冲突返回 409。CLOSED/FAILED 不能重新打开。DELETE MUST join 请求、后端进程与材料清理，不代表备份成功或占用释放。期限取任务 deadline、开始后 24h、原 admission 到期的较早值；旧会话路径不能清理新会话的锁。
 
+后台探测占用仓库时，POST MAY 返回 `409` 与 `Retry-After: 1`，且 MUST 不创建/消耗 operation 去重记录。Agent MUST 只对这种明确响应按 1s 间隔、最多在 30s 内沿用相同 operation_id、Repository 和原 deadline 重发 POST；任务取消/到期立即停止。其他 409、未知响应或通信不确定 MUST NOT 被当成探测忙碌；可能已接收的请求仍须执行原清理。明确未创建会话的探测忙碌不需 DELETE。
+
 接口使用已有中心授权，不要求每次在线请求 Control API；Gateway 丢失/授权到期按 §15 暂停并保留身份/配置，不离线冷启动或复活失败 owner。
 
 ## 14. Certificate Rotation
