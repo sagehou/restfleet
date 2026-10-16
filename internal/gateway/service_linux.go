@@ -23,6 +23,7 @@ type serviceRepository struct {
 	authority *net.UnixListener
 	owner     *AuthorizedBackup
 	queue     *gatewaypending.Queue
+	probing   bool // Under Service.mu; an idle probe cannot consume a new Agent operation.
 }
 
 // Service owns one runtime/supervisor, global audit producer, TLS transport and
@@ -151,6 +152,7 @@ func startService(ctx context.Context, config ServiceConfig, managed bool) (_ *S
 	if err != nil {
 		return nil, ErrService
 	}
+	s.supervisor.observeReady = managed
 	for _, r := range s.repositories {
 		r.material, err = gatewaypending.ListenReplay(r.config.MaterialSocket, config.SharedGroup)
 		if err != nil {
@@ -221,6 +223,9 @@ func startService(ctx context.Context, config ServiceConfig, managed bool) (_ *S
 	})
 	s.workers.Go(s.replay)
 	s.initialized = true
+	if managed {
+		s.workers.Go(s.observeRepositories)
+	}
 	go func() {
 		<-work.Done()
 		s.cleanup()

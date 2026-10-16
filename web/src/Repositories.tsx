@@ -146,7 +146,7 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
           {canManage && <button className="primary-button" disabled={busy} onClick={() => { setCreating(true); setSelected(null); void loadCredentials() }}>创建仓库</button>}
         </div>
       </div>
-      <p className="warning-text" role="status">当前支持创建仓库和中心初始化。Gateway 接入和 Agent 确认尚未接通，新仓库暂不可备份。</p>
+      <p className="warning-text" role="status">新仓库暂不可备份；完成初始化、Agent 确认及 Gateway 后端探测后才显示可用。定时备份执行功能仍在接线。</p>
       {message && <p className="error-message" role="alert">{message}</p>}
       {creating && (
         <form aria-label="创建独立仓库" className="credential-form" onSubmit={submit}>
@@ -179,6 +179,7 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
             <div><dt>状态</dt><dd>{statusLabels[selected.status]}</dd></div>
             <div><dt>中心初始化</dt><dd>{selected.initialized_at ? `已验证（${selected.initialized_at}）` : '尚未完成'}</dd></div>
             <div><dt>Agent 凭据交付</dt><dd>{selected.agent_credential_revision ? `版本 ${selected.agent_credential_revision}，${selected.agent_credential_accepted_at ? `已确认保存（${selected.agent_credential_accepted_at}）` : '等待 Agent 确认'}` : '尚未下发'}</dd></div>
+            <div><dt>Gateway 可用性</dt><dd>{selected.status === 'READY' ? '当前授权匹配，最近 10 分钟内的后端探测已通过' : selected.status === 'DEGRADED' ? '近期探测或当前授权条件不满足' : '等待初始化、Agent 确认和近期后端探测'}</dd></div>
             <div><dt>仓库格式</dt><dd>{selected.format_version ? `v${selected.format_version}` : '尚未验证'}</dd></div>
             <div><dt>Gateway 凭据版本</dt><dd>{selected.gateway_secret_revision}</dd></div>
             <div><dt>Restic 凭据版本</dt><dd>{selected.restic_secret_revision}</dd></div>
