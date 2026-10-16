@@ -700,7 +700,7 @@ type Repository struct {
 	UpdatedAt           time.Time          `json:"updated_at"`
 }
 
-// RepositoryStatus defines model for Repository.Status.
+// RepositoryStatus Availability view. READY requires initialization, current Agent ACK, live matching authorization and a verified Gateway backend observation less than ten minutes old; revision tracks configuration only.
 type RepositoryStatus string
 
 // RepositoryCreate defines model for RepositoryCreate.
