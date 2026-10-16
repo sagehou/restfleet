@@ -366,7 +366,7 @@ REP-043–044 MUST 在 Actions 运行。跨 UID 夹具由可信测试协调器�
 restfleet-server gateway-start --config-file /var/lib/restfleet/gateway-startup/initialization.json
 ```
 
-命令 MUST 复用完整中心运行配置、schema 14、master/signing/pending 受保护密钥文件，不生成 CA、启动服务/worker/子进程或增加 root 权限。生产 MUST 由非 root 中心 UID 执行且使用不同非 root Gateway UID 与显式共享组。先检查数据库/schema/审计，再认证 socket/SO_PEERCRED/来源签名挑战；成功后初次签发（expected revision = 0）、核验完整 committed binding、注册来源、提交单次交付意图和访问审计后加密交付，最后验证精确回执。单次交换最多 5s，命令总 context 最多 10s；失败仅输出固定分类。
+命令 MUST 复用完整中心运行配置、当前 schema、master/signing/pending 受保护密钥文件，不生成 CA、启动 HTTP/gRPC/子进程或增加 root 权限。生产 MUST 由非 root 中心 UID 执行且使用不同非 root Gateway UID 与显式共享组。先检查数据库/schema/审计，再认证 socket/SO_PEERCRED/来源签名挑战；成功后初次签发（expected revision = 0）、核验完整 committed binding、注册来源、提交单次交付意图和访问审计后加密交付，最后验证精确回执。默认单次交换最多 5s、总 context 最多 10s；显式等待/follow 按下述启动交接补充，失败仅输出固定分类。
 
 三个数据库阶段保留各自原子性，后续失败不回滚先前成功的授权或来源。意图提交后 MUST NOT 再交付，包括安装失败、回执丢失、重读相同 metadata 或新挑战。新 runtime MUST NOT 接管旧 admission；命令 MUST NOT 自动重试、等待 socket、续期、撤销、封存或释放占用。协调者 MUST 将其与同 admission 其他授权投递/清理串行化。普通 Server 启动 MUST NOT 自动执行该命令，服务管理器 MUST NOT 把旧文件当作重启配方；进程新鲜性仍须可信启动者证明，文件读取不能证明它。
 
@@ -386,6 +386,14 @@ request MUST 采用上述中心私有目录/文件及精确 JSON 策略，最多
 准备 MUST 先校验中心配置、DB/schema/审计及已确认交付，自动生成占用/owner/初次决定 ID，先 fsync 并 no-replace 发布 plan，再调用已有预留事务。plan MUST 为中心所有 0600 文件、0700 私有目录，不包含秘密；字段顺序为 `version`（2）、`preparation`（完整原 request）、`startup`（完整版本 1 初始化 metadata），最多 8192 bytes。已有 plan MUST 精确匹配输入和当前绑定；失败/重试 MUST 保留原文件、ID 和期限，不覆盖文件、不忽略 `.pending` 痕迹。原预留事务的已释放/到期/冲突拒绝与审计保持；提交或输出丢失不能通过改用新 plan 自动接管原占用。
 
 一个 plan 只对应一个仓库。`RESTFLEET_GATEWAY_AUTHORITY_FILE` MAY 直接指向成功初始化后的该 plan，worker 从 `authority_socket` 取得目标；原版本 1 多目标 manifest 保持兼容。准备命令不注册全局审计来源、不产生授权或交付材料、不启动 Gateway；部署者 MUST 独立准备 fresh runtime、来源、公钥 pin、本地配置和 Queue，并串行执行准备→全局来源注册→启动 Gateway 等待材料→单次初始化→启动续期 worker。启动失败继续保留占用，不能根据文件存在推断成功或清理。总命令 context 仍最多 10s，普通 Server 启动不得自动执行准备/初始化。受控故障恢复、期限前换运行、READY 和 Agent 实际执行仍需接通。
+
+#### 显式启动交接
+
+`gateway-start` MAY 同时指定 `--audit-config-file /absolute/path/registration.json --wait-seconds 120 --follow`，减少单仓库运行的分步交接；默认行为保持不变。audit 配置 MUST 按 §7.22 装载，runtime MUST 与初始化 binding 相同、来源公钥 MUST 不同；不匹配 MUST 在 DB 打开前拒绝。交付前 MUST 复用现有全局来源幂等注册，失败不进行材料交换。
+
+wait MUST 为整数 0..300。正值只 MAY 等待尚不存在的材料 socket，已有非 socket、其他文件错误或取消 MUST 失败；等待结束后仍执行原路径/UID/签名认证和最多 5s 的单次交换。MUST NOT 重试交换或重发材料；总设置 context 最多 wait+10s，等待不延长任何已提交期限。
+
+follow MUST 使用同一版本 2 plan 中的授权 socket，只有精确初始化回执成功后才启动原 worker。初始化与续期串行交接，之后复用 §7.19 的信号取消/join、精确重放、吊销和期限。follow 与非空 `RESTFLEET_GATEWAY_AUTHORITY_FILE` 同时配置 MUST 拒绝；部署者 MUST 保证其他中心进程也没有同 admission 的 worker。中心 API/RFGR 仍由普通 Server 提供，follow 不启动第二组 listener。命令失败或退出 MUST NOT 自动重跑初始化；普通 Server 的原 authority-file worker 可用于后续恢复授权投递，但不能恢复失败 Gateway owner。此入口不证明 READY，完整部署说明见 [Gateway 启动交接](../gateway-run.md)。
 
 ### 7.19 授权续期与明确吊销交付（ADR-0026）
 

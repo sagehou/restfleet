@@ -22,6 +22,8 @@ REP-047–048 在 Actions 验证独立签名域、规范编码、帧上限/UID/p
 
 Server MAY 通过受保护的 `RESTFLEET_GATEWAY_AUTHORITY_FILE` 启用现有已初始化运行的唯一授权协调者，格式与部署规范 §7.19 一致。每个 admission MUST 串行处理，最多 32 个目标；初始化和可信清理 MUST 与该协调者互斥，不能同时启动另一个投递者。该文件 MUST NOT 用于初始化、重新交付材料、重启 Gateway 或恢复失败 owner。
 
+ADR-0025 的显式 `gateway-start --follow` MAY 在单次初始化成功后直接接续同一 worker；该方式只接受一个版本 2 plan，并拒绝同时设置 authority-file。部署者 MUST 选择一个协调入口，不能与另一个进程的同 admission worker 并行。设置失败不进入持续投递；命令中断后 MUST NOT 自动重新初始化。
+
 PostgreSQL 最新 committed 决定 MUST 是唯一持久投递依据。启动或回执丢失后 MUST 先向原已注册来源精确重送最新决定，包括 revision 1；此路径 MUST NOT 调用新决定事务，不受后来缩小的离线配置窗口重写，签发/到期时间 MUST 保持原值。旧决定过期后 MUST NOT 续发新 grant 来恢复 owner。内存确认版本只用于减少重复投递，不能授予权限。
 
 每 10s SHOULD 检查明确 Agent/Host/Repository/StorageCredential 吊销或禁用；读取失败、连接失败、健康离线、证书或授权到期 MUST NOT 写成吊销。明确撤回 MAY 安全覆盖未确认 grant；普通续期 MUST 先确认上一决定的回执，再在实际有效期过半时复用原 CAS 决定事务核验当前授权。原 admission 截止 MUST 不变。停止 MUST 取消并 join 全部投递；来源封存、清理证明、占用释放和 Repository READY MUST 继续独立核验。

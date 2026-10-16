@@ -55,6 +55,7 @@ Bootstrap token 仅在首次初始化时从本机 `secrets/bootstrap-token` 读�
 | [数据库](docs/spec/07-database.md) | PostgreSQL Schema、约束、索引与事务规则 |
 | [Web Console](docs/spec/08-web-console.md) | 页面、交互、危险操作与状态表达 |
 | [部署](docs/spec/09-deployment.md) | 中心、Native Agent、Docker Agent 与升级 |
+| [Gateway 启动交接](docs/gateway-run.md) | 现有身份下的准备、单次启动、持续授权和停止 |
 | [存储凭据](docs/storage-credentials.md) | 多后端导入、测试、替换与当前限制 |
 | [可观测性](docs/spec/10-observability.md) | Metrics、Logs、Health、Alert、Audit |
 | [V1 范围](docs/spec/11-v1-scope.md) | V1、V1.5、V2 的功能边界 |
