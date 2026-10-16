@@ -10,6 +10,7 @@ SupplementaryGroups=restfleet-ipc
 ExecStart=/usr/local/bin/restfleet-gateway run --config-file /var/lib/restfleet-gateway/metadata/service.json
 # A fresh run needs central cleanup and new protected bindings, not old files.
 Restart=no
+TimeoutStopSec=120s
 UMask=0077
 StateDirectory=restfleet-gateway
 StateDirectoryMode=0700

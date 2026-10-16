@@ -60,15 +60,16 @@ type activeBackup struct {
 // job queue or lease authority. Use ONE supervisor per gateway runtime; close
 // the listener, then this supervisor, then the caller-owned credential runtime.
 type Supervisor struct {
-	mu           sync.Mutex
-	runtime      *rclone.Runtime
-	limit        int
-	audit        func(context.Context, Event) error
-	auditReady   func() bool
-	identityAuth bool // Set before serving or starting work; no password fallback.
-	active       map[uuid.UUID]*activeBackup
-	closed       bool
-	running      sync.WaitGroup
+	mu            sync.Mutex
+	runtime       *rclone.Runtime
+	limit         int
+	audit         func(context.Context, Event) error
+	auditReady    func() bool
+	identityAuth  bool // Set before serving or starting work; no password fallback.
+	active        map[uuid.UUID]*activeBackup
+	closed        bool
+	cleanupFailed bool
+	running       sync.WaitGroup
 }
 
 func NewSupervisor(runtime *rclone.Runtime, maxSessions int, audit func(context.Context, Event) error, auditReady ...func() bool) (*Supervisor, error) {
@@ -225,6 +226,9 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 		cancel()
 		<-stopped
 		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+			s.mu.Lock()
+			s.cleanupFailed = true
+			s.mu.Unlock()
 			result = ErrBackendUnavailable // Never acknowledge cleanup after a failed group kill.
 		}
 	}()

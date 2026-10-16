@@ -475,6 +475,10 @@ Primary key `(scope_hash, idempotency_key_hash)`。不保存原始 key。并发�
 - maintenance 开始前检查 active leases，并在一个 transaction 中取得 maintenance lease；
 - advisory lock 只作为进程并发保护，业务可见状态仍存表。
 
+### 8.1 已签名停止终结的原子提交
+
+ADR-0034 不新增 schema。经过注册来源验证的固定 `runtime_cleanup/joined` 事件 MUST 使用现有接收历史的 `audit`/`global_audit` kind。仓库终结 MUST 在原 credential/admission/source 锁下先验证连续序列和全部先前 effect，再在同一事务中提交接收历史、runtime 明确撤回决定、来源封存、占用释放、审计及 outbox；任何失败 MUST 整体回滚。全局终结 MUST 仅原子封存自己的来源。精确重复 MAY 在封存/释放后返回原回执；新记录 MUST 拒绝。不能仅凭 Queue tail、到期、Agent ACK 或 socket 不可达执行此事务。
+
 ## 9. Secret 与权限分离
 
 建议数据库角色：
