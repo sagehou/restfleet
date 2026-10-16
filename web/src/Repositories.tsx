@@ -179,9 +179,9 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
             <div><dt>状态</dt><dd>{statusLabels[selected.status]}</dd></div>
             <div><dt>中心初始化</dt><dd>{selected.initialized_at ? `已验证（${selected.initialized_at}）` : '尚未完成'}</dd></div>
             <div><dt>Agent 凭据交付</dt><dd>{selected.agent_credential_revision ? `版本 ${selected.agent_credential_revision}，${selected.agent_credential_accepted_at ? `已确认保存（${selected.agent_credential_accepted_at}）` : '等待 Agent 确认'}` : '尚未下发'}</dd></div>
-            <div><dt>Gateway 可用性</dt><dd>{selected.status === 'READY' ? '当前授权匹配，最近 10 分钟内的后端探测已通过' : selected.status === 'DEGRADED' ? '近期探测或当前授权条件不满足' : '等待初始化、Agent 确认和近期后端探测'}</dd></div>
+            <div><dt>Gateway 可用性</dt><dd>{selected.status === 'READY' ? '当前授权匹配，最近 10 分钟内的后端探测已通过' : selected.status === 'DEGRADED' ? '近期探测或当前授权条件不满足' : selected.status === 'PROVISIONING' ? '等待初始化、Agent 确认和近期后端探测' : `仓库${statusLabels[selected.status]}，当前不可用`}</dd></div>
             <div><dt>仓库格式</dt><dd>{selected.format_version ? `v${selected.format_version}` : '尚未验证'}</dd></div>
-            <div><dt>Gateway 凭据版本</dt><dd>{selected.gateway_secret_revision}</dd></div>
+            <div><dt>通信认证</dt><dd>Agent 本机密钥（mTLS），自动续证，可吊销</dd></div>
             <div><dt>Restic 凭据版本</dt><dd>{selected.restic_secret_revision}</dd></div>
             <div><dt>记录版本</dt><dd>{selected.revision}</dd></div>
           </dl>

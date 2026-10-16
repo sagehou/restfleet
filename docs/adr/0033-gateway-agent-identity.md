@@ -14,6 +14,6 @@
 
 新 Hello capability `repository_identity_v1` 与原 `repository_credentials_v1` 一起声明。新 Agent 的 CredentialRevision MUST 不携带 gateway_password；其他内容完全相同时 MAY 单向清除同 revision 的旧密码，重新加入密码或变更绑定/Restic 密码 MUST 拒绝。旧 capability 交付及 schema 16 的 Gateway secret 引用保留兼容，生产认证不使用它们。本次不增加 verifier、候选密码激活或强制 schema 清理前置条件。
 
-吊销复用中心身份状态及 RFGA 明确撤回决定；在线分发仍需接线。离线遵守 ADR-0032 的配置窗口（默认最后签发起 72h，受原占用限制）。证书不绕过授权、撤回不可复活或维护排斥；会话结束、来源排空或授权到期不释放 fence。
+吊销复用中心身份状态及 RFGA 明确撤回决定；现有中心授权 worker 已接入在线分发，按 10s 轮询当前 Agent/Host/Repository/StorageCredential 的明确撤回状态，Gateway 原 watchdog/逐次请求检查据此停止使用和清理。Agent 续证保留本机私钥，每次新 Gateway 会话从本机 identity 文件装载当前证书，不要求重新配对。该生产链路的专门验收仍待完成。离线遵守 ADR-0032 的配置窗口（默认最后签发起 72h，受原占用限制），不能声称中心失联时立即获知吊销。证书不绕过授权、撤回不可复活或维护排斥；会话结束、来源排空或授权到期不释放 fence。
 
 REP-011 保留 ID，替代为身份自动续证/吊销；REP-020 的独立秘密改为身份与独立会话范围，其他负向要求保留。按用户指示暂不写新测试，源码完成及未验证行为 MUST 分开记录，生产分发/可信恢复/READY 未完成前不能声称已跑通。
