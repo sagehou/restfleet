@@ -44,7 +44,7 @@ func (c *ControlPlane) GatewayMaterialDelivery(ctx context.Context, binding secu
 	a, d, material := result.Origin.Admission, result.Decision, result.Material
 	if material.Admission != a || d.Admission != a || d.RuntimeID != binding.RuntimeID || d.Revoked || d.Revision < 1 || a.ReleasedAt != nil ||
 		!a.ExpiresAt.After(c.clock()) || !d.ExpiresAt.After(c.clock()) || d.IssuedAt.After(c.clock()) || d.ExpiresAt.After(a.ExpiresAt) ||
-		d.ExpiresAt.Sub(d.IssuedAt) > 12*time.Hour || material.Credential.ID != binding.StorageCredentialID ||
+		d.ExpiresAt.Sub(d.IssuedAt) > c.gatewayOfflineWindow || material.Credential.ID != binding.StorageCredentialID ||
 		material.Credential.SecretRevision != result.Origin.InitialSecretRevision {
 		return nil, security.ErrGatewayMaterial
 	}

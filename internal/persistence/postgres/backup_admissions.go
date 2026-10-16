@@ -260,14 +260,20 @@ func (s *Store) ReleaseBackupAdmission(ctx context.Context, id, owner uuid.UUID)
 	if err = ensureGatewayPendingReleasable(ctx, tx, id); err != nil {
 		return rejectBackupAdmission(ctx, tx, id, a.RepositoryID, err)
 	}
-	if _, err = tx.Exec(ctx, "update gateway_backup_admissions set released_at=clock_timestamp() where id=$1 and owner=$2", id, owner); err != nil {
-		return err
-	}
-	if err = admissionOutbox(ctx, tx, a, "GATEWAY_BACKUP_RELEASED"); err != nil {
-		return err
-	}
-	if err = backupAdmissionAudit(ctx, tx, id, a.RepositoryID, "GATEWAY_BACKUP_RELEASE", "CLEANUP_CONFIRMED", domain.AuditSuccess); err != nil {
+	if err = releaseBackupAdmission(ctx, tx, a); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// Caller holds the admission lock and has independently verified cleanup,
+// terminal authorization and source sealing in this transaction.
+func releaseBackupAdmission(ctx context.Context, tx pgx.Tx, a domain.BackupAdmission) error {
+	if _, err := tx.Exec(ctx, "update gateway_backup_admissions set released_at=clock_timestamp() where id=$1 and owner=$2", a.ID, a.Owner); err != nil {
+		return err
+	}
+	if err := admissionOutbox(ctx, tx, a, "GATEWAY_BACKUP_RELEASED"); err != nil {
+		return err
+	}
+	return backupAdmissionAudit(ctx, tx, a.ID, a.RepositoryID, "GATEWAY_BACKUP_RELEASE", "CLEANUP_CONFIRMED", domain.AuditSuccess)
 }

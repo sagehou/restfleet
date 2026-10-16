@@ -4,6 +4,8 @@ status: accepted
 
 # 独立 Gateway 使用有界离线授权与加密待回写区
 
+期限修订见 [ADR-0032](0032-configurable-offline-window.md)：离线窗口默认 72h、可配置；schema 16 扩展时长上限。本文原期限为历史决定，其余隔离与清理约束保持。
+
 现有 Gateway 在线核验、审计和 token 刷新依赖 PostgreSQL，无法满足控制面失联时继续备份的要求。用户已接受：独立 Gateway 使用中心签发、只可在线续期的有界离线授权，并将审计与 OAuth 刷新记录可靠写入本地有界加密待回写区，恢复后由中心验证、幂等入库；PostgreSQL 仍是唯一控制面权威。代价是控制面失联时撤销/禁用最多延迟 12h 生效，授权到期、容量耗尽或无法安全持久化时 MUST fail closed。
 
 ## 后果

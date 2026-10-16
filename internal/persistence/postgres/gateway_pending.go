@@ -165,6 +165,10 @@ func (s *Store) CommitGatewayPending(ctx context.Context, r domain.GatewayPendin
 		if r.Audit == nil || r.ExpectedSecretRevision != 0 || validate != nil {
 			return domain.ErrGatewayPending
 		}
+		if r.Audit.Action == "GATEWAY_RUNTIME_CLEANUP_COMPLETE" && (!gatewayCleanupAudit(*r.Audit) ||
+			r.Audit.ID != r.RecordID || r.Audit.RequestID != r.RecordID || !r.Audit.OccurredAt.Equal(r.CreatedAt)) {
+			return domain.ErrGatewayPending
+		}
 		if err = appendAudit(ctx, tx, *r.Audit); err != nil {
 			return err
 		}
@@ -207,7 +211,61 @@ func (s *Store) CommitGatewayPending(ctx context.Context, r domain.GatewayPendin
 	if err != nil {
 		return err
 	}
+	if r.Kind == "audit" && r.Audit != nil && r.Audit.Action == "GATEWAY_RUNTIME_CLEANUP_COMPLETE" {
+		if err = finishGatewayAdmission(ctx, tx, o, r.RecordID); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
+}
+
+func gatewayCleanupAudit(a domain.AuditEvent) bool {
+	return a.Action == "GATEWAY_RUNTIME_CLEANUP_COMPLETE" && a.ReasonCode == "JOINED" && a.Result == domain.AuditSuccess &&
+		a.ActorType == domain.ActorSystem && a.ActorID == uuid.Nil && a.ResourceType == "GATEWAY" && a.ResourceID == uuid.Nil && len(a.Changes) == 0
+}
+
+// This is reached ONLY through a source-authenticated terminal cleanup record,
+// after every earlier sequence/effect committed. Receipt, expiry and drain alone
+// cannot call it. The admission/source locks serialize it against renewal and
+// maintenance; withdrawal, sealing and release commit together with the marker.
+func finishGatewayAdmission(ctx context.Context, tx pgx.Tx, o domain.GatewayPendingOrigin, request uuid.UUID) error {
+	a := o.Admission
+	var revision int64
+	var revoked bool
+	var issued, now time.Time
+	if err := tx.QueryRow(ctx, `select revision,revoked,issued_at from gateway_authorization_decisions
+		where admission_id=$1 and runtime_id=$2 order by revision desc limit 1`, a.ID, o.RuntimeID).Scan(&revision, &revoked, &issued); err != nil {
+		return err
+	}
+	if err := tx.QueryRow(ctx, "select date_trunc('second',clock_timestamp())").Scan(&now); err != nil || now.Before(issued) {
+		return domain.ErrGatewayPending
+	}
+	if !revoked {
+		if _, err := tx.Exec(ctx, `insert into gateway_authorization_decisions
+			(admission_id,revision,request_id,runtime_id,lifetime_seconds,issued_at,expires_at,revoked)
+			values($1,$2,$3,$4,0,$5,null,true)`, a.ID, revision+1, request, o.RuntimeID, now); err != nil {
+			return err
+		}
+		if err := admissionOutbox(ctx, tx, a, "GATEWAY_AUTHORIZATION_DECIDED"); err != nil {
+			return err
+		}
+		if err := backupAdmissionAudit(ctx, tx, request, a.RepositoryID, "GATEWAY_AUTHORIZATION_DECISION", "REVOKED", domain.AuditSuccess); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, "update gateway_pending_origins set closed_at=clock_timestamp() where admission_id=$1 and runtime_id=$2", a.ID, o.RuntimeID); err != nil {
+		return err
+	}
+	if err := backupAdmissionAudit(ctx, tx, o.RuntimeID, a.RepositoryID, "GATEWAY_PENDING_ORIGIN", "SEALED", domain.AuditSuccess); err != nil {
+		return err
+	}
+	if err := ensureGatewayAuthorizationReleasable(ctx, tx, a.ID); err != nil {
+		return err
+	}
+	if err := ensureGatewayPendingReleasable(ctx, tx, a.ID); err != nil {
+		return err
+	}
+	return releaseBackupAdmission(ctx, tx, a)
 }
 
 // CloseGatewayPendingOrigin is only for a trusted cleanup coordinator AFTER

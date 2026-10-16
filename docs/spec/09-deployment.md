@@ -182,13 +182,13 @@ rclone OAuth token 更新：
 
 `WithBackup` MUST 只由可信中心调用方使用，不是 HTTP 创建会话 API。调用前 MUST 验证持久化绑定、记录秘密访问审计、取得并续租 backup lease，排斥同仓库维护和同凭据的测试/初始化/刷新写入者；进程内互斥 MUST NOT 代替数据库 fencing。一个 runtime MUST 只对应一个 supervisor，MUST NOT 新建多个 supervisor 或多个 runtime 目录绕过限制。
 
-supervisor MUST 复用 Credential Runtime 的配置校验、tmpfs、WebDAV 固定出站、运行中 token watcher/CAS 与退出清理。Gateway 专用入口 MUST 接受明确且不超过 24h 的授权截止时间；原有连接测试 1min、普通中心命令 5min 上限保持不变。不得无期限 materialize，也不得自动重新授权或重启失败会话。
+supervisor MUST 复用 Credential Runtime 的配置校验、tmpfs、WebDAV 固定出站、运行中 token watcher/CAS 与退出清理。Gateway 单次备份会话入口 MUST 接受明确且不超过 24h 的会话截止时间；原有连接测试 1min、普通中心命令 5min 上限保持不变。不得无期限 materialize，也不得自动重新授权或重启失败会话。
 
 启动 MUST 使用固定 argv、固定环境、append-only 与 cache-objects=false，并仅绑定 UUID-scoped 私有 Unix socket；不继承 RCLONE/proxy/LISTEN_* 变量或 socket activation。只有受限 socket 验证通过且只读 HEAD config 成功，才 MAY 安装路由和借出会话能力；此探测只证明 backend 可访问，MUST NOT 表示云凭据健康、完整仓库校验或 Agent ACK。不存在仓库时 MUST NOT 自动 init。
 
 正常结束、超时、取消、后端退出或 refresh/CAS 失败 MUST 撤销能力、移除路由、等待在途请求结束、终止并回收子进程组，再删除 materialized 目录；`WithBackup` 返回前 MUST 完成清理，之后才允许调用方释放持久化 fencing。启动/结束审计与请求拒绝审计 MUST 只包含可信 ID 和固定分类；原始 provider/callback 错误 MUST NOT 外泄。shutdown MUST 先停外部 listener，再 Close supervisor，最后关闭 runtime；Close MUST 拒绝新会话并等待已有清理完成。
 
-supervisor 批次不提供公网部署就绪声明、备份会话能力下发/ACK 或离线持久化准入。独立的仓库初始凭据下发/ACK 见 §7.5，不能替代会话准入。刷新无法安全回写时仍 fail closed，不能据此宣称控制面离线 12h 验收已完成；后续接线 MUST 继续满足 AGT-005，不能删掉该验收来绕过协调问题。
+supervisor 批次不提供公网部署就绪声明、备份会话能力下发/ACK 或离线持久化准入。独立的仓库初始凭据下发/ACK 见 §7.5，不能替代会话准入。刷新无法安全回写时仍 fail closed，不能据此宣称配置窗口内的控制面离线验收已完成；后续接线 MUST 继续满足 AGT-005，不能删掉该验收来绕过协调问题。
 
 ### 7.5 Agent 仓库凭据交付开关
 
@@ -232,20 +232,17 @@ schema 11 的持久化备份占用原语已接入现有中心写入口互斥，�
 
 此接线仍是在线中央材料服务；公网 command、数据面审计持久化、独立 Gateway 进程的受保护材料交付、owner 恢复与 AGT-005 离线协调未完成。不得将它直接暴露为 Agent API 或据此标记 READY。
 
-### 7.10 有界离线授权与待回写目标
+### 7.10 可配置离线窗口与故障行为
 
-用户已接受 ADR-0017 的独立 Gateway 方案；本节是待实现约束，不是公网部署步骤。§7.8 的在线轮询与 §7.9 的同步 DB 回写在替代协调器完成验证前保持原行为，MUST NOT 直接关闭这些检查以模拟离线成功。
+用户已接受 ADR-0017 的独立 Gateway 方案，并以 [ADR-0032](../adr/0032-configurable-offline-window.md) 修订期限和交付边界。`RESTFLEET_GATEWAY_OFFLINE_WINDOW` 默认 `72h`，允许 `1m`..`720h` 的整秒时长；Compose 透传同名变量。中心普通授权请求的 `Lifetime=0` 或启动 metadata 的 `lifetime_seconds=0` 使用该配置，显式更长请求 MUST 拒绝。修改配置只影响后续中心决定，已签发权限仍按原截止时间失效。
 
-后续在 M4 内按以下依赖顺序交付：
+窗口 MUST 从最后一次中心签发计算，不从检测失联、接收、重放或重连重新计算；实际截止为授权与原占用截止的较早者。因此它表示剩余授权窗口，不承诺任意失联时刻之后另有完整 72h。中心 MUST 在线核验当前身份、ACK、配置和占用后才续期；撤销/禁用在失联时最多延迟配置窗口生效。schema 16 将占用与授权请求上限扩到 30d，避免旧 24h 上限截断 72h；单次备份会话仍最多 24h。续期 MUST NOT 改原占用期限，也不释放再抢占。
 
-1. **授权与连续 fence**：中心签发、在线续期、Gateway 验证和防回滚 MUST 绑定同一可信运行实例及完整资源/配置版本。新授权 MUST 先经中心事务验证当前状态、精确 ACK 和未释放占用；禁止预发可在撤销后无限延寿的未来授权。schema 11 的到期时间目前不可更新，实施续期 MUST 同时提供显式迁移、旧 writer 升级约束与并发负向测试，不能通过释放再抢占制造维护空窗。
-2. **受保护通道与持久化**：独立 Gateway MUST 通过有身份验证、版本和大小限制的本地通道获取必要材料，不获取中心 DB/master key。待回写区 MUST 在受保护持久卷上有字节/记录数硬上限，可靠落盘后才确认接受；MUST NOT 丢弃未确认记录来腾空间。加密封装与来源认证 MUST 独立验证，秘密不得进入审计 payload、日志或 artifact。
-3. **回写与恢复**：每条记录 MUST 有可信 owner/运行实例/占用绑定、唯一标识和有序版本；中心 MUST 拒绝冲突重放、跳序、篡改、跨绑定和非 token-only 配置变化。DB 提交后才 MAY 确认对应记录并回收本地空间，确认丢失 MUST 幂等重放；刷新仍执行加密 revision CAS。记录全部接收不等于进程清理，释放占用仍需确认全部请求、子进程和持久化工作结束。失败保留 fence，不自动重启或接管。
-4. **生产接线与验收**：再接入 command、独立 readiness、会话交付及恢复状态。readiness MUST 区分控制面不可达、剩余授权不足、待回写容量和恢复阻塞；不得把监听 socket 存在或 Agent ACK 当作 Repository READY。
+这里的离线指中心控制 API/DB 不可用、Agent 仍可连接持续运行的 Gateway。Gateway 不可达、停止、重启后材料丢失或授权不足时，Agent MUST 暂停备份并报告可识别的错误，按 Plan retry policy 有界重试。MUST 保留 Agent 身份、私钥、证书和 last-known-good 配置，不要求重新 enrollment；V1 不实现 Gateway 离线冷启动恢复或额外材料恢复机制。
 
-离线测试 MUST 覆盖签发/续期前后断网、接收延迟、旧授权重放、时钟回拨、授权到期、撤销/禁用、连续多次本地计划备份、OAuth refresh、磁盘满/写入失败、损坏记录、中心提交后确认丢失，以及 Gateway 崩溃重启与维护竞争。MUST 验证已授予权限不会超过签发后 12h，且 fence 不因超时或崩溃自动释放。
+复用既有受保护材料通道、有界加密 Queue 和有序幂等回写；可靠保存失败、容量耗尽、时钟不可信或明确吊销 MUST 停止授权使用。中心恢复后 MUST 重新核验授权并完成可信清理、回写、来源封存与释放，再建立新运行；队列排空或占用到期不能证明旧数据面已退出，也不能复活失败 owner。生产会话入口、daemon/readiness 和完整停止协调仍待交付，现有在线适配器不能直接关闭 DB 检查来模拟成功。
 
-AGT-005 的 12h 离线备份要求保持未完成：MUST 明确记录实验的签发、续期、失联和备份时间，不得把“授权最多 12h”当成“任意时刻失联后还剩 12h”。若完整可用性要求与撤销上限无法同时满足，MUST 报告取舍并请求决定，不得静默改动验收或通过重置离线计时掩盖差异。真实三后端刷新/认证/恢复仍需安全环境验收；上述设计与模拟测试均不替代人工证据。
+新增自动测试 SHOULD 限于配置默认值/上限、签名期限和拒绝越权的关键边界，复用现有安全负向测试；期限边界 MAY 使用受控时钟，不要求真实等待 72h。rclone/provider 的真实认证、刷新、备份读回与兼容性 MUST 在部署后的 GitHub Actions 安全环境验证，不再为每种 provider 扩展重复模拟套件；未验证的后端不能声称生产验证通过。本地开发区仍只编辑源码与文档。
 
 ### 7.11 签名授权决定与本地状态（内部 v1 契约）
 
@@ -253,7 +250,7 @@ ADR-0018 交付 security 签名编解码与 Gateway 本地状态原语；MUST NO
 
 wire MUST 为规范 JSON payload 后直接拼接 64-byte Ed25519 签名，总长最多 2048 bytes；签名内容为 ASCII 前缀 `restfleet:gateway-authorization:v1`、一个 NUL 字节和 payload。使用独立中心签名密钥，验证公钥 MUST 经受保护配置交付；wire 没有公钥、算法或可自选版本。payload MUST 精确匹配 `security.GatewayStatement` 的字段顺序和 Go encoding/json 紧凑编码，未知/重复字段、额外空白、替代 UUID 表示及非规范数字 MUST 拒绝，不进行宽松归一化。
 
-字段顺序为 binding、revision、issued_at、expires_at、revoked。binding 内字段依序为 admission_id、owner、runtime_id、agent_id、host_id、repository_id、gateway_id、storage_credential_id、delivery_id、gateway_secret_ref、restic_secret_ref、configuration_hash；ID 均为规范 UUIDv7，hash 为 64 位小写 hex 的现有 Gateway origin/CA 指纹。revision 为 1..MaxInt64 的无损十进制整数；时间为 UTC Unix 整秒，issued_at 必须为正且不晚于 9999 年末。普通授权要求 issued_at < expires_at <= issued_at + 12h 且不晚于 9999 年末；明确吊销必须 revoked=true、expires_at=0。绑定只含引用，不含秘密；云端材料及版本仍须由后续受保护交付与连续占用检查保证，签名 metadata 本身不是材料校验。
+字段顺序为 binding、revision、issued_at、expires_at、revoked。binding 内字段依序为 admission_id、owner、runtime_id、agent_id、host_id、repository_id、gateway_id、storage_credential_id、delivery_id、gateway_secret_ref、restic_secret_ref、configuration_hash；ID 均为规范 UUIDv7，hash 为 64 位小写 hex 的现有 Gateway origin/CA 指纹。revision 为 1..MaxInt64 的无损十进制整数；时间为 UTC Unix 整秒，issued_at 必须为正且不晚于 9999 年末。普通授权要求 issued_at < expires_at <= issued_at + 720h（编码上限；中心签发 MUST 同时受配置窗口限制，默认 72h） 且不晚于 9999 年末；明确吊销必须 revoked=true、expires_at=0。绑定只含引用，不含秘密；云端材料及版本仍须由后续受保护交付与连续占用检查保证，签名 metadata 本身不是材料校验。
 
 Gateway MUST 从可信配置构造唯一运行绑定并复制验证公钥，不信任 wire 提供的新绑定。只有验签、精确绑定和时间检查通过的单调 revision 才能更新状态；相同 revision 仅允许完整相同内容的幂等重放，重放不重置截止时间。旧 revision、同版本改参、签发时间倒退、未来签发及初次收到已过期授权 MUST 拒绝；普通续期不得复活已知吊销的同一绑定。中心 MUST 只签发已经提交的、经过当前身份/ACK/占用核验的决定，签名工具函数不代替事务授权。
 
@@ -263,7 +260,7 @@ Gateway MUST 从可信配置构造唯一运行绑定并复制验证公钥，不�
 
 ### 7.12 中心事务签发与连续占用
 
-schema 12 / ADR-0019 将授权决定追加持久化，原占用 ID/owner、释放状态和截止时间保持不变。在线续期只更新签名授权决定，实际有效期 MUST 不超过签发后 12h 或原占用剩余期限；不能据此宣称任意失联时刻之后都有完整 12h。超过原占用期限的长期运行仍需后续生命周期协调，MUST NOT 自动释放或重开占用。
+schema 12 / ADR-0019 将授权决定追加持久化，原占用 ID/owner、释放状态和截止时间保持不变。在线续期只更新签名授权决定，实际有效期 MUST 不超过配置窗口或原占用剩余期限；窗口默认 72h，从签发起计算，不从失联起重新计时（ADR-0032）。超过原占用期限的长期运行仍需后续生命周期协调，MUST NOT 自动释放或重开占用。
 
 `ControlPlane.DecideGatewayAuthorization` 只向可信中心运行协调器开放，无新 HTTP/gRPC 路由；调用方 MUST 控制运行实例身份，并串行化签发投递与最终清理/释放。服务使用最多 3s 的上下文，事务提交后重验请求/绑定/版本/期限，再使用独立 Ed25519 key 签名；DB 失败、取消或过期不返回签名。重放同一最新决定不延寿；旧决定被后续版本取代后不再重新签发。
 
@@ -356,7 +353,7 @@ REP-043–044 MUST 在 Actions 运行。跨 UID 夹具由可信测试协调器�
 | binding | §7.11 的完整 binding，含 fresh runtime UUIDv7 |
 | source_public | 标准 base64 的 32-byte 来源 Ed25519 公钥，不能传入 seed/私钥 |
 | decision_id | 本次初次授权幂等键，规范 UUIDv7 |
-| lifetime_seconds | 整数 1–43200，实际授权不超过原 admission 到期时刻 |
+| lifetime_seconds | 整数 0–2592000；0 使用中心配置（默认 72h），显式值不得超过配置，实际授权不超过原 admission 到期时刻 |
 | socket_path | canonical absolute Unix socket 路径，最多 107 bytes；实际 owner/权限由通道验证 |
 | gateway_uid | uint32，预期 Gateway peer UID；生产非零、不同于中心 UID |
 | shared_group | uint32，生产显式专用非零 GID；非生产同 UID 私有模式为 0 |
@@ -369,11 +366,34 @@ REP-043–044 MUST 在 Actions 运行。跨 UID 夹具由可信测试协调器�
 restfleet-server gateway-start --config-file /var/lib/restfleet/gateway-startup/initialization.json
 ```
 
-命令 MUST 复用完整中心运行配置、schema 14、master/signing/pending 受保护密钥文件，不生成 CA、启动服务/worker/子进程或增加 root 权限。生产 MUST 由非 root 中心 UID 执行且使用不同非 root Gateway UID 与显式共享组。先检查数据库/schema/审计，再认证 socket/SO_PEERCRED/来源签名挑战；成功后初次签发（expected revision = 0）、核验完整 committed binding、注册来源、提交单次交付意图和访问审计后加密交付，最后验证精确回执。单次交换最多 5s，命令总 context 最多 10s；失败仅输出固定分类。
+命令 MUST 复用完整中心运行配置、当前 schema、master/signing/pending 受保护密钥文件，不生成 CA、启动 HTTP/gRPC/子进程或增加 root 权限。生产 MUST 由非 root 中心 UID 执行且使用不同非 root Gateway UID 与显式共享组。先检查数据库/schema/审计，再认证 socket/SO_PEERCRED/来源签名挑战；成功后初次签发（expected revision = 0）、核验完整 committed binding、注册来源、提交单次交付意图和访问审计后加密交付，最后验证精确回执。默认单次交换最多 5s、总 context 最多 10s；显式等待/follow 按下述启动交接补充，失败仅输出固定分类。
 
-三个数据库阶段保留各自原子性，后续失败不回滚先前成功的授权或来源。意图提交后 MUST NOT 再交付，包括安装失败、回执丢失、重读相同 metadata 或新挑战。新 runtime MUST NOT 接管旧 admission；命令 MUST NOT 自动重试、等待 socket、续期、撤销、封存或释放占用。协调者 MUST 将其与同 admission 其他授权投递/清理串行化。普通 Server 启动 MUST NOT 自动执行该命令，服务管理器 MUST NOT 把旧文件当作重启配方；进程新鲜性仍须可信启动者证明，文件读取不能证明它。
+三个数据库阶段保留各自原子性，后续失败不回滚先前成功的授权或来源。意图提交后 MUST NOT 再交付，包括安装失败、回执丢失、重读相同 metadata 或新挑战。新 runtime MUST NOT 接管旧 admission；初始化交换 MUST NOT 自动重试、续期、撤销、封存或释放占用。默认命令不等待 socket、不启动续期 worker；显式等待/follow 仅按下述启动交接执行。协调者 MUST 将其与同 admission 其他授权投递/清理串行化。普通 Server 启动 MUST NOT 自动执行该命令，服务管理器 MUST NOT 把旧文件当作重启配方；进程新鲜性仍须可信启动者证明，文件读取不能证明它。
 
 命令成功只确认初始化回执，不代表 Agent 会话能力、可用数据面、清理或 READY。REP-045–046 MUST 在 Actions 执行；Gateway 生产配置/daemon、多仓库数据面、续期/吊销、全局离线审计、Agent 能力、可信恢复/readiness、rotation/READY、真实云端与 AGT-005 仍待完成。
+
+#### 中心准备命令（ADR-0025 补充，2026-10-16）
+
+正式部署或 Actions MAY 在显式初始化前执行：
+
+```text
+restfleet-server gateway-prepare --config-file /var/lib/restfleet/gateway-startup/request.json --plan-file /var/lib/restfleet/gateway-startup/plan.json
+restfleet-server gateway-start --config-file /var/lib/restfleet/gateway-startup/plan.json
+```
+
+request MUST 采用上述中心私有目录/文件及精确 JSON 策略，最多 4096 bytes。字段顺序 MUST 为 `version`（1）、`agent_id`、`runtime_id`、`source_public`、`admission_lifetime_seconds`、`lifetime_seconds`、`material_socket`、`authority_socket`、`gateway_uid`、`shared_group`；所有字段显式存在。Agent/runtime 为规范 UUIDv7；独立来源公钥为标准 base64 非全零 32 bytes，两个 socket MUST 不同并沿用既有绝对规范路径/107-byte 与 UID/组规则。admission 时长为 60..2592000 秒；授权时长为 0..2592000 秒，显式值不得超过中心配置，0 沿用配置。原 admission 截止仍限制所有实际授权。输入不接受 Host/Repository/secret 引用，由当前已确认交付和仓库权威记录推导。
+
+准备 MUST 先校验中心配置、DB/schema/审计及已确认交付，自动生成占用/owner/初次决定 ID，先 fsync 并 no-replace 发布 plan，再调用已有预留事务。plan MUST 为中心所有 0600 文件、0700 私有目录，不包含秘密；字段顺序为 `version`（2）、`preparation`（完整原 request）、`startup`（完整版本 1 初始化 metadata），最多 8192 bytes。已有 plan MUST 精确匹配输入和当前绑定；失败/重试 MUST 保留原文件、ID 和期限，不覆盖文件、不忽略 `.pending` 痕迹。原预留事务的已释放/到期/冲突拒绝与审计保持；提交或输出丢失不能通过改用新 plan 自动接管原占用。
+
+一个 plan 只对应一个仓库。`RESTFLEET_GATEWAY_AUTHORITY_FILE` MAY 直接指向成功初始化后的该 plan，worker 从 `authority_socket` 取得目标；原版本 1 多目标 manifest 保持兼容。准备命令不注册全局审计来源、不产生授权或交付材料、不启动 Gateway；部署者 MUST 独立准备 fresh runtime、来源、公钥 pin、本地配置和 Queue，并串行执行准备→全局来源注册→启动 Gateway 等待材料→单次初始化→启动续期 worker。启动失败继续保留占用，不能根据文件存在推断成功或清理。总命令 context 仍最多 10s，普通 Server 启动不得自动执行准备/初始化。受控故障恢复、期限前换运行、READY 和 Agent 实际执行仍需接通。
+
+#### 显式启动交接
+
+`gateway-start` MAY 同时指定 `--audit-config-file /absolute/path/registration.json --wait-seconds 120 --follow`，减少单仓库运行的分步交接；默认行为保持不变。audit 配置 MUST 按 §7.22 装载，runtime MUST 与初始化 binding 相同、来源公钥 MUST 不同；不匹配 MUST 在 DB 打开前拒绝。交付前 MUST 复用现有全局来源幂等注册，失败不进行材料交换。
+
+wait MUST 为整数 0..300。正值只 MAY 等待尚不存在的材料 socket，已有非 socket、其他文件错误或取消 MUST 失败；等待结束后仍执行原路径/UID/签名认证和最多 5s 的单次交换。MUST NOT 重试交换或重发材料；总设置 context 最多 wait+10s，等待不延长任何已提交期限。
+
+follow MUST 使用同一版本 2 plan 中的授权 socket，只有精确初始化回执成功后才启动原 worker。初始化与续期串行交接，之后复用 §7.19 的信号取消/join、精确重放、吊销和期限。follow 与非空 `RESTFLEET_GATEWAY_AUTHORITY_FILE` 同时配置 MUST 拒绝；部署者 MUST 保证其他中心进程也没有同 admission 的 worker。中心 API/RFGR 仍由普通 Server 提供，follow 不启动第二组 listener。命令失败或退出 MUST NOT 自动重跑初始化；普通 Server 的原 authority-file worker 可用于后续恢复授权投递，但不能恢复失败 Gateway owner。此入口不证明 READY，完整部署说明见 [Gateway 启动交接](../gateway-run.md)。
 
 ### 7.19 授权续期与明确吊销交付（ADR-0026）
 
@@ -387,7 +407,28 @@ Gateway MUST 核验中心签名与完整 binding，再调用该 owner 的 `Accep
 
 回执丢失 MUST 保留中心已提交决定和原 fence。MAY 显式重放同一最新 committed 决定/幂等键，MUST 保留签发与到期时刻；不得自动签发新授权、重发初始化材料或恢复失败 owner。单次交付无自动重试。取消 MUST 关闭活跃连接并等待当前 callback 退出；callback MUST 响应 context。拒绝审计 MUST 使用固定无资源 `GATEWAY_AUTHORIZATION_DELIVERY_DENIED` / `REJECTED`，不得记录 wire、未认证身份、路径或原始错误；已观察到的拒绝 MUST 另用最多 3s 的独立 context 完成审计，调用方取消 MUST NOT 丢弃该观察，listener 退出 MUST 等待审计 callback。审计失败 MUST 停止接收通道。开发工作区 MUST NOT 执行服务或验证；REP-047–048 仅在 Actions 运行。
 
-本批不新增命令、自动续期调度器或 schema。Gateway daemon/生产配置、多仓库公网数据面、全局离线拒绝审计、Agent 会话能力交付、可信清理/恢复、readiness、rotation/READY、真实云端及 AGT-005 仍待完成。
+初始批次不新增命令或 schema；2026-10-16 接入 Server 内置持续投递 worker。`RESTFLEET_GATEWAY_AUTHORITY_FILE` 可选；不设置则保持原显式投递行为。设置时 MUST 同时配置 enrollment、签名/待回写密钥及 replay listener。生产 MUST 使用不同非 root 服务 UID 和专用组。
+
+该文件 MUST 使用中心服务所有的 canonical regular 0400/0600 受保护文件，最多 64KiB；以下为字段顺序，实际 ID、公钥与路径 MUST 来自可信已初始化运行 metadata，不得使用 Agent 请求：
+
+```json
+{
+  "version": 1,
+  "targets": [{
+    "binding": "与初次初始化相同的完整 GatewayAuthorizationBinding 对象",
+    "source_public": "已注册来源 Ed25519 公钥的 base64",
+    "socket_path": "/run/restfleet-gateway/ipc/authority.sock",
+    "gateway_uid": 1002,
+    "shared_group": 1003
+  }]
+}
+```
+
+`binding` 的实际值 MUST 为对象，以上字符串仅示意；嵌套字段顺序沿用初次初始化。targets MUST 为 1..32 个不同 admission，peer UID/组 MUST 与中心 replay 配置一致；重复/未知/遗漏字段、非规范编码 MUST 拒绝。配置只在 Server 启动读取，修改后须重启 Server；MUST NOT 据此启动或恢复 Gateway。同 admission MUST 仅有一个协调者，初始化、其他决定投递及清理 MUST 与 worker 互斥。
+
+worker MUST 每目标串行、每 10s 检查原数据库决定与明确禁用/吊销。普通续期 MUST 在原 grant 实际有效期过半、仍未过期、原 admission 尚有更长期限且上一决定已获匹配回执时，经原 CAS 事务重新核验授权。明确撤回 MAY 覆盖未确认 grant；网络/数据库故障或到期 MUST NOT 转成吊销。所有决定 MUST 仍在来源 fresh challenge/UID/注册 pin 验证后提交。
+
+启动/丢失回执 MUST 优先精确重送最新 committed 决定；`ReplayGatewayAuthorization` MAY 重送 revision 1，但 MUST NOT 首次签发、重新注册或交付材料。重送 MUST 保持原签发/到期，不受新配置窗口改写；过期/失败 owner MUST NOT 续发复活。内存确认版本只是投递优化，PostgreSQL 决定为持久依据。单次 RFGA 尝试仍无内部重试。服务退出 MUST 取消并 join 全部投递；未确认清理 MUST 保留 fence。新增行为未新增测试，Actions 验收仍待完成；可信清理/恢复、Repository READY、真实云端及 AGT-005 继续待完成。
 
 ### 7.20 全局离线拒绝审计（schema 15 / ADR-0027）
 
@@ -439,7 +480,9 @@ REP-056–057 MUST 在 Actions 执行，包含实际命令入口、保护文件/
 
 metadata MUST 位于 Gateway 所有 canonical 0700 私有目录内，以单链接 0400/0600 regular file 保存，最多 64 KiB；特殊权限、symlink/hardlink/pending、未知/重复/遗漏/null/大小写替代及非规范编码 MUST 拒绝。MAY 有排版空白；其他编码 MUST 与 Go encoding/json 规范重编码相同。字段及顺序 MUST 为：
 
-`version`、`environment`、`central_pin_file`、`audit_origin`、`audit_source_file`、`recipient_public`、`audit_queue_directory`、`max_bytes`、`max_records`、`runtime_directory`、`rclone_binary`、`certificate_file`、`tls_key_file`、`listen_address`、`max_sessions`、`server_uid`、`shared_group`、`replay_socket`、`startup_wait_seconds`、`repositories`。
+`version`、`environment`、`central_pin_file`、`audit_origin`、`audit_source_file`、`recipient_public`、`audit_queue_directory`、`max_bytes`、`max_records`、`runtime_directory`、`rclone_binary`、`certificate_file`、`tls_key_file`、`client_ca_file`、`listen_address`、`max_sessions`、`server_uid`、`shared_group`、`replay_socket`、`startup_wait_seconds`、`repositories`。
+
+ADR-0033 增加 `client_ca_file`：生产 daemon MUST 提供 Gateway 所有、受保护的 Agent CA PEM 文件，最多 64 KiB。旧内部 adapter/conformance 夹具 MAY 省略该新增字段，生产 command MUST 拒绝缺失，MUST NOT 回退 Basic。该 CA 只验证客户端，Gateway 的 server certificate/trust 仍沿用原 TLS 要求。
 
 version MUST 为 1；environment MUST 为 production/development/test；audit_origin 为 §7.20 的完整来源，recipient_public 为标准 base64 的非全零 32-byte 中心 X25519 公钥，独立 Ed25519 pin 继续从 central_pin_file 加载。max_bytes/max_records 沿用 §7.13，各 Queue 上限相同；max_sessions 为 1–32，startup_wait_seconds 为 1–300，每次 Accept 后交换仍最多 5s。私有/共享 server_uid/shared_group 规则沿用 §7.16，保留值拒绝。listen_address MUST 为 literal IP 与规范十进制端口，不能使用 DNS；生产端口 MUST 非零。
 
@@ -453,7 +496,53 @@ repositories MUST 为 1–32 项，字段依序为 `binding`、`source_file`、`
 
 关闭 MUST 取消/关闭入口，等待材料/授权回调、会话、TLS 请求、后端进程组和回写 worker；最终审计 join 后清零来源/云端明文，冻结/关闭两类 Queue，最后关闭 runtime。重复/并发 Close MUST join 同一退出，MUST NOT 删除证据、封存来源、释放占用或自动重启。WithBackup 仅供可信进程内调用方使用，不能把云端材料/config/callback 暴露给 Agent 请求。
 
-REP-058–060 MUST 仅在 Actions 执行。跨 UID job 从 protected production config 经 Service 完成材料、RFGA、TLS、两类回写及吊销清理，第三 UID 仍无 effect；固定引擎验收增加 Service 路径并保留原两种路径。Agent 长期 gateway password 与每次 session password 的生产交付协议未连接，本批不提供可部署 daemon command。自动授权分发、Agent 会话能力、可信恢复/readiness、rotation/READY、真实三后端与 AGT-005 继续待完成，12h 取舍不得推定或改写。
+REP-058–060 MUST 仅在 Actions 执行。跨 UID job 从 protected production config 经 Service 完成材料、RFGA、TLS、两类回写及吊销清理，第三 UID 仍无 effect；固定引擎验收增加 Service 路径并保留原两种路径。Agent 长期 gateway password 与每次 session password 的生产交付协议未连接，本批不提供可部署 daemon command。自动授权分发、Agent 会话能力、可信恢复/readiness、rotation/READY、真实三后端与 AGT-005 继续待完成，离线时长与 Gateway 不可达暂停的合同已按 ADR-0032 明确。
+
+### 7.24 复用 Agent 身份的 daemon 与会话入口（ADR-0033）
+
+本节替代 §7 及历史批次中 htpasswd、生产会话密码分发、daemon 未接线的描述，保留原中央授权、隔离、材料/回写与清理边界。生产入口为：
+
+```text
+restfleet-gateway run --config-file /var/lib/restfleet-gateway/metadata/service.json
+```
+
+command MUST 读取 §7.23 的受保护 metadata，强制加载 Agent CA 并启用 mTLS；无证书、错误 CA 或身份不匹配 MUST 拒绝。Server TLS 与 Agent TLS 验证 MUST 保持启用。SIGINT/SIGTERM MUST 取消并 join 原 Service；服务管理器 MUST NOT 用旧配置自动重启，退出后的来源封存/占用释放仍须可信中心协调。
+
+Gateway MAY 直接暴露 TLS 或使用四层 TLS passthrough；边缘 MUST NOT 终止 Agent mTLS 后以 header 转发身份。备份仍直接进入 Gateway，控制 API/gRPC 不转发数据。
+
+`GET /gateway/v1/readiness` MUST 使用已配置 owner 的 Agent mTLS 身份，仅在当前 Service、全部 owner 和可靠全局审计有效时返回 200。readiness MUST NOT 代表 Repository READY、中心确认最新授权、来源封存或可释放 fence；无身份不允许经代理头探测。
+
+会话入口及字段见 `api/openapi/gateway-v1.yaml`。Gateway MUST 只选择中心预初始化且绑定证书身份的 owner，不允许传入 config、remote、密码或 callback。请求 operation_id 仅用于运行内去重；Gateway MUST 生成新的 UUIDv7 session_id，在独立路径发布已探测成功的只读/创建数据入口。重复请求不启动新后端、不延寿；每次运行最多 4096 条记录，上限后拒绝新会话。DELETE 只结束并清理该会话，不能删除仓库、执行 unlock、写入备份成功或释放中心占用。
+
+Agent 客户端 MUST 复用本机 TLSIdentity 和已保存 Repository credential，验证 Gateway CA/域名、拒绝跳转，按 session_id 核验返回路径；不访问 Control API、不重配对或清除身份。Restic 客户端 MUST 经受保护的 CA/client certificate 文件使用这个 HTTPS endpoint，私钥/仓库密码不能出现在 argv。单次期限取任务 deadline、开始后 24h、原 admission 到期的较早值；guard/watchdog 继续控制默认 72h 离线授权。
+
+本批按用户指示暂不写新测试。新入口的 Actions 验证、持续授权分发、可信停止恢复和 Repository READY 仍待完成；历史夹具通过不等于生产 mTLS 链路跑通。真实三后端继续按 REP-016 在部署 Actions 验收。
+
+### 7.25 生产 Gateway 停止与最终回写（ADR-0034）
+
+生产 command MUST 调用 `RunService`，在 SIGINT/SIGTERM 或运行失败后先关闭全部入口、取消/join 请求、会话、子进程组、RFGA、刷新/审计 callback 和原回放循环。MUST 在 rclone 已退出后，以最多 3s 的独立 context 同步最后 token-only 配置；授权/校验失败或写入不确定 MUST 阻止完成证明。MUST 核验 runtime 仅剩自身 `.lock`、无组清理失败和未确认刷新，并成功关闭 runtime。原 owner 云端明文 MUST 已清零，全部 producer MUST 冻结。
+
+随后 `Queue.Finish` MUST 使用原来源签名，加密追加唯一固定无身份 `runtime_cleanup/joined` 事件，沿用 `audit`（仓库）或 `global_audit`（全局）kind 和原 header/序列/哈希链；不新增字段、签名域、schema 或 Agent 能力。仓库记录 MUST 引用最后普通授权 revision。普通 Append/记录 callback MUST 拒绝终结事件，恢复 Queue 只有公钥 MUST 无法追加。已失败、关闭、未认领或未冻结队列 MUST 拒绝；容量不足或不确定写入 MUST 保留占用。
+
+生产 daemon MUST 在证明落盘后用独立最多 1min context，经既有 RFGR 先排空全局、再排空仓库队列，按原回执可靠保存后回收记录。服务管理器 MUST 允许该有界停止过程（systemd `TimeoutStopSec=120s`）；MUST 继续 `Restart=no`，不能把旧 metadata 当重启配方。嵌入式 `StartService` 保持由可信调用方显式收尾，不自动产生终结记录。
+
+中心 MUST 核验注册来源、签名/解密、完整 binding、连续 sequence/previous hash、原 grant revision 与时间后，才接受终结事件。仓库事务 MUST 同时写入最后接收历史/审计、撤回该 runtime 剩余授权、封存来源、释放原占用并写 outbox；并发续期/维护 MUST 继续由原 credential/admission/source 锁串行。精确重复 MUST 幂等，封存后的新记录 MUST 拒绝。全局记录只 MAY 封存自己的来源，不能授予任何仓库访问或释放权。runtime 完成 MUST NOT 吊销 Agent 配对或删除其已接受配置。
+
+本节扩展 §7.13/7.20 的固定审计事件 allowlist，并替代 §7.21 关于 replay 永不触发封存/释放的绝对表述：replay 只有重送既有已签名终结记录时，中心才执行上述事务；tail、普通记录、回执或排空本身仍不构成证明。中心不可达/确认丢失时 MUST 保存原 wire；恢复后 MAY 用原 replay 命令精确重送，不得重签、补造或恢复失败 owner。升级 MUST 先中心后 Gateway，旧中心 MUST 拒绝未知事件并保持未确认状态。
+
+硬崩溃、SIGKILL、队列损坏/已满、最终刷新或清理不确定且没有终结记录时 MUST 保留占用，后续需可信中心受控恢复。完整新 runtime 自动预置、期限前换运行和真实产品备份仍待接通；READY 读模型见 §7.26。本次未新增测试用例，新终结流程的专门验收保持待验证；既有 Actions 通过不能替代它。
+
+### 7.26 Gateway 真实后端观察与仓库可用性（ADR-0035）
+
+生产 `RunService` MUST 在全部单次初始化与公网绑定后启用一个串行观察 worker；启动立即开始一轮，此后 SHOULD 每 5min 开始下一轮，轮次时间包含探测耗时。每仓库最多 30s，沿原私有 append-only 后端执行 `HEAD config`，必须 200 且 Content-Length 为 1..65536，HEAD 最多 15s。TLS 证书无效 MUST 停止整次运行。空闲探测与正常会话共享原 owner/runtime/材料 watcher、容量及清理，不能初始化/写入对象；已有会话复用同一 backend，并加入 session 生命周期的取消/join。空闲探测期间新会话 MAY 返回 409，不得消耗 operation 去重记录；仅探测容量竞争 MUST 跳过，不能永久失败原 owner。
+
+成功 MUST 通过原注册仓库来源 Queue 追加 scoped `backend_ready/verified`，仍为原 `audit` kind/签名域。真实会话原有 HEAD 成功后同样记录观察。失败不能生成健康证据，且不改变原 owner 失败、授权/时钟/Queue watchdog 和最后刷新/清理要求。生产停止 MUST join 观察 worker 后才可产生终结清理记录；嵌入式 `StartService` 保持原显式调用契约。
+
+探测忙碌 MUST 返回 `Retry-After: 1`。Agent 只对该明确响应最多在 30s 内以相同 operation ID、Repository 和原 deadline 重试；其他冲突或响应不确定沿用原失败/清理路径。取消及任务 deadline 继续限制整个会话，不新增任务或延长期限。
+
+中心 MUST 按原 RFGR 来源/签名/解密/序列/时间接收，scoped event 的 Host/Repository/Gateway 必须与原 header 一致；全局来源不得产生该观察。仓库 list/detail 只 MAY 从这些已提交记录构建 READY 读模型：当前初始化/ACK、身份/凭据/配置指纹、完整交付/秘密引用匹配，原占用及该 runtime 的最新普通授权未到期/撤回，来源未封存/占用未释放；用于观察的原 grant 在探测时有效，且观察不在未来、距今小于 10min。曾有观察但条件不满足 MUST 显示 DEGRADED。LOCKED/DISABLED/ERROR 保持优先，无观察不得因回执或 ACK 显示 READY。
+
+该读模型 MUST 不更新配置 revision/updated_at、不产生授权/维护/清理/备份结果。控制面不可用时本地备份仍按原窗口执行；恢复后的过期历史回放不能重新 READY，实际新探测才能恢复可用显示。必须按预期观察/备份/刷新量配置原有 Queue 上限，满/坏/不确定队列继续停止使用并保留 fence，不为健康记录丢弃其他证据。升级先中心后 Gateway；旧 reader 拒绝未知事件。按用户要求未新增/改写测试，新生产观察和状态投影仍待专门验收。
 
 ## 8. Native Agent 安装
 

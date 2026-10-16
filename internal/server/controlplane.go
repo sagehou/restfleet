@@ -100,6 +100,7 @@ type Settings struct {
 	RunCredentialTest           CredentialTestRunner
 	InitializeRepository        RepositoryInitializer
 	GatewayPublicURL            string
+	GatewayOfflineWindow        time.Duration
 	GatewaySigningKey           ed25519.PrivateKey
 	GatewayPendingDecryptionKey []byte
 }
@@ -141,11 +142,18 @@ type ControlPlane struct {
 	runCredentialTest    CredentialTestRunner
 	initializeRepository RepositoryInitializer
 	gatewayPublicURL     string
+	gatewayOfflineWindow time.Duration
 	gatewaySigningKey    ed25519.PrivateKey
 	gatewayPendingKey    []byte
 }
 
 func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
+	if settings.GatewayOfflineWindow == 0 {
+		settings.GatewayOfflineWindow = domain.DefaultGatewayOfflineWindow
+	}
+	if settings.GatewayOfflineWindow < time.Minute || settings.GatewayOfflineWindow > domain.MaxGatewayOfflineWindow || settings.GatewayOfflineWindow%time.Second != 0 {
+		return nil, domain.ErrGatewayDecision
+	}
 	if len(settings.GatewaySigningKey) != 0 && (!validGatewaySigningKey(settings.GatewaySigningKey) || settings.GatewayPublicURL == "") {
 		return nil, domain.ErrGatewayDecision
 	}
@@ -197,6 +205,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		runCredentialTest:    settings.RunCredentialTest,
 		initializeRepository: settings.InitializeRepository,
 		gatewayPublicURL:     settings.GatewayPublicURL,
+		gatewayOfflineWindow: settings.GatewayOfflineWindow,
 		gatewayPendingKey:    append([]byte(nil), settings.GatewayPendingDecryptionKey...),
 		gatewaySigningKey:    append(ed25519.PrivateKey(nil), settings.GatewaySigningKey...),
 	}, nil

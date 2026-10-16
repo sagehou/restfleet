@@ -515,7 +515,10 @@ export interface components {
             host_id: string;
             /** Format: uuid */
             storage_credential_id: string;
-            /** @enum {string} */
+            /**
+             * @description Availability view. READY requires initialization, current Agent ACK, live matching authorization and a verified Gateway backend observation less than ten minutes old; revision tracks configuration only.
+             * @enum {string}
+             */
             status: "PROVISIONING" | "READY" | "DEGRADED" | "LOCKED" | "DISABLED" | "ERROR";
             /** @description Absent until verified by the central initialization worker. */
             format_version?: number;

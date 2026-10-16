@@ -15,7 +15,7 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
-const ExpectedSchemaVersion = 15
+const ExpectedSchemaVersion = 16
 
 // Store is the PostgreSQL adapter for the M1 control plane.
 type Store struct {
@@ -49,12 +49,24 @@ func (s *Store) Ping(ctx context.Context) error {
 
 func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 	var version int
+	var applied int64
 	err := s.pool.QueryRow(ctx, `
-		select coalesce(max(version_id) filter (where is_applied), 0)
-		from goose_db_version
-	`).Scan(&version)
+		with latest as (
+			select distinct on (version_id) version_id, is_applied
+			from goose_db_version order by version_id, id desc
+		)
+		select coalesce(max(version_id) filter (where is_applied), 0),
+		       count(*) filter (where is_applied and version_id > 0)
+		from latest
+	`).Scan(&version, &applied)
 	if err != nil {
 		return 0, fmt.Errorf("read schema version: %w", err)
+	}
+	// Repository migrations are consecutively numbered. A newer migration
+	// cannot hide a missing/unapplied prerequisite; use each version's latest
+	// Goose record so a legitimate down/up history is not mistaken for a gap.
+	if applied != int64(version) {
+		return 0, errors.New("database migration history is incomplete")
 	}
 	return version, nil
 }

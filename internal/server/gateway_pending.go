@@ -86,6 +86,10 @@ func (c *ControlPlane) ReplayGatewayPending(ctx context.Context, runtime uuid.UU
 		CreatedAt: time.Unix(h.CreatedAt, 0).UTC(), Kind: r.Kind, ExpectedSecretRevision: r.ExpectedSecretRevision}
 	var validate func(domain.StorageCredential, domain.SecretEnvelope) (domain.SecretEnvelope, error)
 	if r.Kind == "audit" {
+		if b := r.Event.Binding; b != (domain.GatewayBinding{}) &&
+			(b.HostID != h.Binding.HostID || b.RepositoryID != h.Binding.RepositoryID || b.GatewayID != h.Binding.GatewayID) {
+			return nil, domain.ErrGatewayPending
+		}
 		audit, valid := domain.GatewayAudit(*r.Event)
 		if !valid {
 			return nil, domain.ErrGatewayPending

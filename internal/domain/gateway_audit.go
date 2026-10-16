@@ -35,6 +35,16 @@ func GatewayAudit(event GatewayEvent) (AuditEvent, bool) {
 	}
 	action, result := "", AuditSuccess
 	switch event.Action {
+	case "backend_ready":
+		if !scoped || event.Authenticated || event.Reason != "verified" {
+			return invalid, false
+		}
+		action = "GATEWAY_BACKEND_READY"
+	case "runtime_cleanup":
+		if scoped || event.Authenticated || event.Reason != "joined" {
+			return invalid, false
+		}
+		action = "GATEWAY_RUNTIME_CLEANUP_COMPLETE"
 	case "channel_denied":
 		if scoped || event.Authenticated {
 			return invalid, false

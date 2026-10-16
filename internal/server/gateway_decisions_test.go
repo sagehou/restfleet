@@ -99,4 +99,35 @@ func TestCentralGatewaySigningRequiresCommittedMatchingDecision(t *testing.T) {
 			t.Fatal("invalid signing key accepted")
 		}
 	}
+	settings.GatewaySigningKey = key
+	for _, configured := range []time.Duration{0, 96 * time.Hour} {
+		settings.GatewayOfflineWindow = configured
+		policy, err := NewControlPlane(store, settings)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := configured
+		if want == 0 {
+			want = 72 * time.Hour
+		}
+		store.decision = good
+		store.decision.RequestedLifetime = want
+		store.decision.ExpiresAt = now.Add(want)
+		store.decision.Admission.ExpiresAt = now.Add(want)
+		request := r
+		request.Lifetime = 0
+		wire, err := policy.DecideGatewayAuthorization(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		statement, err := security.VerifyGatewayStatement(wire, public)
+		if err != nil || statement.ExpiresAt-statement.IssuedAt != int64(want/time.Second) {
+			t.Fatal("configured offline window not applied")
+		}
+		request.Lifetime = want + time.Second
+		before := store.calls
+		if wire, err := policy.DecideGatewayAuthorization(context.Background(), request); err != domain.ErrGatewayDecision || wire != nil || store.calls != before {
+			t.Fatal("request exceeded configured offline window")
+		}
+	}
 }

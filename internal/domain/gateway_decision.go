@@ -10,6 +10,9 @@ import (
 
 var ErrGatewayDecision = errors.New("gateway authorization decision unavailable or inconsistent")
 
+const DefaultGatewayOfflineWindow = 72 * time.Hour
+const MaxGatewayOfflineWindow = 30 * 24 * time.Hour
+
 // GatewayDecisionRequest is central-only. AdmissionID/Owner identify an already
 // reserved fence; RuntimeID comes from the trusted process coordinator, not an
 // Agent. ID is an idempotency key; ExpectedRevision is zero only for first issue.
@@ -33,7 +36,7 @@ func (r GatewayDecisionRequest) Validate() error {
 		if r.Lifetime != 0 {
 			return ErrGatewayDecision
 		}
-	} else if r.Lifetime < time.Second || r.Lifetime > 12*time.Hour || r.Lifetime%time.Second != 0 {
+	} else if r.Lifetime < time.Second || r.Lifetime > MaxGatewayOfflineWindow || r.Lifetime%time.Second != 0 {
 		return ErrGatewayDecision
 	}
 	return nil
