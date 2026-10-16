@@ -171,6 +171,11 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 		s.rejectSession(w, r, http.StatusBadRequest)
 		return
 	}
+	if owner.probing {
+		s.mu.Unlock()
+		http.Error(w, "gateway repository busy", http.StatusConflict)
+		return
+	}
 	if s.stopping || s.ctx.Err() != nil || len(s.sessions) >= 4096 {
 		s.mu.Unlock()
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)

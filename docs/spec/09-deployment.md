@@ -530,7 +530,17 @@ Agent 客户端 MUST 复用本机 TLSIdentity 和已保存 Repository credential
 
 本节扩展 §7.13/7.20 的固定审计事件 allowlist，并替代 §7.21 关于 replay 永不触发封存/释放的绝对表述：replay 只有重送既有已签名终结记录时，中心才执行上述事务；tail、普通记录、回执或排空本身仍不构成证明。中心不可达/确认丢失时 MUST 保存原 wire；恢复后 MAY 用原 replay 命令精确重送，不得重签、补造或恢复失败 owner。升级 MUST 先中心后 Gateway，旧中心 MUST 拒绝未知事件并保持未确认状态。
 
-硬崩溃、SIGKILL、队列损坏/已满、最终刷新或清理不确定且没有终结记录时 MUST 保留占用，后续需可信中心受控恢复。新 runtime 预置/初始化、期限前换运行、Repository READY 和真实产品备份仍待接通。本次未新增测试用例，新终结流程的专门验收保持待验证；既有 Actions 通过不能替代它。
+硬崩溃、SIGKILL、队列损坏/已满、最终刷新或清理不确定且没有终结记录时 MUST 保留占用，后续需可信中心受控恢复。完整新 runtime 自动预置、期限前换运行和真实产品备份仍待接通；READY 读模型见 §7.26。本次未新增测试用例，新终结流程的专门验收保持待验证；既有 Actions 通过不能替代它。
+
+### 7.26 Gateway 真实后端观察与仓库可用性（ADR-0035）
+
+生产 `RunService` MUST 在全部单次初始化与公网绑定后启用一个串行观察 worker；启动立即开始一轮，此后 SHOULD 每 5min 开始下一轮，轮次时间包含探测耗时。每仓库最多 30s，沿原私有 append-only 后端执行 `HEAD config`，必须 200 且 Content-Length 为 1..65536，HEAD 最多 15s。TLS 证书无效 MUST 停止整次运行。空闲探测与正常会话共享原 owner/runtime/材料 watcher、容量及清理，不能初始化/写入对象；已有会话复用同一 backend，并加入 session 生命周期的取消/join。空闲探测期间新会话 MAY 返回 409，不得消耗 operation 去重记录；仅探测容量竞争 MUST 跳过，不能永久失败原 owner。
+
+成功 MUST 通过原注册仓库来源 Queue 追加 scoped `backend_ready/verified`，仍为原 `audit` kind/签名域。真实会话原有 HEAD 成功后同样记录观察。失败不能生成健康证据，且不改变原 owner 失败、授权/时钟/Queue watchdog 和最后刷新/清理要求。生产停止 MUST join 观察 worker 后才可产生终结清理记录；嵌入式 `StartService` 保持原显式调用契约。
+
+中心 MUST 按原 RFGR 来源/签名/解密/序列/时间接收，scoped event 的 Host/Repository/Gateway 必须与原 header 一致；全局来源不得产生该观察。仓库 list/detail 只 MAY 从这些已提交记录构建 READY 读模型：当前初始化/ACK、身份/凭据/配置指纹、完整交付/秘密引用匹配，原占用及该 runtime 的最新普通授权未到期/撤回，来源未封存/占用未释放；用于观察的原 grant 在探测时有效，且观察不在未来、距今小于 10min。曾有观察但条件不满足 MUST 显示 DEGRADED。LOCKED/DISABLED/ERROR 保持优先，无观察不得因回执或 ACK 显示 READY。
+
+该读模型 MUST 不更新配置 revision/updated_at、不产生授权/维护/清理/备份结果。控制面不可用时本地备份仍按原窗口执行；恢复后的过期历史回放不能重新 READY，实际新探测才能恢复可用显示。必须按预期观察/备份/刷新量配置原有 Queue 上限，满/坏/不确定队列继续停止使用并保留 fence，不为健康记录丢弃其他证据。升级先中心后 Gateway；旧 reader 拒绝未知事件。按用户要求未新增/改写测试，新生产观察和状态投影仍待专门验收。
 
 ## 8. Native Agent 安装
 

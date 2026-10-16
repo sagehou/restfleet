@@ -212,6 +212,8 @@ ADR-0031 / 09 §7.23 的内部 `Service` MUST 从受保护 metadata、独立 pin
 
 ADR-0033 已接入生产 daemon/mTLS 会话入口，替代 §8.7 末尾对应的待实现说明；持续授权分发已接入可选中心 worker（09 §7.19）；可信停止恢复、Repository READY 及新增行为的 Actions 验收仍待完成。
 
+ADR-0035 将生产后端只读探测沿原仓库签名回写，并将 Repository READY 定义为近期观察与当前授权/配置的中心读模型。中心 MUST 比对 scoped event 与 header 的 Host/Repository/Gateway，且只使用原 grant 有效期内的探测；全局审计、Agent ACK、材料/RFGA 回执及过期历史不能替代探测。READY 不授予数据访问、维护或清理权限，不改变离线授权窗口；具体期限与降级规则见 09 §7.26。
+
 - 首个管理员只可通过一次性 bootstrap secret 创建；使用后删除/作废；
 - 密码使用 Argon2id，参数存储并支持升级；
 - Session 使用随机 opaque token，数据库存 hash；

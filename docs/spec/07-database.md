@@ -4,6 +4,8 @@ ADR-0033 兼容说明：schema 16 的 Gateway secret 引用继续保留，不新
 
 readiness MUST 检查当前连续编号的全部迁移已应用，不能只取最大已应用版本；后续版本 MUST NOT 掩盖缺失/未应用的前置迁移。Goose 同一版本有多条历史记录时，MUST 以最新记录判断当前应用状态。
 
+ADR-0035 不增加 schema。仓库可用性 MUST 从 `gateway_pending_records` 关联原签名来源、`audit_events` 固定 `GATEWAY_BACKEND_READY`、原 grant 与最新决定，并核验当前 delivery/Host/Agent/仓库/凭据绑定。普通审计写入、来源注册、回执或 pending tail 不能单独作为后端观察。查询只形成读模型，不更新仓库配置 revision 或释放占用；所有写入仍走既有有序回放/审计事务。
+
 ## 1. 选择 PostgreSQL
 
 V1 使用 PostgreSQL，而非生产 SQLite，原因：

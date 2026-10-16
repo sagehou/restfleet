@@ -225,6 +225,8 @@ ADR-0033：`gateway_username` 是不可变路径身份，生产认证复用绑�
 
 未归档 Repository MUST 独占 Host；DISABLED/ERROR 不释放归属，避免通过状态变化隐式创建第二个仓库。初始化尚未验证时 format_version MUST 为空。
 
+ADR-0035：API 的 `status` MUST 叠加中心已验证的 Gateway 后端观察，LOCKED/DISABLED/ERROR 保持优先；READY 必须同时满足初始化、当前 Agent ACK、完整绑定/配置/身份与有效未释放占用/未封存来源/最新授权，以及小于 10min 的真实探测。曾有探测但条件失效时显示 DEGRADED，从未探测不能因 ACK 显示 READY。该可用性读模型不修改配置 `revision/updated_at`，不产生授权或备份结果，审计/回放记录保持权威。
+
 ### RepositoryCredentialRevision
 
 记录可向 Agent 下发的凭据版本引用，而非明文。版本存在或 valid_from 生效时间 MUST NOT 被解释为已下发/已接受；接受状态以 Agent 配置 ACK 为准。

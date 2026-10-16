@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -14,15 +15,56 @@ import (
 	"github.com/sagehou/restfleet/internal/security"
 )
 
+// RepositoryGatewayReader reads only authenticated, committed observations and
+// current authority. It does not probe a backend or decrypt any secret.
+type RepositoryGatewayReader interface {
+	RepositoryGatewayObservations(context.Context, []uuid.UUID, string) (map[uuid.UUID]domain.RepositoryGatewayObservation, error)
+}
+
 func (c *ControlPlane) Repositories(ctx context.Context, after uuid.UUID, limit int) ([]domain.Repository, error) {
 	if limit < 1 || limit > 201 {
 		return nil, &ValidationError{Field: "limit", Code: "INVALID_LIMIT"}
 	}
-	return c.store.Repositories(ctx, after, limit)
+	items, err := c.store.Repositories(ctx, after, limit)
+	if err != nil {
+		return nil, err
+	}
+	return c.repositoryAvailability(ctx, items)
 }
 
 func (c *ControlPlane) Repository(ctx context.Context, id uuid.UUID) (domain.Repository, error) {
-	return c.store.Repository(ctx, id)
+	r, err := c.store.Repository(ctx, id)
+	if err != nil {
+		return r, err
+	}
+	items, err := c.repositoryAvailability(ctx, []domain.Repository{r})
+	if err != nil {
+		return domain.Repository{}, err
+	}
+	return items[0], nil
+}
+
+func (c *ControlPlane) repositoryAvailability(ctx context.Context, items []domain.Repository) ([]domain.Repository, error) {
+	if len(items) == 0 {
+		return items, nil
+	}
+	var observations map[uuid.UUID]domain.RepositoryGatewayObservation
+	if reader, ok := c.store.(RepositoryGatewayReader); ok {
+		ids := make([]uuid.UUID, len(items))
+		for i, item := range items {
+			ids[i] = item.ID
+		}
+		var err error
+		observations, err = reader.RepositoryGatewayObservations(ctx, ids, c.credentialConfigurationHash())
+		if err != nil {
+			return nil, err
+		}
+	}
+	now := c.clock().UTC().Truncate(time.Second)
+	for i, item := range items {
+		items[i] = item.WithGatewayObservation(observations[item.ID], now)
+	}
+	return items, nil
 }
 
 func (c *ControlPlane) RepositoryCount(ctx context.Context) (int64, error) {

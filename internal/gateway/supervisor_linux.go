@@ -66,6 +66,7 @@ type Supervisor struct {
 	audit         func(context.Context, Event) error
 	auditReady    func() bool
 	identityAuth  bool // Set before serving or starting work; no password fallback.
+	observeReady  bool // Production only; embedded callers retain their audit contract.
 	active        map[uuid.UUID]*activeBackup
 	closed        bool
 	cleanupFailed bool
@@ -251,14 +252,11 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 		s.mu.Unlock()
 		session.Close()
 	}()
-	probeCtx, stopProbe := context.WithTimeout(backendCtx, 15*time.Second)
-	probe, err := session.request(probeCtx, http.MethodHead, "config", nil, nil)
-	if err == nil {
-		_ = probe.Body.Close()
+	if probeBackend(backendCtx, session) != nil {
+		return ErrBackendUnavailable
 	}
-	stopProbe()
-	if err != nil || probe.StatusCode != http.StatusOK || probe.ContentLength < 1 || probe.ContentLength > maxLockBytes {
-		return ErrBackendUnavailable // Never initialize a missing repo or use a TCP fallback.
+	if s.observeReady && !recordBackup(backendCtx, entry.audit, entry.binding, "backend_ready", "verified") {
+		return ErrGatewayAudit
 	}
 	s.mu.Lock()
 	if s.closed || backendCtx.Err() != nil || (entry.guard != nil && !entry.guard()) {
@@ -276,6 +274,52 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 	}
 	if err != nil {
 		return ErrBackupFailed
+	}
+	return nil
+}
+
+func probeBackend(ctx context.Context, session *BackupSession) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	response, err := session.request(ctx, http.MethodHead, "config", nil, nil)
+	if err != nil {
+		return ErrBackendUnavailable
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK || response.ContentLength < 1 || response.ContentLength > maxLockBytes ||
+		ctx.Err() != nil || (session.guard != nil && !session.guard()) {
+		return ErrBackendUnavailable // Never initialize a missing repository.
+	}
+	return nil
+}
+
+// An active backup can be probed without another process or session. Join the
+// existing session lifecycle so cleanup cannot discard a live probe/callback.
+func (s *Supervisor) observeActiveBackend(ctx context.Context, repository uuid.UUID) error {
+	s.mu.Lock()
+	entry := s.active[repository]
+	var session *BackupSession
+	if entry != nil {
+		session = entry.session
+	}
+	s.mu.Unlock()
+	if session == nil {
+		return ErrSupervisorBusy
+	}
+	session.lifecycle.RLock()
+	defer session.lifecycle.RUnlock()
+	work, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(session.ctx, cancel)
+	defer stop()
+	if session.ctx.Err() != nil {
+		return ErrSupervisorBusy
+	}
+	if probeBackend(work, session) != nil {
+		return ErrBackendUnavailable
+	}
+	if !recordBackup(work, entry.audit, entry.binding, "backend_ready", "verified") {
+		return ErrGatewayAudit
 	}
 	return nil
 }

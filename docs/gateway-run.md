@@ -48,6 +48,8 @@ restfleet-gateway run --config-file /var/lib/restfleet-gateway/metadata/service.
 
 不使用 follow 时，可以保留原一次性 `gateway-start`，初始化完成后再让普通 Server 以原 plan 启用 authority-file worker。两种方式 MUST 只选一个。多仓库 Gateway 仍逐一初始化，全部完成后使用既有多目标 manifest，不能对同一 admission 启动重复投递者。
 
+生产 Gateway 初始化成功后立即开始串行只读后端探测，后续约每 5min 一轮；正常备份也复用原 HEAD 产生观察。中心收到原签名加密回写后，才结合当前初始化、Agent ACK、身份/配置/授权判断 READY；观察超过 10min 或当前条件失效则降级。空闲探测短暂占用仓库时，新备份请求可重试 409，不会消耗该 operation。该状态不证明备份完成，也不改变离线授权期限。必须先升级中心再升级 Gateway，旧中心不接受新观察事件；新流程仍待专门运行验收。
+
 ## 停止与失败
 
 先给 Gateway 正常停止信号，允许其 join、最后刷新、清理和最终回写完成；只有中心验证终结记录后，原占用才释放。随后停止 follow。systemd 继续使用 `Restart=no` 和 `TimeoutStopSec=120s`。

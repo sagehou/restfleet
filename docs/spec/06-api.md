@@ -233,7 +233,9 @@ initialize 已实现，见 8.2；test/index/disable/PATCH/stats 仍未交付；A
 
 POST /api/v1/repositories/{repository_id}/initialize MUST 要求 ADMIN、CSRF 与 Idempotency-Key，拒绝 body/query/重复 key header，返回 202 Operation 与 Location。同 key 返回原任务；新 key 在任务未终态或有有效 repository lease 时返回 409 REPOSITORY_BUSY。共享存储凭据的 test/init 串行；未终态测试冲突返回 CREDENTIAL_TEST_BUSY。schema 11 中未释放的备份占用（即使已到期）阻止 initialize、credential test 和 replace-secret，返回既有 409 REPOSITORY_BUSY；disable 仍可撤销凭据，但不代表后端已清理。Host 不可用、凭据禁用分别返回 HOST_UNAVAILABLE / CREDENTIAL_DISABLED；非 PROVISIONING 或已初始化返回 REPOSITORY_UNAVAILABLE。缺少初始化 runtime/master key 返回 503。
 
-GET Operation 新增 REPOSITORY_INITIALIZE 类型与 repository_id；Repository metadata 新增 initialized_at 与 last_initialize_operation_id。成功 MUST 保持 PROVISIONING，只设置验证后的 format_version / initialized_at，MUST NOT 返回原生 Restic ID、密码、路径或秘密引用。初始化失败显示固定 error_code，重试必须新 Operation；不得重开终态、自动删除、unlock 或更换密码。Agent 仓库凭据 ACK 已接线，但 READY 仍未交付。租约/恢复详见 [ADR-0013](../adr/0013-repository-initialization-jobs.md)。
+GET Operation 新增 REPOSITORY_INITIALIZE 类型与 repository_id；Repository metadata 新增 initialized_at 与 last_initialize_operation_id。初始化任务成功 MUST 只设置验证后的 format_version / initialized_at，不能直接写 READY，MUST NOT 返回原生 Restic ID、密码、路径或秘密引用。初始化失败显示固定 error_code，重试必须新 Operation；不得重开终态、自动删除、unlock 或更换密码。Agent ACK 与 Gateway 的近期真实后端观察共同形成下述可用性读模型。租约/恢复详见 [ADR-0013](../adr/0013-repository-initialization-jobs.md)。
+
+ADR-0035：仓库 list/detail MUST 批量复用中心已认证观察与当前身份/交付/配置/授权 metadata 投影 `status`，不增加公开字段或秘密引用。READY 要求小于 10min 的后端探测和全部当前条件；曾有观察但过期或条件失效时显示 DEGRADED，LOCKED/DISABLED/ERROR 保持优先。初始化、ACK、材料或授权回执单独不能 READY。`revision/updated_at` 与 ETag 仍表示配置版本，近期可用性变化不增加 revision，响应继续 `Cache-Control: no-store`。查询失败 MUST 返回错误，不能伪装为空列表、未探测或 READY。
 
 
 ### 8.3 M4 Agent 凭据确认只读字段
