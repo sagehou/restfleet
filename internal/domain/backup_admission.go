@@ -12,7 +12,9 @@ var ErrBackupAdmission = errors.New("backup admission is unavailable or does not
 
 // BackupAdmissionRequest is central-only. ID and Owner are durable UUIDv7
 // identities allocated by the trusted caller, not bearer capabilities. AgentID
-// MUST come from authenticated identity; no caller selects a Host or Repository.
+// MUST come from authenticated identity or protected CENTRAL provisioning
+// metadata, never an unauthenticated/Agent-selected subject. No caller selects
+// a Host or Repository.
 type BackupAdmissionRequest struct {
 	ID, Owner, AgentID, DeliveryID uuid.UUID
 	ConfigurationHash              string

@@ -372,6 +372,21 @@ restfleet-server gateway-start --config-file /var/lib/restfleet/gateway-startup/
 
 命令成功只确认初始化回执，不代表 Agent 会话能力、可用数据面、清理或 READY。REP-045–046 MUST 在 Actions 执行；Gateway 生产配置/daemon、多仓库数据面、续期/吊销、全局离线审计、Agent 能力、可信恢复/readiness、rotation/READY、真实云端与 AGT-005 仍待完成。
 
+#### 中心准备命令（ADR-0025 补充，2026-10-16）
+
+正式部署或 Actions MAY 在显式初始化前执行：
+
+```text
+restfleet-server gateway-prepare --config-file /var/lib/restfleet/gateway-startup/request.json --plan-file /var/lib/restfleet/gateway-startup/plan.json
+restfleet-server gateway-start --config-file /var/lib/restfleet/gateway-startup/plan.json
+```
+
+request MUST 采用上述中心私有目录/文件及精确 JSON 策略，最多 4096 bytes。字段顺序 MUST 为 `version`（1）、`agent_id`、`runtime_id`、`source_public`、`admission_lifetime_seconds`、`lifetime_seconds`、`material_socket`、`authority_socket`、`gateway_uid`、`shared_group`；所有字段显式存在。Agent/runtime 为规范 UUIDv7；独立来源公钥为标准 base64 非全零 32 bytes，两个 socket MUST 不同并沿用既有绝对规范路径/107-byte 与 UID/组规则。admission 时长为 60..2592000 秒；授权时长为 0..2592000 秒，显式值不得超过中心配置，0 沿用配置。原 admission 截止仍限制所有实际授权。输入不接受 Host/Repository/secret 引用，由当前已确认交付和仓库权威记录推导。
+
+准备 MUST 先校验中心配置、DB/schema/审计及已确认交付，自动生成占用/owner/初次决定 ID，先 fsync 并 no-replace 发布 plan，再调用已有预留事务。plan MUST 为中心所有 0600 文件、0700 私有目录，不包含秘密；字段顺序为 `version`（2）、`preparation`（完整原 request）、`startup`（完整版本 1 初始化 metadata），最多 8192 bytes。已有 plan MUST 精确匹配输入和当前绑定；失败/重试 MUST 保留原文件、ID 和期限，不覆盖文件、不忽略 `.pending` 痕迹。原预留事务的已释放/到期/冲突拒绝与审计保持；提交或输出丢失不能通过改用新 plan 自动接管原占用。
+
+一个 plan 只对应一个仓库。`RESTFLEET_GATEWAY_AUTHORITY_FILE` MAY 直接指向成功初始化后的该 plan，worker 从 `authority_socket` 取得目标；原版本 1 多目标 manifest 保持兼容。准备命令不注册全局审计来源、不产生授权或交付材料、不启动 Gateway；部署者 MUST 独立准备 fresh runtime、来源、公钥 pin、本地配置和 Queue，并串行执行准备→全局来源注册→启动 Gateway 等待材料→单次初始化→启动续期 worker。启动失败继续保留占用，不能根据文件存在推断成功或清理。总命令 context 仍最多 10s，普通 Server 启动不得自动执行准备/初始化。受控故障恢复、期限前换运行、READY 和 Agent 实际执行仍需接通。
+
 ### 7.19 授权续期与明确吊销交付（ADR-0026）
 
 `ServeAuthorization` MUST 拥有一个新建受保护 Unix listener，绑定单一完整 admission/runtime，逐连接串行接受 metadata-only 决定。私有默认与显式跨 UID 共享策略 MUST 与 §7.16 相同；服务 MUST 使用精确 SO_PEERCRED UID，独立来源与中心 pin；来源私钥退出时清零。帧 MUST 为 `RFGA`、big-endian uint32 版本 1、16-byte runtime UUID、big-endian uint32 长度和 body。每连接只交换挑战→statement→回执，最多 5s；挑战/回执/statement 各最多 2048 bytes（包括签名），空/超长、未知 magic/version/runtime MUST 拒绝。

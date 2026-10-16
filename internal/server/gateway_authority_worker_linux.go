@@ -27,12 +27,16 @@ type GatewayAuthorityTarget struct {
 }
 
 func (t GatewayAuthorityTarget) valid() bool {
-	uid := uint32(os.Geteuid())
 	return t.Binding.Validate() == nil && len(t.SourcePublic) == ed25519.PublicKeySize &&
-		filepath.IsAbs(t.SocketPath) && filepath.Clean(t.SocketPath) == t.SocketPath && len(t.SocketPath) <= 107 &&
-		strings.IndexByte(t.SocketPath, 0) < 0 && t.GatewayUID != ^uint32(0) && t.SharedGroup != ^uint32(0) &&
-		((t.SharedGroup == 0 && t.GatewayUID == uid) ||
-			(t.SharedGroup != 0 && uid != 0 && t.GatewayUID != 0 && t.GatewayUID != uid))
+		validGatewayAuthorityPeer(t.SocketPath, t.GatewayUID, t.SharedGroup)
+}
+
+func validGatewayAuthorityPeer(socket string, gatewayUID, sharedGroup uint32) bool {
+	uid := uint32(os.Geteuid())
+	return filepath.IsAbs(socket) && filepath.Clean(socket) == socket && len(socket) <= 107 &&
+		strings.IndexByte(socket, 0) < 0 && gatewayUID != ^uint32(0) && sharedGroup != ^uint32(0) &&
+		((sharedGroup == 0 && gatewayUID == uid) ||
+			(sharedGroup != 0 && uid != 0 && gatewayUID != 0 && gatewayUID != uid))
 }
 
 // LoadGatewayAuthorityTargets accepts canonical fields/encoding, as startup
@@ -43,6 +47,11 @@ func LoadGatewayAuthorityTargets(path string) ([]GatewayAuthorityTarget, error) 
 		return nil, security.ErrGatewayAuthority
 	}
 	defer clear(raw)
+	if p, err := decodeGatewayPreparedStartup(raw); err == nil {
+		s := p.Startup
+		return []GatewayAuthorityTarget{{Binding: s.Binding, SourcePublic: s.SourcePublic,
+			SocketPath: p.Preparation.AuthoritySocket, GatewayUID: s.GatewayUID, SharedGroup: s.SharedGroup}}, nil
+	}
 	var config struct {
 		Version int                      `json:"version"`
 		Targets []GatewayAuthorityTarget `json:"targets"`
