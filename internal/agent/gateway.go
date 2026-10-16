@@ -35,6 +35,8 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 	if operation.Version() != 7 || operation.Variant() != uuid.RFC4122 || run == nil || !deadline.After(time.Now()) || ctx.Err() != nil {
 		return ErrGatewaySession
 	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
 	identity, err := LoadIdentity(s)
 	if err != nil {
 		return ErrGatewaySession
@@ -74,9 +76,14 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 		return ErrGatewaySession
 	}
 	request.Header.Set("Content-Type", "application/json")
+	retryUntil := time.Now().Add(30 * time.Second)
+	cleanupRequired := false
 	// Also clean up an ambiguously accepted POST. A lost response cannot grant
 	// permission to start another session with a different operation ID.
 	defer func() {
+		if !cleanupRequired {
+			return
+		}
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 25*time.Second)
 		defer cancel()
 		request, err := http.NewRequestWithContext(cleanup, http.MethodDelete, control, nil)
@@ -95,12 +102,32 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 		}
 	}()
 	for {
+		cleanupRequired = true
 		response, err := client.Do(request)
 		if err != nil {
 			return ErrGatewaySession
 		}
 		raw, readErr := io.ReadAll(io.LimitReader(response.Body, 4097))
 		_ = response.Body.Close()
+		if request.Method == http.MethodPost && response.StatusCode == http.StatusConflict && response.Header.Get("Retry-After") == "1" {
+			// Only this response proves no session was consumed. Other conflicts
+			// and ambiguous responses retain cleanup and are never retried here.
+			cleanupRequired = false
+			if readErr != nil || len(raw) > 4096 || time.Until(retryUntil) <= time.Second {
+				return ErrGatewaySession
+			}
+			select {
+			case <-ctx.Done():
+				return ErrGatewaySession
+			case <-time.After(time.Second):
+			}
+			request, err = http.NewRequestWithContext(ctx, http.MethodPost, control, bytes.NewReader(body))
+			if err != nil {
+				return ErrGatewaySession
+			}
+			request.Header.Set("Content-Type", "application/json")
+			continue
+		}
 		var session gatewaySessionResponse
 		if readErr != nil || len(raw) > 4096 || (response.StatusCode != http.StatusOK && response.StatusCode != http.StatusAccepted) ||
 			json.Unmarshal(raw, &session) != nil || session.SessionID.Version() != 7 || session.SessionID.Variant() != uuid.RFC4122 ||

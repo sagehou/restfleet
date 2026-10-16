@@ -78,7 +78,13 @@ paths:
         "403":
           description: 非本 Host 仓库或中心授权失效
         "409":
-          description: 幂等参数冲突或同仓库已有活动会话
+          description: 幂等参数冲突、同仓库已有活动会话或后台探测忙碌。仅探测忙碌返回 Retry-After=1，且不创建或消耗 operation 去重记录。
+          headers:
+            Retry-After:
+              description: 仅后台探测忙碌时返回；Agent 最多在 30 秒内以相同 operation_id 和 deadline 重试，不重试其他 409。
+              schema:
+                type: string
+                enum: ["1"]
         "503":
           description: Gateway 或容量不可用
     get:
