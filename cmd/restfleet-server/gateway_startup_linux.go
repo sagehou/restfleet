@@ -17,11 +17,12 @@ import (
 // Explicit one-shot central coordination: the regular Server does not replay
 // startup files after a restart. No services, CA creation or subprocesses start.
 func runGatewayCommand(args []string, output io.Writer) error {
-	if len(args) == 0 || (args[0] != "gateway-start" && args[0] != "gateway-audit-register") {
+	if len(args) == 0 || (args[0] != "gateway-start" && args[0] != "gateway-audit-register" && args[0] != "gateway-prepare") {
 		return control.ErrGatewayStartup
 	}
 	failure := control.ErrGatewayStartup
 	register := args[0] == "gateway-audit-register"
+	prepare := args[0] == "gateway-prepare"
 	if register {
 		failure = control.ErrGatewayAuditRegistration
 		if output == nil {
@@ -31,14 +32,24 @@ func runGatewayCommand(args []string, output io.Writer) error {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	path := flags.String("config-file", "", "protected central startup metadata")
+	var planPath string
+	if prepare {
+		flags.StringVar(&planPath, "plan-file", "", "durable protected startup plan")
+	}
 	if flags.Parse(args[1:]) != nil || flags.NArg() != 0 || *path == "" {
+		return failure
+	}
+	if prepare && (planPath == "" || planPath == *path) {
 		return failure
 	}
 	var startup control.GatewayStartupConfig
 	var audit control.GatewayAuditRegistrationConfig
+	var preparation control.GatewayPreparation
 	var err error
 	if register {
 		audit, err = control.LoadGatewayAuditRegistrationConfig(*path)
+	} else if prepare {
+		preparation, err = control.LoadGatewayPreparation(*path)
 	} else {
 		startup, err = control.LoadGatewayStartupConfig(*path)
 	}
@@ -49,8 +60,12 @@ func runGatewayCommand(args []string, output io.Writer) error {
 	defer clear(config.MasterKey)
 	defer clear(config.GatewaySigningKey)
 	defer clear(config.GatewayPendingDecryptionKey)
+	sharedGroup := startup.SharedGroup
+	if prepare {
+		sharedGroup = preparation.SharedGroup
+	}
 	if err != nil || !config.EnrollmentEnabled || len(config.GatewayPendingDecryptionKey) != 32 ||
-		(config.Environment == "production" && (os.Geteuid() == 0 || (!register && startup.SharedGroup == 0))) {
+		(config.Environment == "production" && (os.Geteuid() == 0 || (!register && sharedGroup == 0))) {
 		return failure
 	}
 	signalContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -72,6 +87,10 @@ func runGatewayCommand(args []string, output io.Writer) error {
 	if register {
 		result, err := c.RegisterGatewayAuditFromConfig(ctx, audit)
 		if err != nil || json.NewEncoder(output).Encode(result) != nil {
+			return failure
+		}
+	} else if prepare {
+		if c.PrepareGateway(ctx, preparation, planPath) != nil {
 			return failure
 		}
 	} else if c.InitializeGateway(ctx, startup) != nil {

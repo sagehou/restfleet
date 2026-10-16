@@ -15,6 +15,14 @@ ADR-0022–0024 已提供单次加密材料通道、不同服务 UID 的访问�
 
 ## 验证与后续
 
+### 中心准备入口（2026-10-16）
+
+`gateway-prepare --config-file <request> --plan-file <plan>` MUST 从可信中心 metadata 选择 Agent，通过 PostgreSQL 读取其当前已初始化仓库与已确认交付，只读取 ID/状态，不读取 secret payload。占用 ID、owner 与首次 decision ID MUST 自动生成，并在预留占用前通过受保护文件的 fsync/no-replace 发布固定下来。文件发布不确定时 MUST NOT 预留；数据库提交或响应不确定时 MUST 保留文件，重试沿用原 ID/时长。绑定或请求变化、已释放/到期占用 MUST 拒绝，不创建替代占用或延长期限。原 StorageCredential 互斥保持，不允许同一云凭据的多个运行绕过排斥。
+
+输入 MUST 沿用私有目录/文件与精确 JSON 校验，最多 4096 bytes；字段顺序见部署规范 §7.18。输出为最多 8192 bytes 的版本 2 plan，依序包含 `version`、`preparation`（原输入）、`startup`（原版本 1 初始化 metadata）。现有 `gateway-start` 与授权 worker MUST 能直接读取该 plan；原版本 1 文件保持兼容。版本 2 仅组织本地中心 metadata，不改变 RFGA/RFGR/材料 wire 或数据库 schema。
+
+准备不签发授权、注册来源、发送材料或启动进程；全局审计来源继续走既有显式注册命令。独立来源公钥、fresh runtime 与本地私有 Queue/配置仍 MUST 由可信部署者准备。普通 Server 重启只 MAY 从 plan 续传已提交决定，不得隐式预留或初始化。准备、初始化和 worker MUST 串行交接；plan 不证明新鲜性、清理或 READY。按用户指示暂不新增/改写测试，新行为专门验收保持待完成。
+
 REP-045–046 在 Actions 验证受保护元数据/命令拒绝、三后端真实 PostgreSQL 的首次签发→注册→交付、完整 pin/binding 验证、部分事务失败、安装 rollback、重新交付与新 incarnation 接管拒绝。测试夹具 MUST 不预先签发/注册，防止把原语测试误当成协调验收。
 
 不增加 DB schema、wire、公开 HTTP/gRPC API、依赖或生产特权。此批交付中心单次协调入口；Gateway 生产配置和独立 daemon、多仓库数据面接线、续期/吊销、全局离线审计、Agent 会话能力、可信清理/恢复、readiness、rotation/READY、真实云端和 AGT-005 仍待完成。中心命令成功仅表示收到精确初始化回执。

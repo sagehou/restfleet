@@ -64,11 +64,17 @@ func (s GatewayStartupConfig) decision() domain.GatewayDecisionRequest {
 // optional whitespace. Exact re-encoding rejects duplicate, unknown, omitted,
 // case-folded, null and alternative representations rather than normalizing.
 func LoadGatewayStartupConfig(path string) (GatewayStartupConfig, error) {
-	raw, err := security.ReadProtectedGatewayFile(path, 4096)
+	raw, err := security.ReadProtectedGatewayFile(path, 8192)
 	if err != nil {
 		return GatewayStartupConfig{}, ErrGatewayStartup
 	}
 	defer clear(raw)
+	if p, err := decodeGatewayPreparedStartup(raw); err == nil {
+		return p.Startup, nil
+	}
+	if len(raw) > 4096 {
+		return GatewayStartupConfig{}, ErrGatewayStartup
+	}
 	var s GatewayStartupConfig
 	if json.Unmarshal(raw, &s) != nil || s.Validate() != nil {
 		return GatewayStartupConfig{}, ErrGatewayStartup
