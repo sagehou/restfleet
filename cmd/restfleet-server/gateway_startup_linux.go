@@ -21,7 +21,16 @@ import (
 // files. Optional follow hands the initialized admission to its sole worker;
 // it never retries initialization, creates a CA or starts a subprocess.
 func runGatewayCommand(args []string, output io.Writer) error {
-	if len(args) == 0 || (args[0] != "gateway-start" && args[0] != "gateway-audit-register" && args[0] != "gateway-prepare") {
+	if len(args) == 0 {
+		return control.ErrGatewayStartup
+	}
+	switch args[0] {
+	case "gateway-rotate":
+		return runGatewayRotateCommand(args[1:])
+	case "gateway-recover":
+		return runGatewayRecoverCommand(args[1:])
+	}
+	if args[0] != "gateway-start" && args[0] != "gateway-audit-register" && args[0] != "gateway-prepare" {
 		return control.ErrGatewayStartup
 	}
 	failure := control.ErrGatewayStartup

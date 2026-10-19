@@ -265,7 +265,7 @@ func finishGatewayAdmission(ctx context.Context, tx pgx.Tx, o domain.GatewayPend
 	if err := ensureGatewayPendingReleasable(ctx, tx, a.ID); err != nil {
 		return err
 	}
-	return releaseBackupAdmission(ctx, tx, a)
+	return releaseBackupAdmission(ctx, tx, a, "GATEWAY_BACKUP_RELEASE", "CLEANUP_CONFIRMED")
 }
 
 // CloseGatewayPendingOrigin is only for a trusted cleanup coordinator AFTER

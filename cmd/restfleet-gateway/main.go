@@ -34,7 +34,13 @@ func run(arguments []string, output io.Writer) error {
 	if command == "run" {
 		return runService(arguments[1:])
 	}
-	usage := errors.New("gateway requires source-init/source-public --source-key-file or run/replay --config-file")
+	if command == "provision" {
+		return runProvision(arguments[1:], output)
+	}
+	if command == "finalize" {
+		return runFinalize(arguments[1:])
+	}
+	usage := errors.New("gateway requires source-init/source-public --source-key-file or run/replay/provision/finalize")
 	if command != "source-init" && command != "source-public" {
 		return usage
 	}
