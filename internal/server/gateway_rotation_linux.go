@@ -111,6 +111,7 @@ func LoadGatewayRecoveryConfig(path string) (GatewayRecoveryConfig, error) {
 type GatewayRotationStore interface {
 	GatewayPreparationStore
 	GatewayDecisionReader
+	GatewayPendingStore
 	GatewayRuntimeCleanupComplete(context.Context, uuid.UUID, uuid.UUID) (bool, error)
 }
 
@@ -226,7 +227,13 @@ func (c *ControlPlane) RotateGateway(ctx context.Context, r GatewayRotationConfi
 		return ErrGatewayRotation
 	}
 	if c.InitializeGateway(ctx, startup) != nil {
-		return ErrGatewayRotation
+		// A retry may find the one-shot initialization already registered even
+		// though the receipt was lost. Only the existing origin permits handing
+		// off to the worker; it never re-sends material or initializes again.
+		origin, originErr := store.GatewayPendingOrigin(ctx, startup.Binding.AdmissionID, startup.Binding.RuntimeID)
+		if originErr != nil || origin.ClosedAt != nil {
+			return ErrGatewayRotation
+		}
 	}
 	targets, err := LoadGatewayAuthorityTargets(r.PlanFile)
 	if err != nil || len(targets) != 1 || targets[0].Binding != startup.Binding ||

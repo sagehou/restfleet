@@ -199,6 +199,13 @@ func Provision(config ProvisionConfig, statePath string) (ProvisionOutput, error
 	if err := validateProvisionStatic(config); err != nil {
 		return ProvisionOutput{}, ErrProvision
 	}
+	for _, p := range []string{config.AuditSourceFile, config.RepositorySourceFile} {
+		if _, err := os.Lstat(p); err == nil {
+			return ProvisionOutput{}, ErrProvision
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return ProvisionOutput{}, ErrProvision
+		}
+	}
 	runtimeID, err := uuid.NewV7()
 	if err != nil {
 		return ProvisionOutput{}, ErrProvision
