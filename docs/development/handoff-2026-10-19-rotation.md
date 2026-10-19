@@ -25,7 +25,8 @@
 ## 当前验证
 
 - 开发工作区只做源码/文档编辑与只读检查；未执行编译、测试、认证或服务启动。
-- 分支推送触发的 Actions 以最新 run 为准。`1e2eeeb` 的 run `39229473961` 中 `quality` 已通过 `make test`，其余镜像与隔离 job 通过；`e8923d2` 的 run `39229882739` 仍在运行，结果以该 run 最终结论为准。
+- `1e2eeeb` 的 run `39229473961` completed/success；`e8923d2`（含新增 metadata/策略测试）的 run `39229882739` completed/success，`make lint`、`make test`、`go test -race` 与双架构构建均通过。
+- `5dbef4d`（draft plan 接线）的 run `39230685320` 在本交接写入时仍在运行；其 `quality` 已通过 `make generate`、`git diff --exit-code`，正在 `make lint`。最终结论以该 run 为准，不能用前一提交的结果替代 draft 行为的专门验收。
 - 新增测试仅覆盖受保护 metadata/策略边界；轮换/恢复状态机、跨 UID 生产链路、自动续证/吊销、READY 过期降级和真实三后端仍需专门验收。
 
 ## 接手顺序
