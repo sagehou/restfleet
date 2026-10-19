@@ -63,14 +63,14 @@ restfleet-gateway run --config-file /var/lib/restfleet-gateway/metadata/service.
 ```text
 restfleet-gateway provision --config-file /var/lib/restfleet-gateway/metadata/provision.json --state-file /var/lib/restfleet-gateway/metadata/provision-state.json
 # 将输出中的 preparation / audit_registration 分别安装为中心受保护请求与注册文件
-restfleet-server gateway-prepare --config-file .../request.json --plan-file .../plan.json
+restfleet-server gateway-prepare --config-file .../request.json --plan-file .../plan.json --draft
 restfleet-server gateway-audit-register --config-file .../registration.json > .../registration-result.json
 restfleet-gateway finalize --config-file .../provision.json --state-file .../provision-state.json --plan-file .../plan.json --registration-file .../registration-result.json --output-file .../service.json
 restfleet-gateway run --config-file .../service.json
 restfleet-server gateway-rotate --config-file /var/lib/restfleet/gateway-rotation/rotation.json
 ```
 
-`provision` 只生成本机新 runtime ID、来源 seed、公开 preparation/注册 metadata 和 durable state；不联系中心、不注册、不初始化、不启动进程。`finalize` 只在 plan/注册结果的 runtime、Agent、来源、socket、UID/组与 state 完全一致时写服务配置，已有不同输出拒绝。部署者仍需把公开 plan/注册结果复制为 Gateway UID 可读的受保护文件；中心私钥/DB 材料不得复制。字段与权限见部署规范 §7.27。
+`gateway-prepare --draft` 只写 plan，不预留、不授权；新进程可以在旧运行仍占用时先启动等待材料。`gateway-rotate` 只有在旧占用经终结记录原子释放后才用同一 plan 预留，随后注册来源、等待材料 socket 并初始化。若部署顺序不允许提前启动，也可在轮换命令等待期内完成 `--draft`/`finalize`/`run`。draft plan 被 `gateway-start` 直接初始化时，中心会因 admission 不存在而拒绝。
 
 中心轮换命令先向当前 runtime 投递明确撤回，等待其签名终结记录和中心原子释放，再自动准备下一占用、注册下一全局来源、等待新材料 socket、执行单次初始化并接续授权 worker。等待超时、回执丢失或没有终结记录时保留原 fence，不准备下一运行。已提交撤回只精确重放；下一 plan 只能使用新 runtime/来源/占用。
 

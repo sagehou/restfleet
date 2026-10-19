@@ -7,6 +7,7 @@
 | 能力 | 入口 |
 |---|---|
 | 正常轮换：撤回旧 runtime → 等待签名终结记录与原子释放 → 预留下一占用 → 注册下一全局来源 → 单次初始化 → 接续授权 worker | `internal/server/gateway_rotation_linux.go`、`cmd/restfleet-server/gateway_rotation_linux.go` |
+| 旧占用未释放时提前生成 plan/service.json | `gateway-prepare --draft`、`internal/server/gateway_preparation_linux.go`（draft 不预留、不授权） |
 | 受控恢复：仅到期、无终结记录、来源匹配时撤回/封存/释放，审计 `RECOVERY_CONFIRMED` | `internal/persistence/postgres/gateway_recovery.go`、`internal/server/gateway_rotation_linux.go` |
 | 本地预置：生成新 runtime/来源 seed、Queue/runtime 目录、durable state 与公开 preparation/注册 metadata | `internal/gateway/provision_linux.go`、`cmd/restfleet-gateway/provision_linux.go` |
 | 定稿：按中心 plan/注册结果生成受保护 service.json，拒绝不同输出覆盖 | 同上 |

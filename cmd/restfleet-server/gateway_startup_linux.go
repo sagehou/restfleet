@@ -49,8 +49,10 @@ func runGatewayCommand(args []string, output io.Writer) error {
 	var auditPath string
 	var waitSeconds int
 	var follow bool
+	var draft bool
 	if prepare {
 		flags.StringVar(&planPath, "plan-file", "", "durable protected startup plan")
+		flags.BoolVar(&draft, "draft", false, "write the plan without reserving an admission")
 	} else if !register {
 		flags.StringVar(&auditPath, "audit-config-file", "", "protected global audit registration metadata")
 		flags.IntVar(&waitSeconds, "wait-seconds", 0, "wait for the initial material socket, at most 300 seconds")
@@ -126,7 +128,11 @@ func runGatewayCommand(args []string, output io.Writer) error {
 			return failure
 		}
 	} else if prepare {
-		if c.PrepareGateway(ctx, preparation, planPath) != nil {
+		if draft {
+			if c.PrepareGatewayDraft(ctx, preparation, planPath) != nil {
+				return failure
+			}
+		} else if c.PrepareGateway(ctx, preparation, planPath) != nil {
 			return failure
 		}
 	} else {

@@ -385,6 +385,8 @@ request MUST 采用上述中心私有目录/文件及精确 JSON 策略，最多
 
 准备 MUST 先校验中心配置、DB/schema/审计及已确认交付，自动生成占用/owner/初次决定 ID，先 fsync 并 no-replace 发布 plan，再调用已有预留事务。plan MUST 为中心所有 0600 文件、0700 私有目录，不包含秘密；字段顺序为 `version`（2）、`preparation`（完整原 request）、`startup`（完整版本 1 初始化 metadata），最多 8192 bytes。已有 plan MUST 精确匹配输入和当前绑定；失败/重试 MUST 保留原文件、ID 和期限，不覆盖文件、不忽略 `.pending` 痕迹。原预留事务的已释放/到期/冲突拒绝与审计保持；提交或输出丢失不能通过改用新 plan 自动接管原占用。
 
+`gateway-prepare --draft` MAY 只发布同一 plan 而不调用预留事务，用于旧 runtime 仍占用时提前生成本地 service.json。draft MUST 同样校验已确认交付和当前中心配置，但不创建占用、不授予运行/初始化/释放权限；plan 仍不是 bearer 凭据，`gateway-start` 对未预留 admission 的初始化会被中心拒绝。轮换协调 MUST 在旧占用经终结记录原子释放后才以同一 plan 调用预留事务。draft 的精确重复 MAY 幂等返回原文件；绑定变化、已释放或已预留的非精确输入 MUST 拒绝。
+
 一个 plan 只对应一个仓库。`RESTFLEET_GATEWAY_AUTHORITY_FILE` MAY 直接指向成功初始化后的该 plan，worker 从 `authority_socket` 取得目标；原版本 1 多目标 manifest 保持兼容。准备命令不注册全局审计来源、不产生授权或交付材料、不启动 Gateway；部署者 MUST 独立准备 fresh runtime、来源、公钥 pin、本地配置和 Queue，并串行执行准备→全局来源注册→启动 Gateway 等待材料→单次初始化→启动续期 worker。启动失败继续保留占用，不能根据文件存在推断成功或清理。总命令 context 仍最多 10s，普通 Server 启动不得自动执行准备/初始化。受控故障恢复、期限前换运行、READY 和 Agent 实际执行仍需接通。
 
 #### 显式启动交接
@@ -557,7 +559,7 @@ restfleet-server gateway-recover --config-file /var/lib/restfleet/gateway-recove
 
 `rotation.json` 字段顺序为 `version`（1）、`current`（既有 `GatewayAuthorityTarget`：binding、source_public、socket_path、gateway_uid、shared_group）、`next_preparation`（§7.18 的中心准备输入）、`plan_file`、`audit_config_file`、`wait_seconds`（1..300）。current/next 的 runtime 必须不同、Agent/UID/组必须相同；两个路径必须独立、绝对、规范且不是配置文件本身。`audit_config_file` MUST 是 §7.22 的受保护全局来源 metadata，其 runtime 必须等于下一 runtime，来源公钥不得与仓库来源相同。
 
-轮换 MUST 先读取当前最新决定并核验完整 binding；只有原占用未释放、仍有足够剩余时间（至少 `wait_seconds + 60s`）时才 MAY 开始。中心 MUST 投递明确撤回并保持同一 owner；等待下一状态时每 1s 重读权威记录，超时或信号取消 MUST 返回固定错误并保留 fence。只有 `released_at` 已提交且存在该 runtime 的 `GATEWAY_RUNTIME_CLEANUP_COMPLETE` 时，才 MAY 调用原 `gateway-prepare` 预留下一占用、注册下一全局来源、等待新材料 socket、执行单次初始化并接续原 authority worker。已 committed 撤回只 MAY 精确重放；不得重新初始化、重发材料、复用旧 binding 或把恢复释放当作清理证明。部署者 MUST 在等待窗口内以 Gateway 服务 UID 启动已预置的新进程；中心命令不启动子进程。
+轮换 MUST 先读取当前最新决定并核验完整 binding；只有原占用未释放、仍有足够剩余时间（至少 `wait_seconds + 60s`）时才 MAY 开始。中心 MUST 投递明确撤回并保持同一 owner；等待下一状态时每 1s 重读权威记录，超时或信号取消 MUST 返回固定错误并保留 fence。只有 `released_at` 已提交且存在该 runtime 的 `GATEWAY_RUNTIME_CLEANUP_COMPLETE` 时，才 MAY 调用原 `gateway-prepare` 预留下一占用、注册下一全局来源、等待新材料 socket、执行单次初始化并接续原 authority worker。旧占用仍存在时，部署者 MAY 先用 `gateway-prepare --draft` 发布同一 plan、`gateway-audit-register` 和 `finalize` 生成 service.json 并启动等待中的新进程；draft 不预留、不授权，轮换命令在清理证明后才以同一 plan 预留。已 committed 撤回只 MAY 精确重放；不得重新初始化、重发材料、复用旧 binding 或把恢复释放当作清理证明。部署者 MUST 在等待窗口内以 Gateway 服务 UID 启动已预置的新进程；中心命令不启动子进程。
 
 `recovery.json` 字段顺序为 `version`（1）、`binding`（完整 §7.11 binding）、`source_public`（可选；从未注册来源时 MUST 省略，否则为 32-byte 非全零 Ed25519 公钥）。恢复 MUST 由管理员在停止旧进程并隔离 Host 后显式执行，且同时满足 §8.9：占用已到期、无终结记录、无有效普通授权、来源匹配。事务 MUST 原子撤回剩余授权、关闭来源、写 `GATEWAY_BACKUP_RECOVERY` / `RECOVERY_CONFIRMED` 审计并释放占用；MUST NOT 生成 `runtime_cleanup/joined`、删除 Queue、重发材料或恢复旧 owner。已释放的精确重复 MAY 幂等成功；未到期、已有终结记录或来源不匹配 MUST 拒绝且保留占用。
 

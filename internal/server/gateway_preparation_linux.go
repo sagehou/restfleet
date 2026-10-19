@@ -108,6 +108,19 @@ type GatewayPreparationStore interface {
 }
 
 func (c *ControlPlane) PrepareGateway(ctx context.Context, input GatewayPreparation, planPath string) error {
+	return c.prepareGateway(ctx, input, planPath, true)
+}
+
+// PrepareGatewayDraft writes the same protected plan but does NOT reserve an
+// admission. Rotation uses it to build the next service.json while the old
+// runtime still owns the repository. A draft is not permission to initialize,
+// run or release anything; the reservation still happens only after verified
+// cleanup. Exact retry preserves the same IDs and deadlines.
+func (c *ControlPlane) PrepareGatewayDraft(ctx context.Context, input GatewayPreparation, planPath string) error {
+	return c.prepareGateway(ctx, input, planPath, false)
+}
+
+func (c *ControlPlane) prepareGateway(ctx context.Context, input GatewayPreparation, planPath string, reserve bool) error {
 	store, ok := c.store.(GatewayPreparationStore)
 	if !ok || !input.valid() || ctx.Err() != nil || c.gatewayPublicURL == "" ||
 		input.LifetimeSeconds > int64(c.gatewayOfflineWindow/time.Second) ||
@@ -170,6 +183,9 @@ func (c *ControlPlane) PrepareGateway(ctx context.Context, input GatewayPreparat
 	}
 	if security.PersistProtectedGatewayFile(planPath, raw) != nil {
 		return ErrGatewayStartup
+	}
+	if !reserve {
+		return nil
 	}
 	a, err := store.ReserveBackupAdmission(ctx, p.admission())
 	if err != nil || a.ReleasedAt != nil || pendingBinding(domain.GatewayPendingOrigin{Admission: a, RuntimeID: input.RuntimeID}) != b {

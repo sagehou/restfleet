@@ -14,7 +14,7 @@
 2. 仅在原占用仍有效且剩余时间足以完成停止与下一运行初始化时开始；不足时拒绝，不用新 ID、重新初始化或延长期限绕过。
 3. 向当前运行投递明确的撤回决定。撤回只终止该 runtime 的授权，不吊销 Agent 配对、长期密钥或已接受配置。
 4. 只在收到已注册来源签名的 `runtime_cleanup/joined` 终结记录、且中心事务已原子封存来源并释放原占用后，才 MAY 为下一运行预留新占用。等待超时、回执丢失或只有到期/排空/进程不可达时 MUST 保留原 fence。
-5. 下一运行 MUST 使用新 runtime、独立来源和独立占用；MUST NOT 复用旧 binding、旧材料或旧 owner。中心 MAY 自动完成预留、全局来源注册、单次初始化和授权 worker 接续，但本地进程仍由可信部署启动。
+5. 下一运行 MUST 使用新 runtime、独立来源和独立占用；MUST NOT 复用旧 binding、旧材料或旧 owner。中心 MAY 自动完成预留、全局来源注册、单次初始化和授权 worker 接续，但本地进程仍由可信部署启动。旧占用未释放时，部署者 MAY 用 `gateway-prepare --draft` 先发布 plan、生成 service.json 并启动等待中的新进程；draft MUST NOT 预留、授权或允许初始化，预留仍只发生在清理证明之后。
 
 轮换命令 MUST 可安全重试：已 committed 的撤回只 MAY 按原 revision 精确重放；已释放但尚未准备下一运行时 MAY 继续准备；已初始化的下一运行 MUST NOT 再次初始化，改用既有 `gateway-start --follow` 或 authority-file worker 恢复投递。不得通过新 plan 接管已初始化或已释放的占用。
 
