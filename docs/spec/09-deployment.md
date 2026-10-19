@@ -561,7 +561,7 @@ restfleet-server gateway-recover --config-file /var/lib/restfleet/gateway-recove
 
 `recovery.json` 字段顺序为 `version`（1）、`binding`（完整 §7.11 binding）、`source_public`（可选；从未注册来源时 MUST 省略，否则为 32-byte 非全零 Ed25519 公钥）。恢复 MUST 由管理员在停止旧进程并隔离 Host 后显式执行，且同时满足 §8.9：占用已到期、无终结记录、无有效普通授权、来源匹配。事务 MUST 原子撤回剩余授权、关闭来源、写 `GATEWAY_BACKUP_RECOVERY` / `RECOVERY_CONFIRMED` 审计并释放占用；MUST NOT 生成 `runtime_cleanup/joined`、删除 Queue、重发材料或恢复旧 owner。已释放的精确重复 MAY 幂等成功；未到期、已有终结记录或来源不匹配 MUST 拒绝且保留占用。
 
-两个命令均复用现有 DB/schema、签名/待回写密钥和审计链，不新增 schema、wire、公开 HTTP/gRPC API 或服务依赖。RESTFLEET_GATEWAY_AUTHORITY_FILE 非空时 `gateway-rotate` MUST 拒绝，避免同一 admission 出现第二个投递者；`gateway-recover` 不与活动 worker 并发执行。REP-058–060 的既有边界保持，轮换/恢复的 Actions 专门验收在 M4 退出前补齐；命令成功不代表 Repository READY 或真实备份完成。
+两个命令均复用现有 DB/schema、签名/待回写密钥和审计链，不新增 schema、wire、公开 HTTP/gRPC API 或服务依赖。RESTFLEET_GATEWAY_AUTHORITY_FILE 非空时 `gateway-rotate` MUST 拒绝，避免同一 admission 出现第二个投递者；`gateway-recover` MUST 在停用活动 authority worker 后执行，同一进程配置非空时 MUST 拒绝。REP-058–060 的既有边界保持，轮换/恢复的 Actions 专门验收在 M4 退出前补齐；命令成功不代表 Repository READY 或真实备份完成。
 
 #### 本地新 runtime 预置
 

@@ -62,8 +62,8 @@ func runGatewayRecoverCommand(args []string) error {
 	defer clear(config.MasterKey)
 	defer clear(config.GatewaySigningKey)
 	defer clear(config.GatewayPendingDecryptionKey)
-	if err != nil || !config.EnrollmentEnabled || len(config.GatewaySigningKey) == 0 ||
-		len(config.GatewayPendingDecryptionKey) != 32 ||
+	if err != nil || !config.EnrollmentEnabled || config.GatewayAuthorityFile != "" ||
+		len(config.GatewaySigningKey) == 0 || len(config.GatewayPendingDecryptionKey) != 32 ||
 		(config.Environment == "production" && os.Geteuid() == 0) {
 		return control.ErrGatewayRecovery
 	}
