@@ -122,7 +122,7 @@ func (a *API) ListTemplates(w http.ResponseWriter, r *http.Request, params ListT
 	a.json(w, http.StatusOK, response)
 }
 
-func (a *API) GetTemplate(w http.ResponseWriter, r *http.Request, templateId openapi_types.UUID) {
+func (a *API) GetTemplate(w http.ResponseWriter, r *http.Request, templateID openapi_types.UUID) {
 	if _, ok := a.authorizeRead(w, r); !ok {
 		return
 	}
@@ -130,7 +130,7 @@ func (a *API) GetTemplate(w http.ResponseWriter, r *http.Request, templateId ope
 		a.invalidTemplateRequest(w, r)
 		return
 	}
-	template, err := a.control.Template(r.Context(), templateId)
+	template, err := a.control.Template(r.Context(), templateID)
 	if err != nil {
 		a.fleetProblem(w, r, err)
 		return
@@ -168,7 +168,7 @@ func (a *API) CreateTemplate(w http.ResponseWriter, r *http.Request, params Crea
 	a.json(w, http.StatusCreated, templateResponse(template))
 }
 
-func (a *API) UpdateTemplate(w http.ResponseWriter, r *http.Request, templateId openapi_types.UUID, params UpdateTemplateParams) {
+func (a *API) UpdateTemplate(w http.ResponseWriter, r *http.Request, templateID openapi_types.UUID, params UpdateTemplateParams) {
 	actor, ok := a.authorizeMutation(w, r, params.XCSRFToken, "TEMPLATE_UPDATE", "TEMPLATE")
 	if !ok {
 		return
@@ -192,7 +192,7 @@ func (a *API) UpdateTemplate(w http.ResponseWriter, r *http.Request, templateId 
 		converted := templateConfigRequest(*request.Config)
 		config = &converted
 	}
-	template, err := a.control.UpdateTemplate(r.Context(), templateId, revision, request.Description, config, actor.User, requestMeta(r))
+	template, err := a.control.UpdateTemplate(r.Context(), templateID, revision, request.Description, config, actor.User, requestMeta(r))
 	if err != nil {
 		a.fleetProblem(w, r, err)
 		return
