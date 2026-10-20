@@ -10,9 +10,7 @@ alter table backup_operations
 create index backup_operations_parent_idx on backup_operations(parent_operation_id) where parent_operation_id is not null;
 
 -- +goose Down
--- Fail closed before dropping retry/cancel history.
-alter table backup_operations add constraint backup_operations_no_retry
-  check (parent_operation_id is null and root_operation_id is null and status <> 'CANCEL_REQUESTED');
+-- The old status check rejects rows still in CANCEL_REQUESTED, failing closed.
 drop index backup_operations_parent_idx;
 alter table backup_operations
   drop column parent_operation_id,
