@@ -221,7 +221,11 @@ created_at / updated_at / revision
 
 V1 不允许一个 Host 同时绑定多个 active Repository，也不允许多个 Host 绑定同一 Repository。Schema 可以为 V2 预留 join table，但 API 必须拒绝 Shared Repo。
 
+ADR-0033：`gateway_username` 是不可变路径身份，生产认证复用绑定 Agent 的 mTLS。`gateway_secret_ref/revision` 及 GATEWAY credential revision 暂保留旧 schema/客户端兼容；MUST NOT 用于生产密码回退或新增候选密码生命周期。
+
 未归档 Repository MUST 独占 Host；DISABLED/ERROR 不释放归属，避免通过状态变化隐式创建第二个仓库。初始化尚未验证时 format_version MUST 为空。
+
+ADR-0035：API 的 `status` MUST 叠加中心已验证的 Gateway 后端观察，LOCKED/DISABLED/ERROR 保持优先；READY 必须同时满足初始化、当前 Agent ACK、完整绑定/配置/身份与有效未释放占用/未封存来源/最新授权，以及小于 10min 的真实探测。曾有探测但条件失效时显示 DEGRADED，从未探测不能因 ACK 显示 READY。该可用性读模型不修改配置 `revision/updated_at`，不产生授权或备份结果，审计/回放记录保持权威。
 
 ### RepositoryCredentialRevision
 

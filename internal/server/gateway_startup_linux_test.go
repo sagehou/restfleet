@@ -51,8 +51,8 @@ func TestGatewayStartupProtectedCanonicalMetadata(t *testing.T) {
 		bytes.Replace(raw, []byte(`"version":1`), []byte(`"version":1,"private-secret-canary":true`), 1),
 		bytes.Replace(raw, []byte(`,"shared_group":0`), nil, 1),
 		bytes.Replace(raw, []byte(`"shared_group":0`), []byte(`"shared_group":null`), 1),
-		bytes.Replace(raw, []byte(`"lifetime_seconds":600`), []byte(`"lifetime_seconds":43201`), 1),
-		bytes.Replace(raw, []byte(`"lifetime_seconds":600`), []byte(`"lifetime_seconds":0`), 1),
+		bytes.Replace(raw, []byte(`"lifetime_seconds":600`), []byte(`"lifetime_seconds":2592001`), 1),
+		bytes.Replace(raw, []byte(`"lifetime_seconds":600`), []byte(`"lifetime_seconds":-1`), 1),
 		[]byte("private-config-canary"), bytes.Repeat([]byte{' '}, 4097),
 	} {
 		if os.WriteFile(path, bad, 0600) != nil {
@@ -117,6 +117,10 @@ func TestGatewayStartupProtectedCanonicalMetadata(t *testing.T) {
 
 func TestGatewayStartupRejectsInvalidBindingSourceAndChannelPolicy(t *testing.T) {
 	s := startupConfigFixture()
+	s.LifetimeSeconds = 0
+	if s.Validate() != nil {
+		t.Fatal("configured default lifetime rejected")
+	}
 	for _, mutate := range []func(*GatewayStartupConfig){
 		func(s *GatewayStartupConfig) { s.Binding.RuntimeID = uuid.Nil },
 		func(s *GatewayStartupConfig) { s.SourcePublic = make([]byte, 64) },

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/security"
@@ -35,11 +36,13 @@ type RuntimeConfig struct {
 	RcloneBinary                string
 	ResticBinary                string
 	GatewayPublicURL            string
+	GatewayOfflineWindow        time.Duration
 	GatewaySigningKey           ed25519.PrivateKey
 	GatewayPendingDecryptionKey []byte
 	GatewayReplaySocket         string
 	GatewayReplayPeerUID        uint32
-	GatewayReplayGroup         uint32
+	GatewayReplayGroup          uint32
+	GatewayAuthorityFile        string
 }
 
 func LoadRuntimeConfig() (RuntimeConfig, error) {
@@ -69,6 +72,10 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 	}
 	if config.DatabaseURL == "" {
 		return RuntimeConfig{}, errors.New("database URL is required")
+	}
+	config.GatewayOfflineWindow, err = time.ParseDuration(envOrDefault("RESTFLEET_GATEWAY_OFFLINE_WINDOW", "72h"))
+	if err != nil || config.GatewayOfflineWindow < time.Minute || config.GatewayOfflineWindow > domain.MaxGatewayOfflineWindow || config.GatewayOfflineWindow%time.Second != 0 {
+		return RuntimeConfig{}, errors.New("RESTFLEET_GATEWAY_OFFLINE_WINDOW must be whole seconds between 1m and 720h")
 	}
 	config.BootstrapToken, err = readSecretSetting("RESTFLEET_BOOTSTRAP_TOKEN", config.Environment, &config.Warnings)
 	if err != nil {
@@ -159,6 +166,11 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 			return RuntimeConfig{}, errors.New("gateway shared replay requires socket, distinct non-root peer UID and dedicated group")
 		}
 		config.GatewayReplayPeerUID, config.GatewayReplayGroup = uint32(uid), uint32(gid)
+	}
+	config.GatewayAuthorityFile = os.Getenv("RESTFLEET_GATEWAY_AUTHORITY_FILE")
+	if config.GatewayAuthorityFile != "" && (config.GatewayReplaySocket == "" || !config.EnrollmentEnabled ||
+		(config.Environment == "production" && (os.Geteuid() == 0 || config.GatewayReplayGroup == 0))) {
+		return RuntimeConfig{}, errors.New("gateway authority worker requires replay, enrollment and isolated service identities")
 	}
 
 	if value := os.Getenv("RESTFLEET_SECURE_COOKIES"); value != "" {

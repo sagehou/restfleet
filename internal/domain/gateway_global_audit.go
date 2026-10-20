@@ -45,5 +45,5 @@ type GatewayAuditCommit struct {
 func GatewayGlobalAudit(event GatewayEvent) (AuditEvent, bool) {
 	audit, valid := GatewayAudit(event)
 	return audit, valid && event.Binding == (GatewayBinding{}) && !event.Authenticated &&
-		(event.Action == "denied" || event.Action == "event_rejected" || event.Action == "channel_denied")
+		(event.Action == "denied" || event.Action == "event_rejected" || event.Action == "channel_denied" || event.Action == "runtime_cleanup")
 }

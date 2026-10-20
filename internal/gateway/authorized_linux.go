@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"sync"
 	"time"
 
@@ -151,12 +152,20 @@ watching:
 // token watcher and end audit. Any failure permanently blocks this owner. Even a
 // successful return neither freezes/drains the source nor releases its fence.
 func (a *AuthorizedBackup) WithBackup(ctx context.Context, operation uuid.UUID, run func(context.Context, Access) error) (result error) {
+	return a.withBackup(ctx, operation, run, false)
+}
+
+func (a *AuthorizedBackup) withBackup(ctx context.Context, operation uuid.UUID, run func(context.Context, Access) error, probe bool) (result error) {
 	if operation.Version() != 7 || operation.Variant() != uuid.RFC4122 || run == nil || ctx.Err() != nil {
 		return ErrAuthorization
 	}
 	a.mu.Lock()
 	if a.closed || a.failed || a.busy {
+		busy := probe && a.busy && !a.closed && !a.failed
 		a.mu.Unlock()
+		if busy {
+			return ErrSupervisorBusy
+		}
 		return ErrAuthorization
 	}
 	if !a.ready() {
@@ -166,7 +175,13 @@ func (a *AuthorizedBackup) WithBackup(ctx context.Context, operation uuid.UUID, 
 		<-a.watchDone
 		return ErrAuthorization
 	}
-	work, cancel := context.WithDeadline(ctx, a.expires)
+	// Offline authority can outlive one backup. Bound every session here so
+	// callers without a task deadline cannot accidentally request a 72h run.
+	deadline := time.Now().Add(24 * time.Hour)
+	if a.expires.Before(deadline) {
+		deadline = a.expires
+	}
+	work, cancel := context.WithDeadline(ctx, deadline)
 	a.busy, a.cancel = true, cancel
 	a.running.Add(1)
 	a.mu.Unlock()
@@ -176,12 +191,13 @@ func (a *AuthorizedBackup) WithBackup(ctx context.Context, operation uuid.UUID, 
 		if result == nil && !usable {
 			result = ErrAuthorization
 		}
+		failed := result != nil && !(probe && errors.Is(result, ErrSupervisorBusy))
 		a.mu.Lock()
 		a.busy, a.cancel = false, nil
-		a.failed = a.failed || result != nil
+		a.failed = a.failed || failed
 		a.mu.Unlock()
 		a.running.Done()
-		if result != nil {
+		if failed {
 			a.stopOnce.Do(func() { close(a.stopWatch) })
 			<-a.watchDone
 		}

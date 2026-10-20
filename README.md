@@ -2,7 +2,7 @@
 
 RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面。它通过轻量 Agent 统一下发备份计划、采集运行状态、浏览快照、触发恢复并集中执行仓库维护，同时把 rclone 与云存储凭据严格留在中心节点。
 
-> 当前 M0–M3 已完成，M4 正分批开发：已提供凭据管理/异步读取测试、独立仓库记录与初始化适配器；后端扩展为 OneDrive、Google Drive、HTTPS WebDAV + Crypt。初始化任务接线、Gateway 与备份执行仍待后续交付；`docs/spec/` 中的规范是 V1 实现约束。
+> 当前 M0–M3 已完成，M4 正在收敛：已有凭据管理、中心仓库初始化、Agent 凭据交付/ACK、复用 Agent mTLS 的 Gateway 会话入口、持续授权、可靠回写、正常停止清理及显式启动交接。Repository READY 已接入当前授权与近期真实后端探测，专门运行验收仍待完成。受控故障恢复、期限前换运行及 M5–M12 的功能仍需按计划实施。
 
 开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
 
@@ -28,7 +28,7 @@ make test
 make build cross-build
 ```
 
-当前 Server 需要已经迁移到 schema v9 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。开发 Compose 也拆分了 migrator/runtime 数据库身份，并且不向宿主机发布 PostgreSQL 或 metrics 端口。
+当前 Server 需要已经迁移到 schema v16 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。编译、测试、认证及运行验证 MUST 只在 GitHub Actions 执行；开发工作区只用于源码/文档编辑和只读检查。Compose 拆分 migrator/runtime 身份，不向宿主机发布 PostgreSQL 或 metrics 端口。
 
 首次启动：
 
@@ -55,6 +55,7 @@ Bootstrap token 仅在首次初始化时从本机 `secrets/bootstrap-token` 读�
 | [数据库](docs/spec/07-database.md) | PostgreSQL Schema、约束、索引与事务规则 |
 | [Web Console](docs/spec/08-web-console.md) | 页面、交互、危险操作与状态表达 |
 | [部署](docs/spec/09-deployment.md) | 中心、Native Agent、Docker Agent 与升级 |
+| [Gateway 启动交接](docs/gateway-run.md) | 现有身份下的准备、单次启动、持续授权和停止 |
 | [存储凭据](docs/storage-credentials.md) | 多后端导入、测试、替换与当前限制 |
 | [可观测性](docs/spec/10-observability.md) | Metrics、Logs、Health、Alert、Audit |
 | [V1 范围](docs/spec/11-v1-scope.md) | V1、V1.5、V2 的功能边界 |
