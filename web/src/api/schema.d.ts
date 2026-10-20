@@ -1107,6 +1107,12 @@ export interface components {
             repositories: number;
             /** Format: int64 */
             operations: number;
+            /** Format: int64 */
+            operations_running?: number;
+            /** Format: int64 */
+            operations_failed_24h?: number;
+            /** Format: int64 */
+            plans_unhealthy?: number;
         };
         Version: {
             version: string;

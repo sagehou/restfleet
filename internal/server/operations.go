@@ -36,3 +36,8 @@ func (c *ControlPlane) BackupOperations(ctx context.Context, after uuid.UUID, li
 func (c *ControlPlane) BackupOperation(ctx context.Context, id uuid.UUID) (domain.BackupOperation, error) {
 	return c.store.BackupOperation(ctx, id)
 }
+
+// FleetBackupCounts aggregates dashboard counters without loading rows.
+func (c *ControlPlane) FleetBackupCounts(ctx context.Context) (plans, operations, running, failed24h, unhealthy int64, err error) {
+	return c.store.FleetBackupCounts(ctx)
+}

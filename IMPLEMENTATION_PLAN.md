@@ -291,6 +291,8 @@
 
 ## M7 — Dashboard and Health
 
+**Status: IN PROGRESS** — 计划健康随终态结果更新，仪表盘新增 Plans/Operations/运行中/24h 失败/不健康计划计数。
+
 ### Goal
 
 让管理员可靠识别 fleet 风险。
