@@ -15,8 +15,10 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/security"
 )
 
@@ -53,6 +55,7 @@ type Queue struct {
 	receipt                security.GatewayPendingReceipt
 	failed, frozen, closed bool
 	producerClaimed        bool
+	finished               bool
 	syncFile               func(*os.File) error // Fault injection; defaults to fsync.
 }
 
@@ -298,7 +301,34 @@ func recordName(sequence int64) string { return fmt.Sprintf("%020d.record", sequ
 func (q *Queue) Append(r security.GatewayPendingRecord) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if q.closed || q.failed || q.frozen || len(q.files) >= q.identity.Limits.MaxRecords {
+	if q.frozen || (r.Event != nil && r.Event.Action == "runtime_cleanup") {
+		return ErrQueue
+	}
+	return q.append(r)
+}
+
+// Finish is reserved for the trusted daemon AFTER ingress, all callbacks and
+// subprocesses joined and plaintext cleanup was checked. Neither freezing nor
+// draining proves those facts. Recovery has no private key and cannot finish.
+func (q *Queue) Finish(authorizationRevision int64) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !q.frozen || !q.producerClaimed || q.finished || len(q.key) != ed25519.PrivateKeySize {
+		return ErrQueue
+	}
+	q.finished = true // An uncertain write must not create a second terminal marker.
+	kind := "audit"
+	if q.identity.AuditOrigin != (security.GatewayAuditBinding{}) {
+		kind = "global_audit"
+	}
+	return q.append(security.GatewayPendingRecord{
+		Header: security.GatewayPendingHeader{AuthorizationRevision: authorizationRevision, CreatedAt: time.Now().UTC().Unix()},
+		Kind: kind, Event: &domain.GatewayEvent{Action: "runtime_cleanup", Reason: "joined"},
+	})
+}
+
+func (q *Queue) append(r security.GatewayPendingRecord) error {
+	if q.closed || q.failed || len(q.files) >= q.identity.Limits.MaxRecords {
 		return ErrQueue
 	}
 	if r.Header.Binding != (security.GatewayAuthorizationBinding{}) && r.Header.Binding != q.identity.Binding {

@@ -71,7 +71,7 @@ func (a *Authorization) Accept(wire []byte) error {
 	if !s.Revoked {
 		a.lastGrant = s
 		// Preserve time.Now's monotonic component; receiving an old grant does
-		// not grant another 12h. Wall-clock expiry is also checked in Status.
+		// not reset its validity window. Wall-clock expiry is also checked in Status.
 		a.deadline = now.Add(time.Unix(s.ExpiresAt, 0).Sub(now))
 	}
 	return nil

@@ -76,7 +76,7 @@ func (m GatewayMaterial) Validate(central ed25519.PublicKey) error {
 	if !m.Challenge.valid() || len(m.Source) != ed25519.PublicKeySize || m.PendingRecipient == ([32]byte{}) || err != nil ||
 		s.Binding != m.Challenge.Binding || s.Revoked || m.AdmissionCreatedAt <= 0 || m.AdmissionCreatedAt > s.IssuedAt ||
 		m.AdmissionExpiresAt < s.ExpiresAt || m.AdmissionExpiresAt > 253402300799 ||
-		m.AdmissionExpiresAt-m.AdmissionCreatedAt > 24*60*60 || m.SecretRevision < 1 || m.SecretRevision == math.MaxInt64 ||
+		m.AdmissionExpiresAt-m.AdmissionCreatedAt > MaxGatewayAuthorizationSeconds || m.SecretRevision < 1 || m.SecretRevision == math.MaxInt64 ||
 		len(m.Remote) < 1 || len(m.Remote) > 64 || len(m.Config) == 0 || len(m.Config) > 256<<10 ||
 		m.ConfigHash != GatewayPendingHash(m.Config) {
 		return ErrGatewayMaterial

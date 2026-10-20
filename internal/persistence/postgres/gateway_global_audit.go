@@ -92,7 +92,9 @@ func (s *Store) CommitGatewayGlobalAudit(ctx context.Context, r domain.GatewayAu
 	}
 	if o.ClosedAt != nil || r.Sequence != sequence+1 || r.PreviousHash != hash || r.CreatedAt.Before(o.CreatedAt.Truncate(time.Second)) || r.CreatedAt.After(now) ||
 		r.Audit.ID != r.RecordID || r.Audit.RequestID != r.RecordID || !r.Audit.OccurredAt.Equal(r.CreatedAt) || r.Audit.ResourceID != [16]byte{} || r.Audit.ActorID != [16]byte{} ||
-		r.Audit.ActorType != domain.ActorSystem || r.Audit.ResourceType != "GATEWAY" || r.Audit.Result != domain.AuditDenied {
+		r.Audit.ActorType != domain.ActorSystem || r.Audit.ResourceType != "GATEWAY" ||
+		(r.Audit.Result != domain.AuditDenied && !gatewayCleanupAudit(r.Audit)) ||
+		(r.Audit.Action == "GATEWAY_RUNTIME_CLEANUP_COMPLETE" && !gatewayCleanupAudit(r.Audit)) {
 		return domain.ErrGatewayGlobalAudit
 	}
 	if err = appendAudit(ctx, tx, r.Audit); err != nil {
@@ -101,6 +103,15 @@ func (s *Store) CommitGatewayGlobalAudit(ctx context.Context, r domain.GatewayAu
 	if _, err = tx.Exec(ctx, `insert into gateway_audit_records(origin_id,runtime_id,sequence,record_id,wire_hash,occurred_at)
 		values($1,$2,$3,$4,$5,$6)`, r.Binding.OriginID, r.Binding.RuntimeID, r.Sequence, r.RecordID, r.WireHash, r.CreatedAt); err != nil {
 		return err
+	}
+	if gatewayCleanupAudit(r.Audit) {
+		if _, err = tx.Exec(ctx, "update gateway_audit_origins set closed_at=clock_timestamp() where id=$1 and runtime_id=$2", r.Binding.OriginID, r.Binding.RuntimeID); err != nil {
+			return err
+		}
+		if err = appendAudit(ctx, tx, domain.AuditEvent{RequestID: r.Binding.OriginID, OccurredAt: now, ActorType: domain.ActorSystem,
+			Action: "GATEWAY_AUDIT_ORIGIN", ResourceType: "GATEWAY", Result: domain.AuditSuccess, ReasonCode: "SEALED"}); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

@@ -19,7 +19,8 @@ var ErrReplayCommand = errors.New("gateway recovery replay unavailable or incons
 
 // ReplayConfig is trusted local metadata for ONE existing encrypted queue.
 // It contains only public keys, identifiers and paths, never secret material.
-// It cannot register a source, append records, install an owner or release a fence.
+// It cannot register a source, append evidence or install an owner. Only replay
+// of an existing authenticated terminal marker can trigger central finalization.
 type ReplayConfig struct {
 	Version         int                                  `json:"version"`
 	Binding         security.GatewayAuthorizationBinding `json:"binding,omitzero"`

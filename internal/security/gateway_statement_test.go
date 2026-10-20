@@ -22,12 +22,13 @@ func gatewayStatementFixture(t *testing.T) (GatewayStatement, ed25519.PublicKey,
 		AdmissionID: id, Owner: id, RuntimeID: id, AgentID: id, HostID: id, RepositoryID: id,
 		GatewayID: id, StorageCredentialID: id, DeliveryID: id, GatewaySecretRef: id, ResticSecretRef: id,
 		ConfigurationHash: strings.Repeat("a", 64),
-	}, Revision: 1, IssuedAt: 1800000000, ExpiresAt: 1800000000 + MaxGatewayAuthorizationSeconds}
+	}, Revision: 1, IssuedAt: 1800000000, ExpiresAt: 1800000000 + 72*60*60}
 	return s, public, private
 }
 
 func TestGatewayStatementRoundTrip(t *testing.T) {
 	s, public, private := gatewayStatementFixture(t)
+	s.ExpiresAt = s.IssuedAt + MaxGatewayAuthorizationSeconds
 	for _, revoked := range []bool{false, true} {
 		s.Revoked = revoked
 		if revoked {
@@ -61,7 +62,7 @@ func TestGatewayStatementRejectsInvalidClaims(t *testing.T) {
 		func(s *GatewayStatement) { s.IssuedAt = 0 },
 		func(s *GatewayStatement) { s.IssuedAt = math.MinInt64 },
 		func(s *GatewayStatement) { s.ExpiresAt = math.MaxInt64 },
-		func(s *GatewayStatement) { s.ExpiresAt++ },
+		func(s *GatewayStatement) { s.ExpiresAt = s.IssuedAt + MaxGatewayAuthorizationSeconds + 1 },
 		func(s *GatewayStatement) { s.ExpiresAt = s.IssuedAt },
 		func(s *GatewayStatement) { s.Revoked = true },
 		func(s *GatewayStatement) { s.Binding.ConfigurationHash = strings.Repeat("A", 64) },

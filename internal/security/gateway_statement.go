@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 )
 
 const gatewayStatementContext = "restfleet:gateway-authorization:v1\x00"
 const MaxGatewayStatementSize = 2048
-const MaxGatewayAuthorizationSeconds int64 = 12 * 60 * 60
+const MaxGatewayAuthorizationSeconds int64 = int64(domain.MaxGatewayOfflineWindow / time.Second)
 
 var ErrGatewayStatement = errors.New("invalid gateway authorization statement")
 
