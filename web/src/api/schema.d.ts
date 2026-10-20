@@ -872,7 +872,7 @@ export interface components {
             plan_id: string;
             /** @enum {string} */
             status: "APPLIED" | "CONFLICT";
-            /** @description Conflict reason such as NOT_FOUND */
+            /** @description Conflict reason: NOT_FOUND, PLAN_ARCHIVED, NOT_USING_TEMPLATE or REVISION_CONFLICT. */
             code?: string;
         };
         Operation: {

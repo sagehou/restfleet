@@ -1320,7 +1320,7 @@ components:
       properties:
         plan_id: { type: string, format: uuid }
         status: { type: string, enum: [APPLIED, CONFLICT] }
-        code: { type: string, description: Conflict reason such as NOT_FOUND, PLAN_ARCHIVED, NOT_USING_TEMPLATE or REVISION_CONFLICT. }
+        code: { type: string, description: "Conflict reason: NOT_FOUND, PLAN_ARCHIVED, NOT_USING_TEMPLATE or REVISION_CONFLICT." }
     Operation:
       type: object
       additionalProperties: false

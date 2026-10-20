@@ -764,7 +764,7 @@ type PlanStatus string
 
 // PlanApplyResult defines model for PlanApplyResult.
 type PlanApplyResult struct {
-	// Code Conflict reason such as NOT_FOUND
+	// Code Conflict reason: NOT_FOUND, PLAN_ARCHIVED, NOT_USING_TEMPLATE or REVISION_CONFLICT.
 	Code   *string               `json:"code,omitempty"`
 	PlanId openapi_types.UUID    `json:"plan_id"`
 	Status PlanApplyResultStatus `json:"status"`
