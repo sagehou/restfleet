@@ -500,6 +500,8 @@ func (a *API) fleetProblem(w http.ResponseWriter, r *http.Request, err error) {
 		a.problem(w, r, http.StatusConflict, "PLAN_NAME_TAKEN", "Conflict", "This Host already has an active plan with that name.", nil)
 	case errors.Is(err, domain.ErrPlanBindingInvalid):
 		a.problem(w, r, http.StatusConflict, "PLAN_BINDING_INVALID", "Conflict", "The Agent and Repository must belong to the selected Host.", nil)
+	case errors.Is(err, domain.ErrPlanStateInvalid):
+		a.problem(w, r, http.StatusConflict, "PLAN_STATE_INVALID", "Conflict", "The plan state does not allow this transition.", nil)
 	case errors.Is(err, domain.ErrPlanTemplateStale):
 		a.problem(w, r, http.StatusConflict, "TEMPLATE_REVISION_UNAVAILABLE", "Conflict", "The requested template revision does not exist.", nil)
 	case errors.Is(err, domain.ErrTemplateArchived):

@@ -756,6 +756,123 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/plans/{plan_id}/pause:
+    parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: pausePlan
+      description: Stops future scheduling. Running operations are not cancelled.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Plan paused; ETag carries the new revision.
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/plans/{plan_id}/resume:
+    parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: resumePlan
+      description: Re-activates a paused plan at its current desired revision.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Plan resumed.
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/plans/{plan_id}/apply:
+    parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: applyPlan
+      description: Confirms the current desired revision and activates the plan.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Plan activated.
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/templates/{template_id}/apply-to-plans:
+    parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: applyTemplateToPlans
+      description: Moves the named plans to one template revision. Each plan reports its own success or conflict; the batch is not atomic.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TemplateApplyRequest" }
+      responses:
+        "200":
+          description: Per-plan results.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TemplateApplyResponse" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/storage-credentials:
     get:
       operationId: listStorageCredentials
@@ -1170,6 +1287,40 @@ components:
         name: { type: string, minLength: 1, maxLength: 128 }
         template_revision: { type: integer, format: int64, minimum: 1 }
         overrides: { type: object, additionalProperties: true }
+    TemplateApplyRequest:
+      type: object
+      additionalProperties: false
+      required: [template_revision, plans]
+      properties:
+        template_revision: { type: integer, format: int64, minimum: 1 }
+        plans:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/PlanApplyTarget" }
+    PlanApplyTarget:
+      type: object
+      additionalProperties: false
+      required: [plan_id, expected_revision]
+      properties:
+        plan_id: { type: string, format: uuid }
+        expected_revision: { type: integer, format: int64, minimum: 1 }
+    TemplateApplyResponse:
+      type: object
+      additionalProperties: false
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/PlanApplyResult" }
+    PlanApplyResult:
+      type: object
+      additionalProperties: false
+      required: [plan_id, status]
+      properties:
+        plan_id: { type: string, format: uuid }
+        status: { type: string, enum: [APPLIED, CONFLICT] }
+        code: { type: string, description: Conflict reason such as NOT_FOUND, PLAN_ARCHIVED, NOT_USING_TEMPLATE or REVISION_CONFLICT. }
     Operation:
       type: object
       additionalProperties: false

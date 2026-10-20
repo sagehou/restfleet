@@ -159,3 +159,134 @@ func (c *ControlPlane) UpdatePlan(ctx context.Context, id uuid.UUID, expectedRev
 	audit.Changes = changes
 	return c.store.SavePlanRevision(ctx, current, expectedRevision, audit)
 }
+
+// PausePlan stops future scheduling without cancelling anything already running.
+func (c *ControlPlane) PausePlan(ctx context.Context, id uuid.UUID, expectedRevision int64, actor domain.User, meta RequestMeta) (domain.Plan, error) {
+	return c.planStatus(ctx, id, expectedRevision, "PAUSED", "PLAN_PAUSE", []string{"DRAFT", "PENDING_APPLY", "ACTIVE"}, actor, meta)
+}
+
+// ResumePlan re-activates a paused plan at its current desired revision.
+func (c *ControlPlane) ResumePlan(ctx context.Context, id uuid.UUID, expectedRevision int64, actor domain.User, meta RequestMeta) (domain.Plan, error) {
+	return c.planStatus(ctx, id, expectedRevision, "ACTIVE", "PLAN_RESUME", []string{"PAUSED"}, actor, meta)
+}
+
+// ApplyPlan confirms the current desired revision and moves the plan to ACTIVE.
+func (c *ControlPlane) ApplyPlan(ctx context.Context, id uuid.UUID, expectedRevision int64, actor domain.User, meta RequestMeta) (domain.Plan, error) {
+	return c.planStatus(ctx, id, expectedRevision, "ACTIVE", "PLAN_APPLY", []string{"DRAFT", "PENDING_APPLY", "INVALID"}, actor, meta)
+}
+
+func (c *ControlPlane) planStatus(ctx context.Context, id uuid.UUID, expectedRevision int64, target, action string,
+	allowed []string, actor domain.User, meta RequestMeta) (domain.Plan, error) {
+	if actor.Role != domain.RoleAdmin {
+		if err := c.RecordDenied(ctx, action, "PLAN", "ROLE_DENIED", meta); err != nil {
+			return domain.Plan{}, err
+		}
+		return domain.Plan{}, ErrForbidden
+	}
+	if id.Version() != 7 || id.Variant() != uuid.RFC4122 {
+		return domain.Plan{}, &ValidationError{Field: "id", Code: "INVALID_ID"}
+	}
+	if expectedRevision < 1 {
+		return domain.Plan{}, &ValidationError{Field: "revision", Code: "INVALID_REVISION"}
+	}
+	plan, err := c.store.Plan(ctx, id)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	permitted := false
+	for _, status := range allowed {
+		if plan.Status == status {
+			permitted = true
+			break
+		}
+	}
+	if !permitted {
+		return domain.Plan{}, domain.ErrPlanStateInvalid
+	}
+	plan.Status = target
+	plan.UpdatedAt = c.clock().UTC()
+	audit, err := c.userAudit(action, "PLAN", id, actor.ID, meta, target)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	changes, err := json.Marshal(map[string]int64{"revision": expectedRevision + 1})
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	audit.Changes = changes
+	return c.store.SavePlanRevision(ctx, plan, expectedRevision, audit)
+}
+
+// ApplyTemplateToPlans moves the named plans to one template revision. Every
+// plan is handled on its own so one revision conflict cannot block the batch.
+func (c *ControlPlane) ApplyTemplateToPlans(ctx context.Context, templateID uuid.UUID, templateRevision int64,
+	targets []domain.PlanApplyTarget, actor domain.User, meta RequestMeta) ([]domain.PlanApplyResult, error) {
+	if actor.Role != domain.RoleAdmin {
+		if err := c.RecordDenied(ctx, "TEMPLATE_APPLY_TO_PLANS", "TEMPLATE", "ROLE_DENIED", meta); err != nil {
+			return nil, err
+		}
+		return nil, ErrForbidden
+	}
+	if templateRevision < 1 {
+		return nil, &ValidationError{Field: "template_revision", Code: "INVALID_REVISION"}
+	}
+	template, err := c.store.Template(ctx, templateID)
+	if err != nil {
+		return nil, err
+	}
+	if template.Archived() {
+		return nil, &ValidationError{Field: "template_id", Code: "TEMPLATE_ARCHIVED"}
+	}
+	if templateRevision > template.CurrentRevision {
+		return nil, &ValidationError{Field: "template_revision", Code: "INVALID_REVISION"}
+	}
+	base, err := c.store.TemplateRevisionConfig(ctx, templateID, templateRevision)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]domain.PlanApplyResult, 0, len(targets))
+	for _, target := range targets {
+		result := domain.PlanApplyResult{PlanID: target.PlanID}
+		plan, err := c.store.Plan(ctx, target.PlanID)
+		switch {
+		case err != nil:
+			result.Status, result.Code = "CONFLICT", "NOT_FOUND"
+		case plan.ArchivedAt != nil:
+			result.Status, result.Code = "CONFLICT", "PLAN_ARCHIVED"
+		case plan.TemplateID != templateID:
+			result.Status, result.Code = "CONFLICT", "NOT_USING_TEMPLATE"
+		case plan.DesiredRevision != target.ExpectedRevision:
+			result.Status, result.Code = "CONFLICT", "REVISION_CONFLICT"
+		default:
+			config, mergeErr := domain.MergePlanConfig(base, plan.Overrides)
+			if mergeErr != nil {
+				result.Status, result.Code = "CONFLICT", "INVALID_CONFIG"
+				break
+			}
+			hash, hashErr := config.ConfigHash()
+			if hashErr != nil {
+				return results, hashErr
+			}
+			plan.TemplateRevision = templateRevision
+			plan.EffectiveConfig, plan.ConfigHash = config, hash
+			if plan.Status == "ACTIVE" || plan.Status == "PAUSED" {
+				plan.Status = "PENDING_APPLY"
+			}
+			plan.UpdatedAt = c.clock().UTC()
+			audit, auditErr := c.userAudit("PLAN_TEMPLATE_APPLY", "PLAN", plan.ID, actor.ID, meta, plan.Status)
+			if auditErr != nil {
+				return results, auditErr
+			}
+			changes, _ := json.Marshal(map[string]int64{"revision": target.ExpectedRevision + 1, "template_revision": templateRevision})
+			audit.Changes = changes
+			if _, saveErr := c.store.SavePlanRevision(ctx, plan, target.ExpectedRevision, audit); saveErr != nil {
+				result.Status = "CONFLICT"
+				result.Code = "SAVE_FAILED"
+				break
+			}
+			result.Status, result.Code = "APPLIED", ""
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
