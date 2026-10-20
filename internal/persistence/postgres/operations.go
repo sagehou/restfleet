@@ -232,6 +232,14 @@ func (s *Store) PendingCancelOperations(ctx context.Context, agentID uuid.UUID) 
 	return items, rows.Err()
 }
 
+// RejectManualOperation closes a dispatched manual job the Agent refused.
+func (s *Store) RejectManualOperation(ctx context.Context, id uuid.UUID, now time.Time) error {
+	_, err := s.pool.Exec(ctx, `update backup_operations
+		set status='FAILED',error_code='AGENT_REJECTED',finished_at=$2,updated_at=$2
+		where id=$1 and source='MANUAL' and status='RUNNING' and finished_at is null`, id, now)
+	return err
+}
+
 // NextQueuedManualOperation returns the oldest queued manual job for an Agent.
 func (s *Store) NextQueuedManualOperation(ctx context.Context, agentID uuid.UUID) (domain.BackupOperation, bool, error) {
 	row := s.pool.QueryRow(ctx, "select "+backupOperationColumns+` from backup_operations

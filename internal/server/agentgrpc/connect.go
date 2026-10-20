@@ -215,6 +215,22 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 					return err
 				}
 			}
+		case message.GetJobAccepted() != nil:
+			operationID, err := uuid.Parse(message.GetJobAccepted().GetOperationId())
+			if err != nil {
+				return s.invalidMessage(stream, meta, "JOB_ACCEPTED_INVALID")
+			}
+			if err := s.control.MarkJobDispatched(stream.Context(), operationID); err != nil {
+				return status.Error(codes.Unavailable, "job acceptance persistence failed")
+			}
+		case message.GetJobRejected() != nil:
+			operationID, err := uuid.Parse(message.GetJobRejected().GetOperationId())
+			if err != nil {
+				return s.invalidMessage(stream, meta, "JOB_REJECTED_INVALID")
+			}
+			if err := s.control.RejectManualOperation(stream.Context(), operationID); err != nil {
+				return status.Error(codes.Unavailable, "job rejection persistence failed")
+			}
 		case message.GetJobCancelAccepted() != nil:
 			// The terminal JobResult, not this ack, advances the operation.
 		case message.GetConfigAccepted() != nil:
@@ -403,7 +419,8 @@ func (s *Service) dispatchQueuedJob(stream agentv1.AgentControlService_ConnectSe
 	}); err != nil {
 		return err
 	}
-	return s.control.MarkJobDispatched(stream.Context(), operation.ID)
+	// The operation stays QUEUED until JobAccepted; a lost dispatch is retried.
+	return nil
 }
 
 // dispatchCancellations repeats pending cancel requests until the Agent reports

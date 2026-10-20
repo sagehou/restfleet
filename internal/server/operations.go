@@ -183,3 +183,8 @@ func (c *ControlPlane) RetryBackupOperation(ctx context.Context, id uuid.UUID,
 func (c *ControlPlane) PendingCancellations(ctx context.Context, agentID uuid.UUID) ([]domain.BackupOperation, error) {
 	return c.store.PendingCancelOperations(ctx, agentID)
 }
+
+// RejectManualOperation closes a dispatched manual run the Agent refused.
+func (c *ControlPlane) RejectManualOperation(ctx context.Context, id uuid.UUID) error {
+	return c.store.RejectManualOperation(ctx, id, c.clock().UTC())
+}
