@@ -181,11 +181,13 @@
 
 第一项已有源码及既有 Actions 通过，新增 mTLS 行为专门验收保持待完成。第二项已接入持续授权、正常停止后的清理证明/最终回写/原子封存释放，以及先持久保存固定 ID 再预留占用的准备命令；版本 2 plan 复用于初始化和授权 worker。未确认清理、满/坏队列和刷新不确定时继续保留占用。
 
-当前源码基线 `c77daf5` 的 10 项既有 [Actions 全部通过](https://github.com/sagehou/restfleet/actions/runs/38878015773)。2026-10-19 核验 PR #67 保持 open、可合并且无冲突，尚未合并或部署。现有启动命令已接入显式等待、同 runtime 全局来源核验，以及初始化成功后直接接续原授权 worker；执行交接见 [Gateway 启动交接](docs/gateway-run.md)。
+此前 `c77daf5` 的 10 项既有 Actions 全部通过（run 38878015773）。PR #67 已于 2026-10-19 合并（`d1589ad`）；轮换/恢复交付经 PR #76 于 2026-10-20 合并（`4ed384e`），该 PR 的 10 项检查全部 success。当前 `main` 尚未部署。现有启动命令已接入显式等待、同 runtime 全局来源核验，以及初始化成功后直接接续原授权 worker；执行交接见 [Gateway 启动交接](docs/gateway-run.md)。
 
 本轮第三项源码接入真实仓库 READY：生产 Gateway 复用原后端 HEAD 和签名加密回写，中心批量核验当前初始化、ACK、身份/交付/配置/授权及小于 10min 的后端观察，页面展示可用或降级；不新增密码、数据库表或任务队列。Agent 只对明确的探测忙碌响应最多在 30s 内以原 operation/原 deadline 重试。源码、契约及部署说明同步更新，既有 Actions 已通过；未新增/改写测试，新增行为专门验收仍待完成，见 ADR-0035。
 
 第二项剩余：完整 fresh runtime 自动预置/期限前换运行、没有终结证明时的受控故障恢复。2026-10-19 已补中心状态机：`gateway-rotate` 在核验当前 binding 与剩余期限后明确撤回当前 runtime，等待签名终结记录和原子释放，再自动准备下一占用、注册下一全局来源、初始化并接续授权 worker；超时/丢失回执保留 fence。`gateway-recover` 仅在原占用到期、无终结记录且来源匹配时，由管理员显式撤回、关闭来源、写 `RECOVERY_CONFIRMED` 审计并释放，不伪造清理记录或恢复旧 owner（ADR-0036 / 09 §7.27）。Gateway UID 侧新增 `provision`/`finalize`：本地生成新 runtime/来源 seed、Queue/state 与 preparation/注册 metadata，再按中心 plan/注册结果生成受保护 service.json；中心不接触 Gateway 私钥，进程仍由部署者启动。源码、契约及部署说明已同步；未新增/改写测试，新增行为专门验收仍待 Actions。第三项源码已复用 M2 自动续证：Agent 每次新会话读取本机当前 identity；现有中心 worker 分发明确吊销，Gateway 原 guard/watchdog 停止使用，不新建身份生命周期。第三项仍需身份续证/吊销与 READY 的专门运行验收；M5–M12 保持既有完整范围。契约与必要实现 MUST 在所属交付内完成，不再追加独立的内部原语阶段；现有绿色门禁不能代替完整备份验收。
+
+2026-10-20 合并状态：第二项剩余的轮换/恢复源码（`gateway-rotate`、`gateway-recover`、`provision`/`finalize`、draft plan）已随 PR #76 进入 `main`（`4ed384e`），三项交付的源码至此全部合并。三项的专门运行验收（生产 mTLS 会话、轮换/恢复状态机、自动续证/吊销、READY 过期降级、真实三后端）仍全部待 Actions，M4 保持 IN PROGRESS。
 
 | 顺序 | 完成交付 | Actions 验收与退出证据 |
 |---|---|---|
