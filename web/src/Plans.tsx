@@ -118,6 +118,20 @@ export function Plans({ hosts, canManage, onUnauthorized }: Props) {
     finally { setBusy(false) }
   }
 
+  async function backupNow(plan: Plan) {
+    if (busy) return
+    setBusy(true)
+    setMessage('')
+    try {
+      const operation = await requestJSON<components['schemas']['BackupOperation']>(`${endpoint}/${plan.id}/backup`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken(), 'Idempotency-Key': crypto.randomUUID() },
+      })
+      setMessage(`已排队手动备份，操作 ${operation.id.slice(0, 8)}；Agent 下次心跳时执行。`)
+    } catch (error) { handleError(error) }
+    finally { setBusy(false) }
+  }
+
   function reload() {
     setLoading(true)
     setMessage('')
@@ -194,6 +208,8 @@ export function Plans({ hosts, canManage, onUnauthorized }: Props) {
               <button className="primary-button" disabled={busy} onClick={() => { void transition(selected, 'resume') }}>恢复调度</button>}
             {canManage && (selected.status === 'ACTIVE' || selected.status === 'PENDING_APPLY' || selected.status === 'DRAFT') &&
               <button className="secondary-button" disabled={busy} onClick={() => { void transition(selected, 'pause') }}>暂停调度</button>}
+            {canManage && selected.status === 'ACTIVE' &&
+              <button className="secondary-button" disabled={busy} onClick={() => { void backupNow(selected) }}>立即备份</button>}
             <button className="secondary-button" disabled={busy} onClick={reload}>刷新详情</button>
           </div>
         </article>

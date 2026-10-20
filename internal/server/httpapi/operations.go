@@ -91,3 +91,20 @@ func (a *API) ListSnapshots(w http.ResponseWriter, r *http.Request, params ListS
 	}
 	a.json(w, http.StatusOK, response)
 }
+
+func (a *API) BackupPlanNow(w http.ResponseWriter, r *http.Request, planID openapi_types.UUID, params BackupPlanNowParams) {
+	actor, ok := a.authorizeMutation(w, r, params.XCSRFToken, "PLAN_BACKUP_TRIGGER", "PLAN")
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
+		return
+	}
+	operation, err := a.control.QueueBackupNow(r.Context(), planID, actor.User, requestMeta(r))
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	a.json(w, http.StatusAccepted, backupOperationResponse(operation))
+}
