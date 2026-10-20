@@ -770,6 +770,64 @@ type StorageCredentialReplace struct {
 	RcloneConfig *string `json:"rclone_config,omitempty"`
 }
 
+// Template defines model for Template.
+type Template struct {
+	Config      TemplateConfig     `json:"config"`
+	CreatedAt   time.Time          `json:"created_at"`
+	Description string             `json:"description"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+
+	// Revision Current immutable revision. Plans apply it explicitly.
+	Revision  int64     `json:"revision"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// TemplateConfig defines model for TemplateConfig.
+type TemplateConfig struct {
+	EnabledByDefault    *bool                 `json:"enabled_by_default,omitempty"`
+	ExcludeCaches       *bool                 `json:"exclude_caches,omitempty"`
+	ExcludePatterns     *[]string             `json:"exclude_patterns,omitempty"`
+	JitterSeconds       *int                  `json:"jitter_seconds,omitempty"`
+	MisfireGraceSeconds *int                  `json:"misfire_grace_seconds,omitempty"`
+	OneFileSystem       *bool                 `json:"one_file_system,omitempty"`
+	Paths               []string              `json:"paths"`
+	PostHookIds         *[]openapi_types.UUID `json:"post_hook_ids,omitempty"`
+	PreHookIds          *[]openapi_types.UUID `json:"pre_hook_ids,omitempty"`
+
+	// ResourceLimits Opaque resource limits stored verbatim for the Agent runtime.
+	ResourceLimits    *map[string]interface{} `json:"resource_limits,omitempty"`
+	RetentionPolicyId *openapi_types.UUID     `json:"retention_policy_id,omitempty"`
+
+	// RetryPolicy Opaque retry metadata stored verbatim for the Agent scheduler.
+	RetryPolicy *map[string]interface{} `json:"retry_policy,omitempty"`
+
+	// ScheduleCron Standard five-field cron in the template timezone.
+	ScheduleCron string `json:"schedule_cron"`
+
+	// ScheduleTimezone IANA timezone name.
+	ScheduleTimezone string `json:"schedule_timezone"`
+}
+
+// TemplateCreate defines model for TemplateCreate.
+type TemplateCreate struct {
+	Config      TemplateConfig `json:"config"`
+	Description *string        `json:"description,omitempty"`
+	Name        string         `json:"name"`
+}
+
+// TemplateList defines model for TemplateList.
+type TemplateList struct {
+	Items      []Template `json:"items"`
+	NextCursor *string    `json:"next_cursor,omitempty"`
+}
+
+// TemplateUpdate defines model for TemplateUpdate.
+type TemplateUpdate struct {
+	Config      *TemplateConfig `json:"config,omitempty"`
+	Description *string         `json:"description,omitempty"`
+}
+
 // User defines model for User.
 type User struct {
 	DisplayName string             `json:"display_name"`
@@ -902,6 +960,23 @@ type TestStorageCredentialParams struct {
 	IdempotencyKey string    `json:"Idempotency-Key"`
 }
 
+// ListTemplatesParams defines parameters for ListTemplates.
+type ListTemplatesParams struct {
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// CreateTemplateParams defines parameters for CreateTemplate.
+type CreateTemplateParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// UpdateTemplateParams defines parameters for UpdateTemplate.
+type UpdateTemplateParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
 // EnrollAgentJSONRequestBody defines body for EnrollAgent for application/json ContentType.
 type EnrollAgentJSONRequestBody = AgentEnrollmentRequest
 
@@ -931,6 +1006,12 @@ type CreateStorageCredentialJSONRequestBody = StorageCredentialCreate
 
 // ReplaceStorageCredentialJSONRequestBody defines body for ReplaceStorageCredential for application/json ContentType.
 type ReplaceStorageCredentialJSONRequestBody = StorageCredentialReplace
+
+// CreateTemplateJSONRequestBody defines body for CreateTemplate for application/json ContentType.
+type CreateTemplateJSONRequestBody = TemplateCreate
+
+// UpdateTemplateJSONRequestBody defines body for UpdateTemplate for application/json ContentType.
+type UpdateTemplateJSONRequestBody = TemplateUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -1027,6 +1108,18 @@ type ServerInterface interface {
 
 	// (POST /api/v1/storage-credentials/{credential_id}/test)
 	TestStorageCredential(w http.ResponseWriter, r *http.Request, credentialId openapi_types.UUID, params TestStorageCredentialParams)
+
+	// (GET /api/v1/templates)
+	ListTemplates(w http.ResponseWriter, r *http.Request, params ListTemplatesParams)
+
+	// (POST /api/v1/templates)
+	CreateTemplate(w http.ResponseWriter, r *http.Request, params CreateTemplateParams)
+
+	// (GET /api/v1/templates/{template_id})
+	GetTemplate(w http.ResponseWriter, r *http.Request, templateId openapi_types.UUID)
+
+	// (PATCH /api/v1/templates/{template_id})
+	UpdateTemplate(w http.ResponseWriter, r *http.Request, templateId openapi_types.UUID, params UpdateTemplateParams)
 
 	// (GET /api/v1/version)
 	Version(w http.ResponseWriter, r *http.Request)
@@ -2380,6 +2473,200 @@ func (siw *ServerInterfaceWrapper) TestStorageCredential(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// ListTemplates operation middleware
+func (siw *ServerInterfaceWrapper) ListTemplates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTemplatesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTemplates(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTemplate operation middleware
+func (siw *ServerInterfaceWrapper) CreateTemplate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateTemplateParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTemplate(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTemplate operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "template_id" -------------
+	var templateId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "template_id", r.PathValue("template_id"), &templateId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "template_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTemplate(w, r, templateId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTemplate operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "template_id" -------------
+	var templateId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "template_id", r.PathValue("template_id"), &templateId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "template_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateTemplateParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTemplate(w, r, templateId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Version operation middleware
 func (siw *ServerInterfaceWrapper) Version(w http.ResponseWriter, r *http.Request) {
 
@@ -2568,6 +2855,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/repositories", wrapper.ListRepositories)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/repositories", wrapper.CreateRepository)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/repositories/{repo_id}", wrapper.GetRepository)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/templates", wrapper.ListTemplates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/templates", wrapper.CreateTemplate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/templates/{template_id}", wrapper.GetTemplate)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/templates/{template_id}", wrapper.UpdateTemplate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.ListStorageCredentials)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.CreateStorageCredential)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)

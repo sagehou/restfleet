@@ -494,6 +494,10 @@ func (a *API) fleetProblem(w http.ResponseWriter, r *http.Request, err error) {
 		a.problem(w, r, http.StatusNotFound, "NOT_FOUND", "Not found", "The requested resource was not found.", nil)
 	case errors.Is(err, domain.ErrAlreadyExists):
 		a.problem(w, r, http.StatusConflict, "ALREADY_EXISTS", "Conflict", "A resource with the same identity already exists.", nil)
+	case errors.Is(err, domain.ErrTemplateNameTaken):
+		a.problem(w, r, http.StatusConflict, "TEMPLATE_NAME_TAKEN", "Conflict", "An active template already uses this name.", nil)
+	case errors.Is(err, domain.ErrTemplateArchived):
+		a.problem(w, r, http.StatusConflict, "TEMPLATE_ARCHIVED", "Conflict", "Archived templates cannot receive new revisions.", nil)
 	case errors.Is(err, domain.ErrRevisionConflict):
 		a.problem(w, r, http.StatusPreconditionFailed, "REVISION_CONFLICT", "Revision conflict", "The resource changed; reload it and try again.", nil)
 	case errors.Is(err, domain.ErrEnrollmentTokenInvalid):

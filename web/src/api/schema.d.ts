@@ -377,6 +377,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTemplates"];
+        put?: never;
+        /** @description Creates a template and its first immutable revision. Does not create or apply any Plan. */
+        post: operations["createTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Appends a new immutable revision. Existing Plans keep their applied revision until an explicit apply. */
+        patch: operations["updateTemplate"];
+        trace?: never;
+    };
     "/api/v1/storage-credentials": {
         parameters: {
             query?: never;
@@ -562,6 +598,65 @@ export interface components {
              * @default false
              */
             shared: boolean;
+        };
+        TemplateConfig: {
+            paths: string[];
+            exclude_patterns?: string[];
+            /** @default false */
+            exclude_caches: boolean;
+            /** @default false */
+            one_file_system: boolean;
+            /** @description Standard five-field cron in the template timezone. */
+            schedule_cron: string;
+            /** @description IANA timezone name. */
+            schedule_timezone: string;
+            /** @default 0 */
+            jitter_seconds: number;
+            /** @default 900 */
+            misfire_grace_seconds: number;
+            /** @description Opaque retry metadata stored verbatim for the Agent scheduler. */
+            retry_policy?: {
+                [key: string]: unknown;
+            };
+            /** Format: uuid */
+            retention_policy_id?: string;
+            pre_hook_ids?: string[];
+            post_hook_ids?: string[];
+            /** @description Opaque resource limits stored verbatim for the Agent runtime. */
+            resource_limits?: {
+                [key: string]: unknown;
+            };
+            /** @default true */
+            enabled_by_default: boolean;
+        };
+        Template: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /**
+             * Format: int64
+             * @description Current immutable revision. Plans apply it explicitly.
+             */
+            revision: number;
+            config: components["schemas"]["TemplateConfig"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TemplateList: {
+            items: components["schemas"]["Template"][];
+            next_cursor?: string;
+        };
+        TemplateCreate: {
+            name: string;
+            description?: string;
+            config: components["schemas"]["TemplateConfig"];
+        };
+        TemplateUpdate: {
+            description?: string;
+            config?: components["schemas"]["TemplateConfig"];
         };
         Operation: {
             /** Format: uuid */
@@ -1629,6 +1724,135 @@ export interface operations {
             400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listTemplates: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active templates with their current revision body. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    createTemplate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Template created; ETag carries the revision. */
+            201: {
+                headers: {
+                    ETag?: string;
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Template"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Template with its current immutable revision. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Template"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    updateTemplate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Revision appended; ETag carries the new revision. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Template"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            412: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };
