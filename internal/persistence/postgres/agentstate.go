@@ -48,12 +48,14 @@ func (s *Store) DesiredState(ctx context.Context, agentID uuid.UUID) (domain.Des
 		return domain.DesiredState{}, err
 	}
 	var config struct {
-		RuntimePolicy domain.RuntimePolicy `json:"runtime_policy"`
+		RuntimePolicy domain.RuntimePolicy  `json:"runtime_policy"`
+		Plans         []domain.PlanSchedule `json:"plans"`
 	}
 	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return domain.DesiredState{}, err
 	}
 	state.RuntimePolicy = config.RuntimePolicy
+	state.Plans = config.Plans
 	if err := state.Validate(); err != nil {
 		return domain.DesiredState{}, err
 	}

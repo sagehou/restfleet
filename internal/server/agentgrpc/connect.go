@@ -211,6 +211,18 @@ func (s *Service) sendDesiredState(
 	if err != nil {
 		return status.Error(codes.Unavailable, "desired state unavailable")
 	}
+	plans := make([]*agentv1.PlanSchedule, 0, len(state.Plans))
+	for _, plan := range state.Plans {
+		plans = append(plans, &agentv1.PlanSchedule{
+			PlanId: plan.PlanID.String(), Revision: plan.Revision, Name: plan.Name,
+			HostId: plan.HostID.String(), RepositoryId: plan.RepositoryID.String(),
+			Cron: plan.Cron, Timezone: plan.Timezone,
+			JitterSeconds: int32(plan.JitterSeconds), MisfireGraceSeconds: int32(plan.MisfireGraceSeconds),
+			ConcurrencyPolicy: plan.ConcurrencyPolicy, Paths: plan.Paths,
+			ExcludePatterns: plan.ExcludePatterns, ExcludeCaches: plan.ExcludeCaches,
+			OneFileSystem: plan.OneFileSystem, ConfigHash: plan.ConfigHash,
+		})
+	}
 	if err := sendServerMessage(stream, sequence, protocol, &agentv1.ServerToAgent{
 		Payload: &agentv1.ServerToAgent_DesiredStateSnapshot{
 			DesiredStateSnapshot: &agentv1.DesiredStateSnapshot{
@@ -220,6 +232,7 @@ func (s *Service) sendDesiredState(
 					MaxParallelIoJobs: state.RuntimePolicy.MaxParallelIOJobs,
 					LogLimitBytes:     state.RuntimePolicy.LogLimitBytes,
 				},
+				Plans: plans,
 			},
 		},
 	}); err != nil {

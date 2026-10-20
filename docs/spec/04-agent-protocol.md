@@ -176,7 +176,25 @@ Server 下发完整规范化快照，不下发需要 Agent 自行合并的增量
   "revision": 42,
   "generated_at": "2026-09-02T12:00:00Z",
   "config_hash": "sha256:...",
-  "plans": [],
+  "plans": [
+    {
+      "plan_id": "0198f1da-2c57-7d3b-9c92-6e2f05293647",
+      "revision": 3,
+      "name": "nightly",
+      "host_id": "0198f1da-2c57-7d3b-9c92-6e2f05293648",
+      "repository_id": "0198f1da-2c57-7d3b-9c92-6e2f05293649",
+      "cron": "0 3 * * *",
+      "timezone": "Asia/Shanghai",
+      "jitter_seconds": 300,
+      "misfire_grace_seconds": 900,
+      "concurrency_policy": "FORBID",
+      "paths": ["/srv/data"],
+      "exclude_patterns": ["*.tmp"],
+      "exclude_caches": true,
+      "one_file_system": false,
+      "config_hash": "0123..."
+    }
+  ],
   "repositories": [],
   "runtime_policy": {
     "max_parallel_io_jobs": 1,
@@ -184,6 +202,8 @@ Server 下发完整规范化快照，不下发需要 Agent 自行合并的增量
   }
 }
 ```
+
+`plans` 只携带调度子集，不含凭据、路径秘密或 hook 明文；数组按 `plan_id`、`revision` 排序后参与 canonical JSON 与 `config_hash`。中心尚未物化计划时该数组为空，旧的空数组快照哈希保持不变。
 
 Agent 处理步骤：
 
