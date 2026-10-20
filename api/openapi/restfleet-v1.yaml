@@ -961,6 +961,23 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/snapshots:
+    get:
+      operationId: listSnapshots
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        "200":
+          description: Recent snapshots indexed from successful backups, newest first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SnapshotList" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/storage-credentials:
     get:
       operationId: listStorageCredentials
@@ -1444,6 +1461,29 @@ components:
           type: array
           items: { $ref: "#/components/schemas/BackupOperation" }
         next_cursor: { type: string }
+    Snapshot:
+      type: object
+      additionalProperties: false
+      required: [snapshot_id, plan_id, agent_id, host_id, repository_id, operation_id, captured_at, recorded_at, files_new, bytes_added]
+      properties:
+        snapshot_id: { type: string }
+        plan_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        host_id: { type: string, format: uuid }
+        repository_id: { type: string, format: uuid }
+        operation_id: { type: string, format: uuid }
+        captured_at: { type: string, format: date-time }
+        recorded_at: { type: string, format: date-time }
+        files_new: { type: integer, format: int64, minimum: 0 }
+        bytes_added: { type: integer, format: int64, minimum: 0 }
+    SnapshotList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Snapshot" }
     Operation:
       type: object
       additionalProperties: false

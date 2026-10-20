@@ -61,3 +61,33 @@ func (a *API) GetBackupOperation(w http.ResponseWriter, r *http.Request, operati
 	}
 	a.json(w, http.StatusOK, backupOperationResponse(operation))
 }
+
+func snapshotResponse(s domain.Snapshot) Snapshot {
+	return Snapshot{SnapshotId: s.SnapshotID, PlanId: s.PlanID, AgentId: s.AgentID, HostId: s.HostID,
+		RepositoryId: s.RepositoryID, OperationId: s.OperationID, CapturedAt: s.CapturedAt,
+		RecordedAt: s.RecordedAt, FilesNew: s.FilesNew, BytesAdded: s.BytesAdded}
+}
+
+func (a *API) ListSnapshots(w http.ResponseWriter, r *http.Request, params ListSnapshotsParams) {
+	if _, ok := a.authorizeRead(w, r); !ok {
+		return
+	}
+	limit := 100
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	if r.URL.RawQuery != "" && params.Limit == nil {
+		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
+		return
+	}
+	items, err := a.control.Snapshots(r.Context(), limit)
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	response := SnapshotList{Items: make([]Snapshot, 0, len(items))}
+	for _, item := range items {
+		response.Items = append(response.Items, snapshotResponse(item))
+	}
+	a.json(w, http.StatusOK, response)
+}

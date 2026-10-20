@@ -26,7 +26,24 @@ func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.
 	default:
 		return &ValidationError{Field: "status", Code: "INVALID_OPERATION_STATUS"}
 	}
-	return c.store.UpsertOperationResult(ctx, result)
+	if err := c.store.UpsertOperationResult(ctx, result); err != nil {
+		return err
+	}
+	if result.SnapshotID != "" {
+		if plan, err := c.store.Plan(ctx, result.PlanID); err == nil {
+			_ = c.store.RecordSnapshot(ctx, domain.Snapshot{
+				PlanID: plan.ID, SnapshotID: result.SnapshotID, AgentID: result.AgentID,
+				HostID: plan.HostID, RepositoryID: plan.RepositoryID, OperationID: result.OperationID,
+				CapturedAt: result.FinishedAt, RecordedAt: c.clock().UTC(),
+				FilesNew: result.FilesDone, BytesAdded: result.BytesDone,
+			})
+		}
+	}
+	return nil
+}
+
+func (c *ControlPlane) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, error) {
+	return c.store.Snapshots(ctx, limit)
 }
 
 func (c *ControlPlane) BackupOperations(ctx context.Context, after uuid.UUID, limit int) ([]domain.BackupOperation, error) {

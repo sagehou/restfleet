@@ -616,6 +616,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage-credentials": {
         parameters: {
             query?: never;
@@ -992,6 +1008,30 @@ export interface components {
         BackupOperationList: {
             items: components["schemas"]["BackupOperation"][];
             next_cursor?: string;
+        };
+        Snapshot: {
+            snapshot_id: string;
+            /** Format: uuid */
+            plan_id: string;
+            /** Format: uuid */
+            agent_id: string;
+            /** Format: uuid */
+            host_id: string;
+            /** Format: uuid */
+            repository_id: string;
+            /** Format: uuid */
+            operation_id: string;
+            /** Format: date-time */
+            captured_at: string;
+            /** Format: date-time */
+            recorded_at: string;
+            /** Format: int64 */
+            files_new: number;
+            /** Format: int64 */
+            bytes_added: number;
+        };
+        SnapshotList: {
+            items: components["schemas"]["Snapshot"][];
         };
         Operation: {
             /** Format: uuid */
@@ -2609,6 +2649,32 @@ export interface operations {
             400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listSnapshots: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent snapshots indexed from successful backups, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };
