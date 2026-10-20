@@ -65,7 +65,8 @@ func (s *Store) UpsertOperationProgress(ctx context.Context, progress domain.Bac
 	if _, err = tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,started_at,created_at,updated_at)
 		values($1,$2,$3,'BACKUP','SCHEDULED','RUNNING',$4,'',$5,$6,$6,$6)
 		on conflict (id) do update set status=case when backup_operations.status='CANCEL_REQUESTED' then 'CANCEL_REQUESTED' else 'RUNNING' end,
-			updated_at=excluded.updated_at,started_at=coalesce(backup_operations.started_at,excluded.started_at)`,
+			updated_at=excluded.updated_at,started_at=coalesce(backup_operations.started_at,excluded.started_at)
+		where backup_operations.finished_at is null`,
 		progress.OperationID, progress.PlanID, progress.AgentID, progress.PlanRevision, progress.ScheduledAt, progress.ObservedAt); err != nil {
 		return persistenceError(err)
 	}
