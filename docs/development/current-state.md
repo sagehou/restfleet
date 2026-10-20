@@ -5,7 +5,7 @@
 ## 工作区
 
 - 当前分支：`feat/m6-operation-control`
-- HEAD：`8b81f1e feat: cancel and retry backup operations with result acknowledgement`
+- HEAD：`b3f26ac fix: keep terminal operations closed against late progress`
 - 分支包含三个叠加提交组：C 快照写路径加固 → A 快照浏览 → B M6 取消/重试与结果确认
 - `main`：`45ae695 feat: index backup snapshots and list them (#91)`
 - 工作区：干净
@@ -38,7 +38,7 @@
 - `#83`–`#91` 合入 `main`：模板/Plan、既定调度、restic runner、Job 协议、本地执行、Operation 持久化、Plan 健康、快照索引与列表。
 - 快照写路径加固：终态结果与快照索引写入同一事务，索引失败整体回滚等待 Agent 重放。
 - 快照浏览：`restic ls --json` 固定 argv 有界扫描；`SNAPSHOT_LIST` 复用 credential worker 的 lease 与凭据刷新；目录 API 支持 200 缓存 / 202 待扫描；快照页面支持目录导航。
-- M6 控制：手动备份、取消（`JobCancel`）、重试（新 Operation 关联 parent/root）、终态优先补报、`JobResultAccepted` 后才标记上传；新旧 Agent/Server 通过 capability 保持兼容。
+- M6 控制：手动备份、取消（`JobCancel`）、重试（新 Operation 关联 parent/root）、终态优先补报、`JobResultAccepted` 后才标记上传；新旧 Agent/Server 通过 capability 保持兼容。手动 Operation 仅在 Agent `JobAccepted` 后标记 RUNNING，拒绝或丢失投递可重试。
 
 ## 待完成
 
