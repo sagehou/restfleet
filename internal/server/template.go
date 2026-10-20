@@ -115,3 +115,29 @@ func validTemplateText(value string, min, max int) bool {
 	length := utf8.RuneCountInString(value)
 	return length >= min && length <= max
 }
+
+// ArchiveTemplate is only allowed when no active plan still references it.
+func (c *ControlPlane) ArchiveTemplate(ctx context.Context, id uuid.UUID, expectedRevision int64, actor domain.User, meta RequestMeta) (domain.Template, error) {
+	if actor.Role != domain.RoleAdmin {
+		if err := c.RecordDenied(ctx, "TEMPLATE_ARCHIVE", "TEMPLATE", "ROLE_DENIED", meta); err != nil {
+			return domain.Template{}, err
+		}
+		return domain.Template{}, ErrForbidden
+	}
+	if id.Version() != 7 || id.Variant() != uuid.RFC4122 {
+		return domain.Template{}, &ValidationError{Field: "id", Code: "INVALID_ID"}
+	}
+	if expectedRevision < 1 {
+		return domain.Template{}, &ValidationError{Field: "revision", Code: "INVALID_REVISION"}
+	}
+	audit, err := c.userAudit("TEMPLATE_ARCHIVE", "TEMPLATE", id, actor.ID, meta, "ARCHIVED")
+	if err != nil {
+		return domain.Template{}, err
+	}
+	audit.Changes = json.RawMessage(`{"archived":true}`)
+	return c.store.ArchiveTemplate(ctx, id, expectedRevision, c.clock().UTC(), audit)
+}
+
+func (c *ControlPlane) DependentPlans(ctx context.Context, id uuid.UUID) ([]domain.Plan, error) {
+	return c.store.DependentPlans(ctx, id)
+}

@@ -16,6 +16,7 @@ import (
 var (
 	ErrTemplateNameTaken = errors.New("template name already exists")
 	ErrTemplateArchived  = errors.New("template is archived")
+	ErrTemplateInUse     = errors.New("template is used by active plans")
 )
 
 // TemplateError names the first invalid field of a revision body.

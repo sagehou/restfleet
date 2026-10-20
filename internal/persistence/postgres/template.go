@@ -160,3 +160,62 @@ func (s *Store) TemplateRevisionConfig(ctx context.Context, templateID uuid.UUID
 	}
 	return config, nil
 }
+
+// DependentPlans lists non-archived plans that still reference the template.
+func (s *Store) DependentPlans(ctx context.Context, templateID uuid.UUID) ([]domain.Plan, error) {
+	rows, err := s.pool.Query(ctx, "select "+planColumns+" from plans where template_id=$1 and archived_at is null order by id", templateID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]domain.Plan, 0)
+	for rows.Next() {
+		p, err := scanPlan(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, p)
+	}
+	return items, rows.Err()
+}
+
+// ArchiveTemplate refuses to hide a template that active plans still reference.
+func (s *Store) ArchiveTemplate(ctx context.Context, id uuid.UUID, expectedRevision int64, now time.Time, audit domain.AuditEvent) (domain.Template, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Template{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var current int64
+	var archivedAt *time.Time
+	err = tx.QueryRow(ctx, "select current_revision,archived_at from templates where id=$1 for update", id).Scan(&current, &archivedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Template{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.Template{}, err
+	}
+	if archivedAt != nil {
+		return domain.Template{}, domain.ErrTemplateArchived
+	}
+	if current != expectedRevision {
+		return domain.Template{}, domain.ErrRevisionConflict
+	}
+	var dependents int
+	if err = tx.QueryRow(ctx, "select count(*) from plans where template_id=$1 and archived_at is null", id).Scan(&dependents); err != nil {
+		return domain.Template{}, err
+	}
+	if dependents > 0 {
+		return domain.Template{}, domain.ErrTemplateInUse
+	}
+	if _, err = tx.Exec(ctx, "update templates set archived_at=$2,updated_at=$2 where id=$1", id, now); err != nil {
+		return domain.Template{}, err
+	}
+	if err = appendAudit(ctx, tx, audit); err != nil {
+		return domain.Template{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return domain.Template{}, err
+	}
+	return s.Template(ctx, id)
+}
