@@ -251,7 +251,7 @@
 
 ## M6 — Backup Execution
 
-**Status: IN PROGRESS** — Restic argv、JSONL 解析、进程组取消/超时与受控临时文件已接入；调度循环、Operation 持久化与结果回写待完成。
+**Status: IN PROGRESS** — Restic argv、JSONL 解析、进程组控制已接入；Agent 本地调度循环、Operation 持久化（bbolt）与 Gateway 会话内执行已接线；中心 Operation 状态机、进度/结果回传与 Web 待完成。
 
 ### Goal
 

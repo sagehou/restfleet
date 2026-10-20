@@ -152,9 +152,20 @@ func Enroll(ctx context.Context, state *State, config EnrollConfig) (Identity, e
 
 type RunConfig struct {
 	Version string
+	// ResticBinary defaults to "restic" from PATH.
+	ResticBinary string
 }
 
 func Run(ctx context.Context, state *State, config RunConfig) error {
+	binary := config.ResticBinary
+	if binary == "" {
+		binary = "restic"
+	}
+	schedulerCtx, stopScheduler := context.WithCancel(ctx)
+	defer stopScheduler()
+	go func() {
+		_ = state.RunLocalScheduler(schedulerCtx, 30*time.Second, BackupExecutor{State: state, Binary: binary})
+	}()
 	delay := time.Second
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for {
