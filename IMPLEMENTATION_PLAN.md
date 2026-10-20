@@ -213,7 +213,7 @@
 
 ## M5 — Templates, Plans and Local Scheduler
 
-**Status: IN PROGRESS** — 模板与 Plan 的建表、不可变 revision、读取/创建/修订 API 已接入（Plan 绑定 Host/Agent/Repository，effective config 由中心合并并存档）；计划状态机（apply/pause/resume）、批量 `apply-to-plans`、模板归档与依赖列表已接入；Web 页面已接入；Agent 本地调度核心（cron/时区/stable jitter/misfire/FORBID、deterministic operation key）已落地为 `internal/agent/schedule`，`DesiredState` 与 Agent 控制协议已支持 `plans[]`（调度子集、参与 config_hash、空数组时哈希不变）；中心侧填充计划与 revision 触发待接线；Backup Health 计算待完成。
+**Status: IN PROGRESS** — 模板与 Plan 的建表、不可变 revision、读取/创建/修订 API 已接入（Plan 绑定 Host/Agent/Repository，effective config 由中心合并并存档）；计划状态机（apply/pause/resume）、批量 `apply-to-plans`、模板归档与依赖列表已接入；Web 页面已接入；Agent 本地调度核心（cron/时区/stable jitter/misfire/FORBID、deterministic operation key）已落地为 `internal/agent/schedule`，`DesiredState` 与 Agent 控制协议已支持 `plans[]`（调度子集、参与 config_hash、空数组时哈希不变）；计划变更时会重写 Agent 快照并 bump desired revision（`AGENT_DESIRED_STATE_CHANGED` outbox）；Agent 调度循环属于 M6 执行链；Backup Health 计算待完成。
 
 ### Goal
 
