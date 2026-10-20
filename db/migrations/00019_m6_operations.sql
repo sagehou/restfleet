@@ -21,7 +21,7 @@ create table backup_operations (
   created_at timestamptz not null,
   updated_at timestamptz not null
 );
-create index backup_operations_plan_idx on operations(plan_id, scheduled_at desc);
+create index backup_operations_plan_idx on backup_operations(plan_id, scheduled_at desc);
 
 create table backup_operation_events (
   operation_id uuid not null references backup_operations(id),
