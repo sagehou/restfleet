@@ -111,3 +111,20 @@ func ValidPlanStatus(status string) bool {
 	_, ok := planStatuses[status]
 	return ok
 }
+
+var ErrPlanStateInvalid = errors.New("plan state does not allow this transition")
+
+// PlanApplyTarget is one explicit plan the operator asked to move to a new
+// template revision. The expected revision makes the batch conflict-safe.
+type PlanApplyTarget struct {
+	PlanID           uuid.UUID
+	ExpectedRevision int64
+}
+
+// PlanApplyResult reports one plan independently so a batch can partially
+// succeed without hiding which plans conflicted.
+type PlanApplyResult struct {
+	PlanID uuid.UUID
+	Status string
+	Code   string
+}

@@ -541,12 +541,23 @@ func routeLabel(path string) string {
 		}
 	}
 	if strings.HasPrefix(path, "/api/v1/plans/") {
-		if strings.HasSuffix(path, "/effective-config") {
+		switch {
+		case strings.HasSuffix(path, "/effective-config"):
 			return "/api/v1/plans/{plan_id}/effective-config"
+		case strings.HasSuffix(path, "/pause"):
+			return "/api/v1/plans/{plan_id}/pause"
+		case strings.HasSuffix(path, "/resume"):
+			return "/api/v1/plans/{plan_id}/resume"
+		case strings.HasSuffix(path, "/apply"):
+			return "/api/v1/plans/{plan_id}/apply"
+		default:
+			return "/api/v1/plans/{plan_id}"
 		}
-		return "/api/v1/plans/{plan_id}"
 	}
 	if strings.HasPrefix(path, "/api/v1/templates/") {
+		if strings.HasSuffix(path, "/apply-to-plans") {
+			return "/api/v1/templates/{template_id}/apply-to-plans"
+		}
 		return "/api/v1/templates/{template_id}"
 	}
 	if strings.HasPrefix(path, "/api/v1/operations/") {

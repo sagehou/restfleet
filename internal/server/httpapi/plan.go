@@ -171,3 +171,83 @@ func (a *API) invalidPlanRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The plan request is invalid.", nil)
 }
+
+func (a *API) PausePlan(w http.ResponseWriter, r *http.Request, planID openapi_types.UUID, params PausePlanParams) {
+	a.planTransition(w, r, planID, params.XCSRFToken, params.IfMatch, "PLAN_PAUSE",
+		func(revision int64, actor domain.User) (domain.Plan, error) {
+			return a.control.PausePlan(r.Context(), planID, revision, actor, requestMeta(r))
+		})
+}
+
+func (a *API) ResumePlan(w http.ResponseWriter, r *http.Request, planID openapi_types.UUID, params ResumePlanParams) {
+	a.planTransition(w, r, planID, params.XCSRFToken, params.IfMatch, "PLAN_RESUME",
+		func(revision int64, actor domain.User) (domain.Plan, error) {
+			return a.control.ResumePlan(r.Context(), planID, revision, actor, requestMeta(r))
+		})
+}
+
+func (a *API) ApplyPlan(w http.ResponseWriter, r *http.Request, planID openapi_types.UUID, params ApplyPlanParams) {
+	a.planTransition(w, r, planID, params.XCSRFToken, params.IfMatch, "PLAN_APPLY",
+		func(revision int64, actor domain.User) (domain.Plan, error) {
+			return a.control.ApplyPlan(r.Context(), planID, revision, actor, requestMeta(r))
+		})
+}
+
+func (a *API) planTransition(w http.ResponseWriter, r *http.Request, planID openapi_types.UUID, csrf CsrfToken, ifMatch IfMatch,
+	action string, transition func(int64, domain.User) (domain.Plan, error)) {
+	actor, ok := a.authorizeMutation(w, r, csrf, action, "PLAN")
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		a.invalidPlanRequest(w, r)
+		return
+	}
+	revision, err := parseETag(ifMatch)
+	if err != nil {
+		a.problem(w, r, http.StatusBadRequest, "INVALID_REVISION", "Invalid request", "If-Match must contain a positive revision.", nil)
+		return
+	}
+	plan, err := transition(revision, actor.User)
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	setETag(w, plan.DesiredRevision)
+	a.json(w, http.StatusOK, planResponse(plan))
+}
+
+func (a *API) ApplyTemplateToPlans(w http.ResponseWriter, r *http.Request, templateID openapi_types.UUID, params ApplyTemplateToPlansParams) {
+	actor, ok := a.authorizeMutation(w, r, params.XCSRFToken, "TEMPLATE_APPLY_TO_PLANS", "TEMPLATE")
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		a.invalidTemplateRequest(w, r)
+		return
+	}
+	var request TemplateApplyRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		a.invalidTemplateRequest(w, r)
+		return
+	}
+	targets := make([]domain.PlanApplyTarget, 0, len(request.Plans))
+	for _, item := range request.Plans {
+		targets = append(targets, domain.PlanApplyTarget{PlanID: item.PlanId, ExpectedRevision: item.ExpectedRevision})
+	}
+	results, err := a.control.ApplyTemplateToPlans(r.Context(), templateID, request.TemplateRevision, targets, actor.User, requestMeta(r))
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	response := TemplateApplyResponse{Results: make([]PlanApplyResult, 0, len(results))}
+	for _, result := range results {
+		item := PlanApplyResult{PlanId: result.PlanID, Status: PlanApplyResultStatus(result.Status)}
+		if result.Code != "" {
+			code := result.Code
+			item.Code = &code
+		}
+		response.Results = append(response.Results, item)
+	}
+	a.json(w, http.StatusOK, response)
+}

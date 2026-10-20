@@ -369,6 +369,24 @@ func (e PlanStatus) Valid() bool {
 	}
 }
 
+// Defines values for PlanApplyResultStatus.
+const (
+	APPLIED  PlanApplyResultStatus = "APPLIED"
+	CONFLICT PlanApplyResultStatus = "CONFLICT"
+)
+
+// Valid indicates whether the value is a known member of the PlanApplyResultStatus enum.
+func (e PlanApplyResultStatus) Valid() bool {
+	switch e {
+	case APPLIED:
+		return true
+	case CONFLICT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RepositoryStatus.
 const (
 	RepositoryStatusDEGRADED     RepositoryStatus = "DEGRADED"
@@ -744,6 +762,23 @@ type PlanBackupHealth string
 // PlanStatus defines model for Plan.Status.
 type PlanStatus string
 
+// PlanApplyResult defines model for PlanApplyResult.
+type PlanApplyResult struct {
+	// Code Conflict reason: NOT_FOUND, PLAN_ARCHIVED, NOT_USING_TEMPLATE or REVISION_CONFLICT.
+	Code   *string               `json:"code,omitempty"`
+	PlanId openapi_types.UUID    `json:"plan_id"`
+	Status PlanApplyResultStatus `json:"status"`
+}
+
+// PlanApplyResultStatus defines model for PlanApplyResult.Status.
+type PlanApplyResultStatus string
+
+// PlanApplyTarget defines model for PlanApplyTarget.
+type PlanApplyTarget struct {
+	ExpectedRevision int64              `json:"expected_revision"`
+	PlanId           openapi_types.UUID `json:"plan_id"`
+}
+
 // PlanCreate defines model for PlanCreate.
 type PlanCreate struct {
 	AgentId openapi_types.UUID `json:"agent_id"`
@@ -889,6 +924,17 @@ type Template struct {
 	// Revision Current immutable revision. Plans apply it explicitly.
 	Revision  int64     `json:"revision"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// TemplateApplyRequest defines model for TemplateApplyRequest.
+type TemplateApplyRequest struct {
+	Plans            []PlanApplyTarget `json:"plans"`
+	TemplateRevision int64             `json:"template_revision"`
+}
+
+// TemplateApplyResponse defines model for TemplateApplyResponse.
+type TemplateApplyResponse struct {
+	Results []PlanApplyResult `json:"results"`
 }
 
 // TemplateConfig defines model for TemplateConfig.
@@ -1039,6 +1085,24 @@ type UpdatePlanParams struct {
 	IfMatch    IfMatch   `json:"If-Match"`
 }
 
+// ApplyPlanParams defines parameters for ApplyPlan.
+type ApplyPlanParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
+// PausePlanParams defines parameters for PausePlan.
+type PausePlanParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
+// ResumePlanParams defines parameters for ResumePlan.
+type ResumePlanParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
 // ListRepositoriesParams defines parameters for ListRepositories.
 type ListRepositoriesParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
@@ -1102,6 +1166,11 @@ type UpdateTemplateParams struct {
 	IfMatch    IfMatch   `json:"If-Match"`
 }
 
+// ApplyTemplateToPlansParams defines parameters for ApplyTemplateToPlans.
+type ApplyTemplateToPlansParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // EnrollAgentJSONRequestBody defines body for EnrollAgent for application/json ContentType.
 type EnrollAgentJSONRequestBody = AgentEnrollmentRequest
 
@@ -1143,6 +1212,9 @@ type CreateTemplateJSONRequestBody = TemplateCreate
 
 // UpdateTemplateJSONRequestBody defines body for UpdateTemplate for application/json ContentType.
 type UpdateTemplateJSONRequestBody = TemplateUpdate
+
+// ApplyTemplateToPlansJSONRequestBody defines body for ApplyTemplateToPlans for application/json ContentType.
+type ApplyTemplateToPlansJSONRequestBody = TemplateApplyRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -1222,8 +1294,17 @@ type ServerInterface interface {
 	// (PATCH /api/v1/plans/{plan_id})
 	UpdatePlan(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID, params UpdatePlanParams)
 
+	// (POST /api/v1/plans/{plan_id}/apply)
+	ApplyPlan(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID, params ApplyPlanParams)
+
 	// (GET /api/v1/plans/{plan_id}/effective-config)
 	GetPlanEffectiveConfig(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID)
+
+	// (POST /api/v1/plans/{plan_id}/pause)
+	PausePlan(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID, params PausePlanParams)
+
+	// (POST /api/v1/plans/{plan_id}/resume)
+	ResumePlan(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID, params ResumePlanParams)
 
 	// (GET /api/v1/repositories)
 	ListRepositories(w http.ResponseWriter, r *http.Request, params ListRepositoriesParams)
@@ -1266,6 +1347,9 @@ type ServerInterface interface {
 
 	// (PATCH /api/v1/templates/{template_id})
 	UpdateTemplate(w http.ResponseWriter, r *http.Request, templateId openapi_types.UUID, params UpdateTemplateParams)
+
+	// (POST /api/v1/templates/{template_id}/apply-to-plans)
+	ApplyTemplateToPlans(w http.ResponseWriter, r *http.Request, templateId openapi_types.UUID, params ApplyTemplateToPlansParams)
 
 	// (GET /api/v1/version)
 	Version(w http.ResponseWriter, r *http.Request)
@@ -2271,6 +2355,83 @@ func (siw *ServerInterfaceWrapper) UpdatePlan(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ApplyPlan operation middleware
+func (siw *ServerInterfaceWrapper) ApplyPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan_id" -------------
+	var planId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan_id", r.PathValue("plan_id"), &planId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ApplyPlanParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyPlan(w, r, planId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPlanEffectiveConfig operation middleware
 func (siw *ServerInterfaceWrapper) GetPlanEffectiveConfig(w http.ResponseWriter, r *http.Request) {
 
@@ -2288,6 +2449,160 @@ func (siw *ServerInterfaceWrapper) GetPlanEffectiveConfig(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPlanEffectiveConfig(w, r, planId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PausePlan operation middleware
+func (siw *ServerInterfaceWrapper) PausePlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan_id" -------------
+	var planId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan_id", r.PathValue("plan_id"), &planId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PausePlanParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PausePlan(w, r, planId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumePlan operation middleware
+func (siw *ServerInterfaceWrapper) ResumePlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan_id" -------------
+	var planId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan_id", r.PathValue("plan_id"), &planId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResumePlanParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumePlan(w, r, planId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3033,6 +3348,60 @@ func (siw *ServerInterfaceWrapper) UpdateTemplate(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ApplyTemplateToPlans operation middleware
+func (siw *ServerInterfaceWrapper) ApplyTemplateToPlans(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "template_id" -------------
+	var templateId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "template_id", r.PathValue("template_id"), &templateId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "template_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ApplyTemplateToPlansParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyTemplateToPlans(w, r, templateId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Version operation middleware
 func (siw *ServerInterfaceWrapper) Version(w http.ResponseWriter, r *http.Request) {
 
@@ -3230,6 +3599,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/plans/{plan_id}", wrapper.GetPlan)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/plans/{plan_id}", wrapper.UpdatePlan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/plans/{plan_id}/effective-config", wrapper.GetPlanEffectiveConfig)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/plans/{plan_id}/pause", wrapper.PausePlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/plans/{plan_id}/resume", wrapper.ResumePlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/plans/{plan_id}/apply", wrapper.ApplyPlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/templates/{template_id}/apply-to-plans", wrapper.ApplyTemplateToPlans)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.ListStorageCredentials)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.CreateStorageCredential)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)
