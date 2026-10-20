@@ -48,6 +48,7 @@ type Access struct {
 
 type activeBackup struct {
 	binding      Binding
+	agentID      uuid.UUID
 	credentialID uuid.UUID
 	cancel       context.CancelFunc
 	session      *BackupSession
@@ -59,14 +60,17 @@ type activeBackup struct {
 // job queue or lease authority. Use ONE supervisor per gateway runtime; close
 // the listener, then this supervisor, then the caller-owned credential runtime.
 type Supervisor struct {
-	mu         sync.Mutex
-	runtime    *rclone.Runtime
-	limit      int
-	audit      func(context.Context, Event) error
-	auditReady func() bool
-	active     map[uuid.UUID]*activeBackup
-	closed     bool
-	running    sync.WaitGroup
+	mu            sync.Mutex
+	runtime       *rclone.Runtime
+	limit         int
+	audit         func(context.Context, Event) error
+	auditReady    func() bool
+	identityAuth  bool // Set before serving or starting work; no password fallback.
+	observeReady  bool // Production only; embedded callers retain their audit contract.
+	active        map[uuid.UUID]*activeBackup
+	closed        bool
+	cleanupFailed bool
+	running       sync.WaitGroup
 }
 
 func NewSupervisor(runtime *rclone.Runtime, maxSessions int, audit func(context.Context, Event) error, auditReady ...func() bool) (*Supervisor, error) {
@@ -97,6 +101,9 @@ func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
 	if run == nil || persist == nil {
 		return ErrInvalidSession
 	}
+	if s.identityAuth && local == nil {
+		return ErrAuthorization
+	}
 	deadline, ok := ctx.Deadline()
 	if !ok || time.Until(deadline) > 24*time.Hour {
 		return rclone.ErrGatewayLifetime
@@ -113,6 +120,9 @@ func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
 	defer cancel()
 	entry := &activeBackup{binding: request.Binding, credentialID: request.CredentialID, cancel: cancel, audit: s.audit}
 	if local != nil {
+		if s.identityAuth {
+			entry.agentID = local.authorization.binding.AgentID
+		}
 		entry.guard = local.ready
 		entry.audit = func(ctx context.Context, event Event) error {
 			if err := local.record(ctx, event); err != nil {
@@ -217,6 +227,9 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 		cancel()
 		<-stopped
 		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+			s.mu.Lock()
+			s.cleanupFailed = true
+			s.mu.Unlock()
 			result = ErrBackendUnavailable // Never acknowledge cleanup after a failed group kill.
 		}
 	}()
@@ -226,7 +239,7 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 	if entry.guard != nil && !entry.guard() {
 		return ErrAuthorization
 	}
-	session, password, err := NewBackupSession(backendCtx, entry.binding, socket, entry.audit)
+	session, password, err := newBackupSession(backendCtx, entry.binding, socket, entry.audit, entry.agentID)
 	if err != nil {
 		return err
 	}
@@ -239,14 +252,11 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 		s.mu.Unlock()
 		session.Close()
 	}()
-	probeCtx, stopProbe := context.WithTimeout(backendCtx, 15*time.Second)
-	probe, err := session.request(probeCtx, http.MethodHead, "config", nil, nil)
-	if err == nil {
-		_ = probe.Body.Close()
+	if probeBackend(backendCtx, session) != nil {
+		return ErrBackendUnavailable
 	}
-	stopProbe()
-	if err != nil || probe.StatusCode != http.StatusOK || probe.ContentLength < 1 || probe.ContentLength > maxLockBytes {
-		return ErrBackendUnavailable // Never initialize a missing repo or use a TCP fallback.
+	if s.observeReady && !recordBackup(backendCtx, entry.audit, entry.binding, "backend_ready", "verified") {
+		return ErrGatewayAudit
 	}
 	s.mu.Lock()
 	if s.closed || backendCtx.Err() != nil || (entry.guard != nil && !entry.guard()) {
@@ -264,6 +274,52 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 	}
 	if err != nil {
 		return ErrBackupFailed
+	}
+	return nil
+}
+
+func probeBackend(ctx context.Context, session *BackupSession) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	response, err := session.request(ctx, http.MethodHead, "config", nil, nil)
+	if err != nil {
+		return ErrBackendUnavailable
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK || response.ContentLength < 1 || response.ContentLength > maxLockBytes ||
+		ctx.Err() != nil || (session.guard != nil && !session.guard()) {
+		return ErrBackendUnavailable // Never initialize a missing repository.
+	}
+	return nil
+}
+
+// An active backup can be probed without another process or session. Join the
+// existing session lifecycle so cleanup cannot discard a live probe/callback.
+func (s *Supervisor) observeActiveBackend(ctx context.Context, repository uuid.UUID) error {
+	s.mu.Lock()
+	entry := s.active[repository]
+	var session *BackupSession
+	if entry != nil {
+		session = entry.session
+	}
+	s.mu.Unlock()
+	if session == nil {
+		return ErrSupervisorBusy
+	}
+	session.lifecycle.RLock()
+	defer session.lifecycle.RUnlock()
+	work, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(session.ctx, cancel)
+	defer stop()
+	if session.ctx.Err() != nil {
+		return ErrSupervisorBusy
+	}
+	if probeBackend(work, session) != nil {
+		return ErrBackendUnavailable
+	}
+	if !recordBackup(work, entry.audit, entry.binding, "backend_ready", "verified") {
+		return ErrGatewayAudit
 	}
 	return nil
 }

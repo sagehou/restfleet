@@ -43,7 +43,7 @@ V1 不声称抵御：
 | Maintenance Worker | 最高数据权限 | Repo password、rclone config 的短时明文 |
 | Public Gateway | 高数据路径权限 | rclone materialized config、gateway auth verifier |
 | PostgreSQL | 敏感但不单独可信 | 密文、token hash、metadata |
-| Agent | 单 Host 范围可信 | Agent private key、本 Host Repo password/gateway secret |
+| Agent | 单 Host 范围可信 | Agent private key、本 Host Repo password |
 | OneDrive / Google Drive / WebDAV | 外部依赖 | rclone crypt 后的 repository objects |
 
 ## 4. 威胁与控制
@@ -107,6 +107,8 @@ Agent mTLS 身份只允许：
 - 申请自己的证书轮换；
 - 获取绑定给自己的 Repo runtime credential revision。
 
+Gateway 数据面 MAY 复用该身份，为中心已经授权的本 Host Repository 开启/查询/结束有界会话及读/创建对象。MUST 独立核验当前中心 owner 授权及会话范围，MUST NOT 经控制 stream 传输备份内容。
+
 禁止：
 
 - 指定任意 `agent_id`/`host_id`；
@@ -123,21 +125,21 @@ Agent mTLS 身份只允许：
 每个默认 per-Host Repository 具有：
 
 1. 随机 Restic repository password；
-2. 独立 gateway username；
-3. 随机 gateway password；
+2. 独立 Gateway path identity，绑定本 Host 的 Agent mTLS 身份；
+3. Gateway 生成的非秘密当前会话 ID；
 4. 不可变 repo UUID/path；
 5. 指向中心 CA 的 gateway TLS trust。
 
 Agent 持有 1–5 中完成 backup 所需的值，但不持有 rclone config。凭据在 Agent 上以 root/service-user 可读的 `0600` 文件保存。没有 TPM/keyring 时，V1 不承诺抵御 Host root 窃取。
 
-Gateway 必须验证 username 与路径前缀匹配。只验证“密码正确”但允许任意路径是严重漏洞。
+Gateway MUST 验证证书链、当前有效期与规范 Agent 身份，并匹配中心授权的 Agent/Host/Repository 与当前会话路径。MUST NOT 以 Basic 密码、代理头或自报 ID 代替身份。旧会话路径 MUST NOT 被新会话复用，锁归属保持独立，见 ADR-0033。
 
 ### 7.1 轮换
 
-- gateway password 支持旧/新 overlap，默认 15 分钟；
-- Server 下发 credential revision，Agent 持久化并确认后才撤销旧 secret；
+- Gateway 通信 MUST 复用 §5 的长期本机密钥、自动续证和可吊销身份，不新增长期密码、逐次秘密能力或候选密码激活；
+- Server 下发 Repository credential revision，Agent MUST 持久化并确认；ACK 不代替会话授权；
 - Repo password rotation 通过 Restic key 管理完成，但旧 key 删除属于 maintenance 操作；
-- V1 提供 gateway secret rotation；Repo password rotation 可以为 V1.1，但 Schema 必须支持多个 key revision。
+- V1 MUST 提供身份续证/吊销；Repo password rotation 可以为 V1.1，但 Schema 必须支持多个 key revision。旧 Gateway secret 引用保留兼容，MUST NOT 用于生产密码回退。
 
 ## 8. 中心 Secret 管理
 
@@ -174,13 +176,13 @@ WebDAV URL MUST 拒绝非 HTTPS、userinfo、query/fragment、异常路径、私
 
 [ADR-0017](../adr/0017-bounded-offline-gateway-authority.md) 允许独立 Gateway 在控制面失联时使用中心预先签发的有限授权与本地加密待回写区。授权 MUST 绑定可信 owner、运行实例、Agent/Host/Repository/Gateway/StorageCredential、当前凭据交付及配置版本；验证信任 MUST 来自受保护中心配置/通道，不能信任授权携带的自选公钥。Gateway MUST NOT 获得 Server master key、Restic password、Server DB 凭据或中心签名私钥。
 
-控制面失联时撤销/禁用最多延迟 12h 生效；授权 MUST NOT 晚于中心签发后 12h 仍可使用，重放、传输延迟、时钟回拨或离线重启 MUST NOT 延长期限。只有中心重新检查当前授权状态并提交续期后，才 MAY 下发新授权；单次备份会话的 24h 上限不授予额外离线时间。
+[ADR-0032](../adr/0032-configurable-offline-window.md) 将离线窗口改为可配置，默认 72h。中心 MUST 以 `RESTFLEET_GATEWAY_OFFLINE_WINDOW` 限制新授权期限（1min..720h，整秒），从最后一次中心签发时间计算，并受原占用截止时间限制。控制面失联时撤销/禁用最多延迟该窗口生效；重放、传输延迟、时钟回拨或离线重启 MUST NOT 延长期限。只有中心重新检查当前授权状态并提交续期后，才 MAY 下发新授权；单次备份会话的 24h 上限不授予额外离线时间。
 
-连接状态与授权状态 MUST 分开：连接失败不产生吊销决定，重连不产生新授权，授权到期不写成已吊销。Gateway 只能把通过可信签名验证且匹配当前运行绑定的明确撤回决定视为已知吊销；收到后该绑定 MUST NOT 被旧授权或更高版本的普通续期复活。失联期间中心的最新状态可能未知，不能显示为“中心确认有效”；上述 12h 上限不因状态分离而取消。
+连接状态与授权状态 MUST 分开：连接失败不产生吊销决定，重连不产生新授权，授权到期不写成已吊销。Gateway 只能把通过可信签名验证且匹配当前运行绑定的明确撤回决定视为已知吊销；收到后该绑定 MUST NOT 被旧授权或更高版本的普通续期复活。失联期间中心的最新状态可能未知，不能显示为“中心确认有效”；上述配置窗口不因状态分离而取消。
 
 Gateway 的审计与 token 刷新 MUST 在确认持久化前完成受保护的可靠写入；仅内存或 tmpfs 不算离线持久化。待回写区 MUST 有明确字节数/记录数上限，数据加密且来源可验证；空间不足、记录损坏、刷新无法安全保存、授权失效或计时可信度丢失时 MUST 停止授权使用，保留未释放占用。明文 config 仍只允许受限 tmpfs；不得以离线为由保存普通磁盘明文或跳过 token-only、provider 与出站校验。
 
-中央维护、凭据替换及其他冲突写入者 MUST 继续受未释放占用排斥；授权到期不证明清理。Gateway 重启/材料丢失不承诺离线恢复，恢复后 MUST 经可信协调，不能通过旧授权或新文件锁自动接管。部署/故障验收见 09 §7.10；本节不表示现有在线适配器已经支持离线。
+中央维护、凭据替换及其他冲突写入者 MUST 继续受未释放占用排斥；授权到期不证明清理。Gateway 不可达、重启或材料丢失时 MUST 暂停备份并报错，保留 Agent 配对和 last-known-good 配置；V1 不实现 Gateway 离线冷启动恢复。中心恢复后 MUST 经可信协调，不能通过旧授权或新文件锁自动接管。部署/故障验收见 09 §7.10；本节不表示现有在线适配器已经支持离线。
 
 ### 8.4 Gateway 单次初始化材料
 
@@ -188,7 +190,7 @@ ADR-0022 / 09 §7.15 的内部通道 MUST 使用预注册来源签名挑战、�
 
 ### 8.5 Gateway 授权决定交付
 
-ADR-0026 / 09 §7.19 的 `RFGA` 通道 MUST 仅交付中心签名 metadata，不携带云端材料、接收私钥或 Agent 能力。中心 MUST 在 peer UID、来源 fresh challenge 和已注册完整 binding/公钥验证后提交续期或明确吊销；普通授权继续检查当前身份/ACK/配置，禁用后仍允许明确吊销。Gateway MUST 更新同一已初始化 owner，保持原占用期限与失败不可复活边界。来源回执 MUST 匹配本次挑战和精确 statement；回执丢失不回滚、不重新发材料、不签发新 grant。显式精确重放 MUST 保持原到期，失败 owner 可以拒绝。接收回执不证明 cleanup、READY 或可释放 fence，完整生产协调与全局离线审计仍待接线。
+ADR-0026 / 09 §7.19 的 `RFGA` 通道 MUST 仅交付中心签名 metadata，不携带云端材料、接收私钥或 Agent 能力。中心 MUST 在 peer UID、来源 fresh challenge 和已注册完整 binding/公钥验证后提交续期或明确吊销；普通授权继续检查当前身份/ACK/配置，禁用后仍允许明确吊销。Gateway MUST 更新同一已初始化 owner，保持原占用期限与失败不可复活边界。来源回执 MUST 匹配本次挑战和精确 statement；回执丢失不回滚、不重新发材料、不签发新 grant。显式精确重放 MUST 保持原到期，失败 owner 可以拒绝。接收回执不证明 cleanup、READY 或可释放 fence，全局离线审计已接入既有 Service；持续投递按 09 §7.19 接线，可信清理与恢复仍待完成。
 
 ### 8.6 Gateway 全局离线审计
 
@@ -202,7 +204,22 @@ ADR-0031 / 09 §7.23 的内部 `Service` MUST 从受保护 metadata、独立 pin
 
 公网 TLS MUST 仅在全部单次材料交换与 owner/global 可用性核验成功后绑定；部分初始化失败 MUST 取消/join 全部回调和 rollback，保留已创建 Queue/fence。RFGA 更新原 owner，RFGR 丢失确认重试原密文；非法确认、不可可靠读写、全局 producer 或任一 owner 永久失效 MUST 停止整次运行。退出 MUST 在所有入口、会话、子进程组、回写及最终审计 join 后清零材料、冻结/关闭 Queue；Close 不封存来源或释放占用。可信进程内 WithBackup 不得由 Agent 选择云端配置或任意 callback；生产会话协议、可部署 daemon 与 READY 仍待完成。
 
+### 8.8 生产停止终结记录
+
+[ADR-0034](../adr/0034-gateway-terminal-cleanup.md) 允许生产 `RunService` 在全部入口、handler、会话、子进程组与 callback join、最后 token 同步、材料清零/移除及 runtime 关闭均确认后，使用原已注册来源在冻结 Queue 追加唯一固定 `runtime_cleanup/joined` 终结记录。普通 Append、Agent、恢复公钥与 replay tail MUST NOT 生成或替代该证明。中心 MUST 按原签名/绑定/连续序列核验，仓库终结记录的提交、runtime 授权撤回、来源封存、占用释放、审计与 outbox MUST 原子完成；全局终结记录仅封存自己的来源。清理/刷新/可靠落盘不确定 MUST 保留 fence。回执丢失 MUST 精确重放，不能补造证明或重建 owner；详见 09 §7.25。
+
+### 8.9 运行轮换与受控恢复
+
+[ADR-0036](../adr/0036-gateway-run-rotation-and-recovery.md) 定义唯一正常轮换入口 `gateway-rotate`。中心 MUST 先核验当前 binding 与原占用剩余时间，向当前 runtime 投递明确撤回，并只在收到签名 `runtime_cleanup/joined`、中心原子封存/释放后，才 MAY 为新 runtime 预留新占用。等待超时、回执丢失、到期、排空或进程不可达 MUST NOT 替代清理证明；旧 owner MUST NOT 复活，新运行 MUST NOT 复用旧 binding/材料。
+
+没有终结记录且原占用已到期时，管理员 MAY 以 `gateway-recover` 执行受控恢复。恢复 MUST 要求已注册来源公钥精确匹配（或从未注册来源）、无终结记录、无有效普通授权，并在单事务中撤回、关闭来源、审计和释放；审计 MUST 区分 `RECOVERY_CONFIRMED`，MUST NOT 伪造清理记录、删除 Queue、重发材料或恢复旧授权。未到期、来源不匹配或已有终结记录 MUST 拒绝。正常轮换和恢复的新增运行验收仍待 Actions；详见 09 §7.27。
+
+
 ## 9. Web 安全
+
+ADR-0033 已接入生产 daemon/mTLS 会话入口，替代 §8.7 末尾对应的待实现说明；持续授权分发已接入可选中心 worker（09 §7.19）；可信停止恢复、Repository READY 及新增行为的 Actions 验收仍待完成。
+
+ADR-0035 将生产后端只读探测沿原仓库签名回写，并将 Repository READY 定义为近期观察与当前授权/配置的中心读模型。中心 MUST 比对 scoped event 与 header 的 Host/Repository/Gateway，且只使用原 grant 有效期内的探测；全局审计、Agent ACK、材料/RFGA 回执及过期历史不能替代探测。READY 不授予数据访问、维护或清理权限，不改变离线授权窗口；具体期限与降级规则见 09 §7.26。
 
 - 首个管理员只可通过一次性 bootstrap secret 创建；使用后删除/作废；
 - 密码使用 Argon2id，参数存储并支持升级；
