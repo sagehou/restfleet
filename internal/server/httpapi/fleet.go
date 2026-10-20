@@ -496,6 +496,12 @@ func (a *API) fleetProblem(w http.ResponseWriter, r *http.Request, err error) {
 		a.problem(w, r, http.StatusConflict, "ALREADY_EXISTS", "Conflict", "A resource with the same identity already exists.", nil)
 	case errors.Is(err, domain.ErrTemplateNameTaken):
 		a.problem(w, r, http.StatusConflict, "TEMPLATE_NAME_TAKEN", "Conflict", "An active template already uses this name.", nil)
+	case errors.Is(err, domain.ErrPlanNameTaken):
+		a.problem(w, r, http.StatusConflict, "PLAN_NAME_TAKEN", "Conflict", "This Host already has an active plan with that name.", nil)
+	case errors.Is(err, domain.ErrPlanBindingInvalid):
+		a.problem(w, r, http.StatusConflict, "PLAN_BINDING_INVALID", "Conflict", "The Agent and Repository must belong to the selected Host.", nil)
+	case errors.Is(err, domain.ErrPlanTemplateStale):
+		a.problem(w, r, http.StatusConflict, "TEMPLATE_REVISION_UNAVAILABLE", "Conflict", "The requested template revision does not exist.", nil)
 	case errors.Is(err, domain.ErrTemplateArchived):
 		a.problem(w, r, http.StatusConflict, "TEMPLATE_ARCHIVED", "Conflict", "Archived templates cannot receive new revisions.", nil)
 	case errors.Is(err, domain.ErrRevisionConflict):

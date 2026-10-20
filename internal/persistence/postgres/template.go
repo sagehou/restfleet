@@ -143,3 +143,20 @@ func (s *Store) SaveTemplateRevision(ctx context.Context, t domain.Template, exp
 	}
 	return t, nil
 }
+
+// TemplateRevisionConfig returns one immutable revision body for plan merging.
+func (s *Store) TemplateRevisionConfig(ctx context.Context, templateID uuid.UUID, revision int64) (domain.TemplateConfig, error) {
+	var raw []byte
+	err := s.pool.QueryRow(ctx, "select config_json from template_revisions where template_id=$1 and revision=$2", templateID, revision).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.TemplateConfig{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.TemplateConfig{}, err
+	}
+	var config domain.TemplateConfig
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return domain.TemplateConfig{}, err
+	}
+	return config, nil
+}

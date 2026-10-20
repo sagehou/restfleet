@@ -251,46 +251,46 @@ func (e OperationSource) Valid() bool {
 
 // Defines values for OperationStatus.
 const (
-	ACKNOWLEDGED          OperationStatus = "ACKNOWLEDGED"
-	CANCELED              OperationStatus = "CANCELED"
-	CANCELREQUESTED       OperationStatus = "CANCEL_REQUESTED"
-	DISPATCHED            OperationStatus = "DISPATCHED"
-	FAILED                OperationStatus = "FAILED"
-	LOST                  OperationStatus = "LOST"
-	QUEUED                OperationStatus = "QUEUED"
-	REJECTED              OperationStatus = "REJECTED"
-	RUNNING               OperationStatus = "RUNNING"
-	SUCCEEDED             OperationStatus = "SUCCEEDED"
-	SUCCEEDEDWITHWARNINGS OperationStatus = "SUCCEEDED_WITH_WARNINGS"
-	TIMEDOUT              OperationStatus = "TIMED_OUT"
+	OperationStatusACKNOWLEDGED          OperationStatus = "ACKNOWLEDGED"
+	OperationStatusCANCELED              OperationStatus = "CANCELED"
+	OperationStatusCANCELREQUESTED       OperationStatus = "CANCEL_REQUESTED"
+	OperationStatusDISPATCHED            OperationStatus = "DISPATCHED"
+	OperationStatusFAILED                OperationStatus = "FAILED"
+	OperationStatusLOST                  OperationStatus = "LOST"
+	OperationStatusQUEUED                OperationStatus = "QUEUED"
+	OperationStatusREJECTED              OperationStatus = "REJECTED"
+	OperationStatusRUNNING               OperationStatus = "RUNNING"
+	OperationStatusSUCCEEDED             OperationStatus = "SUCCEEDED"
+	OperationStatusSUCCEEDEDWITHWARNINGS OperationStatus = "SUCCEEDED_WITH_WARNINGS"
+	OperationStatusTIMEDOUT              OperationStatus = "TIMED_OUT"
 )
 
 // Valid indicates whether the value is a known member of the OperationStatus enum.
 func (e OperationStatus) Valid() bool {
 	switch e {
-	case ACKNOWLEDGED:
+	case OperationStatusACKNOWLEDGED:
 		return true
-	case CANCELED:
+	case OperationStatusCANCELED:
 		return true
-	case CANCELREQUESTED:
+	case OperationStatusCANCELREQUESTED:
 		return true
-	case DISPATCHED:
+	case OperationStatusDISPATCHED:
 		return true
-	case FAILED:
+	case OperationStatusFAILED:
 		return true
-	case LOST:
+	case OperationStatusLOST:
 		return true
-	case QUEUED:
+	case OperationStatusQUEUED:
 		return true
-	case REJECTED:
+	case OperationStatusREJECTED:
 		return true
-	case RUNNING:
+	case OperationStatusRUNNING:
 		return true
-	case SUCCEEDED:
+	case OperationStatusSUCCEEDED:
 		return true
-	case SUCCEEDEDWITHWARNINGS:
+	case OperationStatusSUCCEEDEDWITHWARNINGS:
 		return true
-	case TIMEDOUT:
+	case OperationStatusTIMEDOUT:
 		return true
 	default:
 		return false
@@ -309,6 +309,60 @@ func (e OperationType) Valid() bool {
 	case CREDENTIALTEST:
 		return true
 	case REPOSITORYINITIALIZE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanBackupHealth.
+const (
+	PlanBackupHealthFAILED  PlanBackupHealth = "FAILED"
+	PlanBackupHealthHEALTHY PlanBackupHealth = "HEALTHY"
+	PlanBackupHealthOVERDUE PlanBackupHealth = "OVERDUE"
+	PlanBackupHealthUNKNOWN PlanBackupHealth = "UNKNOWN"
+)
+
+// Valid indicates whether the value is a known member of the PlanBackupHealth enum.
+func (e PlanBackupHealth) Valid() bool {
+	switch e {
+	case PlanBackupHealthFAILED:
+		return true
+	case PlanBackupHealthHEALTHY:
+		return true
+	case PlanBackupHealthOVERDUE:
+		return true
+	case PlanBackupHealthUNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanStatus.
+const (
+	PlanStatusACTIVE       PlanStatus = "ACTIVE"
+	PlanStatusARCHIVED     PlanStatus = "ARCHIVED"
+	PlanStatusDRAFT        PlanStatus = "DRAFT"
+	PlanStatusINVALID      PlanStatus = "INVALID"
+	PlanStatusPAUSED       PlanStatus = "PAUSED"
+	PlanStatusPENDINGAPPLY PlanStatus = "PENDING_APPLY"
+)
+
+// Valid indicates whether the value is a known member of the PlanStatus enum.
+func (e PlanStatus) Valid() bool {
+	switch e {
+	case PlanStatusACTIVE:
+		return true
+	case PlanStatusARCHIVED:
+		return true
+	case PlanStatusDRAFT:
+		return true
+	case PlanStatusINVALID:
+		return true
+	case PlanStatusPAUSED:
+		return true
+	case PlanStatusPENDINGAPPLY:
 		return true
 	default:
 		return false
@@ -662,6 +716,60 @@ type OperationStatus string
 // OperationType defines model for Operation.Type.
 type OperationType string
 
+// Plan defines model for Plan.
+type Plan struct {
+	// AcceptedRevision Last revision acknowledged by the Agent.
+	AcceptedRevision int64              `json:"accepted_revision"`
+	AgentId          openapi_types.UUID `json:"agent_id"`
+	BackupHealth     PlanBackupHealth   `json:"backup_health"`
+	CreatedAt        time.Time          `json:"created_at"`
+	DesiredRevision  int64              `json:"desired_revision"`
+	EffectiveConfig  TemplateConfig     `json:"effective_config"`
+	HostId           openapi_types.UUID `json:"host_id"`
+	Id               openapi_types.UUID `json:"id"`
+	Name             string             `json:"name"`
+
+	// Overrides Allowed JSON merge-patch subset stored with the plan.
+	Overrides        *map[string]interface{} `json:"overrides,omitempty"`
+	RepositoryId     openapi_types.UUID      `json:"repository_id"`
+	Status           PlanStatus              `json:"status"`
+	TemplateId       openapi_types.UUID      `json:"template_id"`
+	TemplateRevision int64                   `json:"template_revision"`
+	UpdatedAt        time.Time               `json:"updated_at"`
+}
+
+// PlanBackupHealth defines model for Plan.BackupHealth.
+type PlanBackupHealth string
+
+// PlanStatus defines model for Plan.Status.
+type PlanStatus string
+
+// PlanCreate defines model for PlanCreate.
+type PlanCreate struct {
+	AgentId openapi_types.UUID `json:"agent_id"`
+	HostId  openapi_types.UUID `json:"host_id"`
+	Name    string             `json:"name"`
+
+	// Overrides Allowed JSON merge-patch subset applied over the template revision.
+	Overrides        *map[string]interface{} `json:"overrides,omitempty"`
+	RepositoryId     openapi_types.UUID      `json:"repository_id"`
+	TemplateId       openapi_types.UUID      `json:"template_id"`
+	TemplateRevision int64                   `json:"template_revision"`
+}
+
+// PlanList defines model for PlanList.
+type PlanList struct {
+	Items      []Plan  `json:"items"`
+	NextCursor *string `json:"next_cursor,omitempty"`
+}
+
+// PlanUpdate defines model for PlanUpdate.
+type PlanUpdate struct {
+	Name             *string                 `json:"name,omitempty"`
+	Overrides        *map[string]interface{} `json:"overrides,omitempty"`
+	TemplateRevision *int64                  `json:"template_revision,omitempty"`
+}
+
 // Problem defines model for Problem.
 type Problem struct {
 	Code      string             `json:"code"`
@@ -914,6 +1022,23 @@ type CreateEnrollmentTokenParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// ListPlansParams defines parameters for ListPlans.
+type ListPlansParams struct {
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// CreatePlanParams defines parameters for CreatePlan.
+type CreatePlanParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// UpdatePlanParams defines parameters for UpdatePlan.
+type UpdatePlanParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	IfMatch    IfMatch   `json:"If-Match"`
+}
+
 // ListRepositoriesParams defines parameters for ListRepositories.
 type ListRepositoriesParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
@@ -998,6 +1123,12 @@ type UpdateHostJSONRequestBody = HostPatch
 // CreateEnrollmentTokenJSONRequestBody defines body for CreateEnrollmentToken for application/json ContentType.
 type CreateEnrollmentTokenJSONRequestBody = EnrollmentTokenCreate
 
+// CreatePlanJSONRequestBody defines body for CreatePlan for application/json ContentType.
+type CreatePlanJSONRequestBody = PlanCreate
+
+// UpdatePlanJSONRequestBody defines body for UpdatePlan for application/json ContentType.
+type UpdatePlanJSONRequestBody = PlanUpdate
+
 // CreateRepositoryJSONRequestBody defines body for CreateRepository for application/json ContentType.
 type CreateRepositoryJSONRequestBody = RepositoryCreate
 
@@ -1078,6 +1209,21 @@ type ServerInterface interface {
 
 	// (GET /api/v1/operations/{operation_id})
 	GetOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID)
+
+	// (GET /api/v1/plans)
+	ListPlans(w http.ResponseWriter, r *http.Request, params ListPlansParams)
+
+	// (POST /api/v1/plans)
+	CreatePlan(w http.ResponseWriter, r *http.Request, params CreatePlanParams)
+
+	// (GET /api/v1/plans/{plan_id})
+	GetPlan(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID)
+
+	// (PATCH /api/v1/plans/{plan_id})
+	UpdatePlan(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID, params UpdatePlanParams)
+
+	// (GET /api/v1/plans/{plan_id}/effective-config)
+	GetPlanEffectiveConfig(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID)
 
 	// (GET /api/v1/repositories)
 	ListRepositories(w http.ResponseWriter, r *http.Request, params ListRepositoriesParams)
@@ -1922,6 +2068,226 @@ func (siw *ServerInterfaceWrapper) GetOperation(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetOperation(w, r, operationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPlans operation middleware
+func (siw *ServerInterfaceWrapper) ListPlans(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlansParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlans(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePlan operation middleware
+func (siw *ServerInterfaceWrapper) CreatePlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreatePlanParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePlan(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlan operation middleware
+func (siw *ServerInterfaceWrapper) GetPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan_id" -------------
+	var planId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan_id", r.PathValue("plan_id"), &planId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlan(w, r, planId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePlan operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan_id" -------------
+	var planId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan_id", r.PathValue("plan_id"), &planId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdatePlanParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePlan(w, r, planId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlanEffectiveConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetPlanEffectiveConfig(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan_id" -------------
+	var planId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan_id", r.PathValue("plan_id"), &planId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlanEffectiveConfig(w, r, planId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2859,6 +3225,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/templates", wrapper.CreateTemplate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/templates/{template_id}", wrapper.GetTemplate)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/templates/{template_id}", wrapper.UpdateTemplate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/plans", wrapper.ListPlans)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/plans", wrapper.CreatePlan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/plans/{plan_id}", wrapper.GetPlan)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/plans/{plan_id}", wrapper.UpdatePlan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/plans/{plan_id}/effective-config", wrapper.GetPlanEffectiveConfig)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.ListStorageCredentials)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.CreateStorageCredential)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)

@@ -288,7 +288,7 @@ func (a *API) Version(w http.ResponseWriter, r *http.Request) {
 		Version:       a.build.Version,
 		Commit:        a.build.Commit,
 		BuiltAt:       a.build.Date,
-		SchemaVersion: 17,
+		SchemaVersion: 18,
 	})
 }
 
@@ -521,7 +521,7 @@ func routeLabel(path string) string {
 		"/api/v1/bootstrap/status", "/api/v1/bootstrap",
 		"/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
 		"/api/v1/dashboard/summary", "/api/v1/version",
-		"/api/v1/hosts", "/api/v1/agent-enrollment", "/api/v1/storage-credentials", "/api/v1/templates":
+		"/api/v1/hosts", "/api/v1/agent-enrollment", "/api/v1/storage-credentials", "/api/v1/templates", "/api/v1/plans":
 		return path
 	}
 	if strings.HasPrefix(path, "/api/v1/hosts/") {
@@ -539,6 +539,12 @@ func routeLabel(path string) string {
 		default:
 			return "/api/v1/hosts/{host_id}"
 		}
+	}
+	if strings.HasPrefix(path, "/api/v1/plans/") {
+		if strings.HasSuffix(path, "/effective-config") {
+			return "/api/v1/plans/{plan_id}/effective-config"
+		}
+		return "/api/v1/plans/{plan_id}"
 	}
 	if strings.HasPrefix(path, "/api/v1/templates/") {
 		return "/api/v1/templates/{template_id}"

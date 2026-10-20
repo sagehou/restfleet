@@ -413,6 +413,61 @@ export interface paths {
         patch: operations["updateTemplate"];
         trace?: never;
     };
+    "/api/v1/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listPlans"];
+        put?: never;
+        /** @description Binds one Host, Agent, Repository and template revision. The plan starts in DRAFT and is never activated by creation. */
+        post: operations["createPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Appends a desired revision. Config or template changes move an ACTIVE plan to PENDING_APPLY. */
+        patch: operations["updatePlan"];
+        trace?: never;
+    };
+    "/api/v1/plans/{plan_id}/effective-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Returns the stored normalized snapshot; the server does not re-merge the template on read. */
+        get: operations["getPlanEffectiveConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage-credentials": {
         parameters: {
             query?: never;
@@ -657,6 +712,70 @@ export interface components {
         TemplateUpdate: {
             description?: string;
             config?: components["schemas"]["TemplateConfig"];
+        };
+        Plan: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            host_id: string;
+            /** Format: uuid */
+            agent_id: string;
+            /** Format: uuid */
+            repository_id: string;
+            /** Format: uuid */
+            template_id: string;
+            /** Format: int64 */
+            template_revision: number;
+            /** @enum {string} */
+            status: "DRAFT" | "PENDING_APPLY" | "ACTIVE" | "PAUSED" | "INVALID" | "ARCHIVED";
+            /** Format: int64 */
+            desired_revision: number;
+            /**
+             * Format: int64
+             * @description Last revision acknowledged by the Agent.
+             */
+            accepted_revision: number;
+            /** @enum {string} */
+            backup_health: "UNKNOWN" | "HEALTHY" | "OVERDUE" | "FAILED";
+            /** @description Allowed JSON merge-patch subset stored with the plan. */
+            overrides?: {
+                [key: string]: unknown;
+            };
+            effective_config: components["schemas"]["TemplateConfig"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        PlanList: {
+            items: components["schemas"]["Plan"][];
+            next_cursor?: string;
+        };
+        PlanCreate: {
+            name: string;
+            /** Format: uuid */
+            host_id: string;
+            /** Format: uuid */
+            agent_id: string;
+            /** Format: uuid */
+            repository_id: string;
+            /** Format: uuid */
+            template_id: string;
+            /** Format: int64 */
+            template_revision: number;
+            /** @description Allowed JSON merge-patch subset applied over the template revision. */
+            overrides?: {
+                [key: string]: unknown;
+            };
+        };
+        PlanUpdate: {
+            name?: string;
+            /** Format: int64 */
+            template_revision?: number;
+            overrides?: {
+                [key: string]: unknown;
+            };
         };
         Operation: {
             /** Format: uuid */
@@ -1853,6 +1972,164 @@ export interface operations {
             409: components["responses"]["Problem"];
             412: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listPlans: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active plans with their stored effective config snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    createPlan: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanCreate"];
+            };
+        };
+        responses: {
+            /** @description Plan created; ETag carries the desired revision. */
+            201: {
+                headers: {
+                    ETag?: string;
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Plan with its stored effective config snapshot. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    updatePlan: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Desired revision appended; ETag carries the new revision. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            412: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getPlanEffectiveConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective config at the current desired revision. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };
