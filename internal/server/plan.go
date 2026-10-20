@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/google/uuid"
@@ -76,7 +77,14 @@ func (c *ControlPlane) CreatePlan(ctx context.Context, name string, hostID, agen
 		return domain.Plan{}, err
 	}
 	audit.Changes = json.RawMessage(`{"revision":1}`)
-	return c.store.CreatePlan(ctx, plan, audit)
+	created, err := c.store.CreatePlan(ctx, plan, audit)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	if err := c.republishPlanState(ctx, created.AgentID); err != nil {
+		return domain.Plan{}, err
+	}
+	return created, nil
 }
 
 // UpdatePlan appends a desired revision. A change to the config or template
@@ -157,7 +165,14 @@ func (c *ControlPlane) UpdatePlan(ctx context.Context, id uuid.UUID, expectedRev
 		return domain.Plan{}, err
 	}
 	audit.Changes = changes
-	return c.store.SavePlanRevision(ctx, current, expectedRevision, audit)
+	updated, err := c.store.SavePlanRevision(ctx, current, expectedRevision, audit)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	if err := c.republishPlanState(ctx, updated.AgentID); err != nil {
+		return domain.Plan{}, err
+	}
+	return updated, nil
 }
 
 // PausePlan stops future scheduling without cancelling anything already running.
@@ -214,7 +229,14 @@ func (c *ControlPlane) planStatus(ctx context.Context, id uuid.UUID, expectedRev
 		return domain.Plan{}, err
 	}
 	audit.Changes = changes
-	return c.store.SavePlanRevision(ctx, plan, expectedRevision, audit)
+	updated, err := c.store.SavePlanRevision(ctx, plan, expectedRevision, audit)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	if err := c.republishPlanState(ctx, updated.AgentID); err != nil {
+		return domain.Plan{}, err
+	}
+	return updated, nil
 }
 
 // ApplyTemplateToPlans moves the named plans to one template revision. Every
@@ -284,9 +306,24 @@ func (c *ControlPlane) ApplyTemplateToPlans(ctx context.Context, templateID uuid
 				result.Code = "SAVE_FAILED"
 				break
 			}
+			if publishErr := c.republishPlanState(ctx, plan.AgentID); publishErr != nil {
+				return results, publishErr
+			}
 			result.Status, result.Code = "APPLIED", ""
 		}
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+// republishPlanState refreshes the Agent snapshot after a plan mutation. An
+// inactive Agent keeps its last snapshot until it enrols or is reactivated.
+func (c *ControlPlane) republishPlanState(ctx context.Context, agentID uuid.UUID) error {
+	if err := c.store.PublishAgentDesiredState(ctx, agentID, c.clock().UTC()); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }

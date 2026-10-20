@@ -203,7 +203,7 @@ Server 下发完整规范化快照，不下发需要 Agent 自行合并的增量
 }
 ```
 
-`plans` 只携带调度子集，不含凭据、路径秘密或 hook 明文；数组按 `plan_id`、`revision` 排序后参与 canonical JSON 与 `config_hash`。中心尚未物化计划时该数组为空，旧的空数组快照哈希保持不变。
+计划创建、修订、apply/pause/resume 与批量应用都会重写快照并产生新的 desired revision；`plans` 只携带调度子集，不含凭据、路径秘密或 hook 明文；数组按 `plan_id`、`revision` 排序后参与 canonical JSON 与 `config_hash`。中心尚未物化计划时该数组为空，旧的空数组快照哈希保持不变。
 
 Agent 处理步骤：
 

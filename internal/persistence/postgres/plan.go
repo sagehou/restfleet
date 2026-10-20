@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"time"
@@ -171,4 +173,99 @@ func (s *Store) SavePlanRevision(ctx context.Context, p domain.Plan, expectedRev
 		return domain.Plan{}, err
 	}
 	return p, nil
+}
+
+// PublishAgentDesiredState rewrites the Agent snapshot from its current plans
+// and queues one outbox event. It runs after a plan mutation commits; a repeat
+// simply produces the next revision, so retries are harmless.
+func (s *Store) PublishAgentDesiredState(ctx context.Context, agentID uuid.UUID, now time.Time) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var hostID uuid.UUID
+	var status string
+	var currentRevision int64
+	err = tx.QueryRow(ctx, "select host_id,status,desired_revision from agents where id=$1 for update", agentID).Scan(&hostID, &status, &currentRevision)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if status != "ACTIVE" {
+		return domain.ErrNotFound
+	}
+	var configJSON []byte
+	err = tx.QueryRow(ctx, "select config_json from agent_desired_states where agent_id=$1 and revision=$2", agentID, currentRevision).Scan(&configJSON)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	var current struct {
+		RuntimePolicy domain.RuntimePolicy `json:"runtime_policy"`
+	}
+	if err := json.Unmarshal(configJSON, &current); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, "select "+planColumns+" from plans where agent_id=$1 and archived_at is null and status in ('ACTIVE','PENDING_APPLY') order by id", agentID)
+	if err != nil {
+		return err
+	}
+	plans := make([]domain.PlanSchedule, 0)
+	for rows.Next() {
+		plan, err := scanPlan(rows)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		plans = append(plans, domain.PlanSchedule{
+			PlanID: plan.ID, Revision: plan.DesiredRevision, Name: plan.Name,
+			HostID: plan.HostID, RepositoryID: plan.RepositoryID,
+			Cron: plan.EffectiveConfig.ScheduleCron, Timezone: plan.EffectiveConfig.ScheduleTimezone,
+			JitterSeconds: plan.EffectiveConfig.JitterSeconds, MisfireGraceSeconds: plan.EffectiveConfig.MisfireGraceSeconds,
+			ConcurrencyPolicy: "FORBID", Paths: plan.EffectiveConfig.Paths,
+			ExcludePatterns: plan.EffectiveConfig.ExcludePatterns,
+			ExcludeCaches:   plan.EffectiveConfig.ExcludeCaches, OneFileSystem: plan.EffectiveConfig.OneFileSystem,
+			ConfigHash: plan.ConfigHash,
+		})
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	state := domain.DesiredState{
+		AgentID: agentID, Revision: currentRevision + 1, GeneratedAt: now.UTC(),
+		RuntimePolicy: current.RuntimePolicy, Plans: plans,
+	}
+	canonical, err := state.CanonicalJSON()
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(canonical)
+	state.ConfigHash = "sha256:" + hex.EncodeToString(sum[:])
+	if err := state.Validate(); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `insert into agent_desired_states(agent_id,revision,generated_at,config_hash,config_json,created_at)
+		values($1,$2,$3,$4,$5::jsonb,$3)`,
+		agentID, state.Revision, state.GeneratedAt, state.ConfigHash, string(canonical)); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, "update agents set desired_revision=$2,updated_at=$3 where id=$1", agentID, state.Revision, now.UTC()); err != nil {
+		return err
+	}
+	eventID, err := uuid.NewV7()
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `insert into outbox_events(id,event_type,aggregate_type,aggregate_id,payload,created_at,available_at)
+		values($1,'AGENT_DESIRED_STATE_CHANGED','AGENT',$2,jsonb_build_object('revision',$3::bigint),$4,$4)`,
+		eventID, agentID, state.Revision, now.UTC()); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
