@@ -213,6 +213,8 @@
 
 ## M5 — Templates, Plans and Local Scheduler
 
+**Status: IN PROGRESS** — 模板建表、不可变 revision 与读取/创建/修订 API 已接入；Plan、调度与 Web 页面待完成。
+
 ### Goal
 
 创建 Template/Plan，Agent 可在中心离线时本地调度。
