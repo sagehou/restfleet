@@ -1,0 +1,116 @@
+package postgres
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/sagehou/restfleet/internal/domain"
+)
+
+const backupOperationColumns = "id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,started_at,finished_at,exit_code,error_code,snapshot_id,files_done,total_files,bytes_done,total_bytes,created_at,updated_at"
+
+func scanBackupOperation(row rowScanner) (domain.BackupOperation, error) {
+	var o domain.BackupOperation
+	err := row.Scan(&o.ID, &o.PlanID, &o.AgentID, &o.Type, &o.Source, &o.Status, &o.PlanRevision, &o.ConfigHash,
+		&o.ScheduledAt, &o.StartedAt, &o.FinishedAt, &o.ExitCode, &o.ErrorCode, &o.SnapshotID,
+		&o.FilesDone, &o.TotalFiles, &o.BytesDone, &o.TotalBytes, &o.CreatedAt, &o.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return o, domain.ErrNotFound
+	}
+	return o, err
+}
+
+func (s *Store) BackupOperation(ctx context.Context, id uuid.UUID) (domain.BackupOperation, error) {
+	return scanBackupOperation(s.pool.QueryRow(ctx, "select "+backupOperationColumns+" from backup_operations where id=$1", id))
+}
+
+func (s *Store) BackupOperations(ctx context.Context, after uuid.UUID, limit int) ([]domain.BackupOperation, error) {
+	rows, err := s.pool.Query(ctx, "select "+backupOperationColumns+" from backup_operations where id>$1 order by id desc limit $2", after, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]domain.BackupOperation, 0)
+	for rows.Next() {
+		operation, err := scanBackupOperation(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, operation)
+	}
+	return items, rows.Err()
+}
+
+// UpsertOperationProgress creates the row for a locally scheduled run the first
+// time the Agent reports it, then stores the throttled counters.
+func (s *Store) UpsertOperationProgress(ctx context.Context, progress domain.BackupOperationProgress) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var exists bool
+	err = tx.QueryRow(ctx, `select exists(select 1 from plans p join agents a on a.id=$2 and a.host_id=p.host_id
+		where p.id=$1)`, progress.PlanID, progress.AgentID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return domain.ErrPlanBindingInvalid
+	}
+	if _, err = tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,started_at,created_at,updated_at)
+		values($1,$2,$3,'BACKUP','SCHEDULED','RUNNING',$4,'',$5,$6,$6,$6)
+		on conflict (id) do update set status='RUNNING',updated_at=excluded.updated_at,
+			started_at=coalesce(backup_operations.started_at,excluded.started_at)`,
+		progress.OperationID, progress.PlanID, progress.AgentID, progress.PlanRevision, progress.ScheduledAt, progress.ObservedAt); err != nil {
+		return persistenceError(err)
+	}
+	if _, err = tx.Exec(ctx, `insert into backup_operation_events(operation_id,sequence,stage,files_done,total_files,bytes_done,total_bytes,observed_at)
+		values($1,$2,$3,$4,$5,$6,$7,$8) on conflict (operation_id,sequence) do nothing`,
+		progress.OperationID, progress.Sequence, progress.Stage, progress.FilesDone, progress.TotalFiles,
+		progress.BytesDone, progress.TotalBytes, progress.ObservedAt); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `update backup_operations set files_done=$2,total_files=$3,bytes_done=$4,total_bytes=$5,updated_at=$6
+		where id=$1 and finished_at is null`, progress.OperationID, progress.FilesDone, progress.TotalFiles,
+		progress.BytesDone, progress.TotalBytes, progress.ObservedAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// UpsertOperationResult writes the terminal record. A duplicate delivery simply
+// rewrites the same terminal values.
+func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupOperationResult) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var exists bool
+	err = tx.QueryRow(ctx, `select exists(select 1 from plans p join agents a on a.id=$2 and a.host_id=p.host_id
+		where p.id=$1)`, result.PlanID, result.AgentID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return domain.ErrPlanBindingInvalid
+	}
+	finished := result.FinishedAt
+	if _, err = tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,
+		scheduled_at,started_at,finished_at,exit_code,error_code,snapshot_id,files_done,bytes_done,created_at,updated_at)
+		values($1,$2,$3,'BACKUP','SCHEDULED',$4,$5,'',$6,$6,$7,$8,$9,$10,$11,$12,$7,$7)
+		on conflict (id) do update set status=excluded.status,finished_at=excluded.finished_at,exit_code=excluded.exit_code,
+			error_code=excluded.error_code,snapshot_id=excluded.snapshot_id,files_done=excluded.files_done,
+			bytes_done=excluded.bytes_done,updated_at=excluded.updated_at`,
+		result.OperationID, result.PlanID, result.AgentID, result.Status, result.PlanRevision, result.ScheduledAt,
+		finished, result.ExitCode, result.ErrorCode, result.SnapshotID, result.FilesDone, result.BytesDone); err != nil {
+		return persistenceError(err)
+	}
+	return tx.Commit(ctx)
+}
+
+var _ = time.Now

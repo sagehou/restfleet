@@ -922,6 +922,45 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/backup-operations:
+    get:
+      operationId: listBackupOperations
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: Backup operations reported by Agents, newest first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupOperationList" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/backup-operations/{operation_id}:
+    parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getBackupOperation
+      responses:
+        "200":
+          description: One backup operation with its latest counters.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupOperation" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/storage-credentials:
     get:
       operationId: listStorageCredentials
@@ -1372,6 +1411,39 @@ components:
         plan_id: { type: string, format: uuid }
         status: { type: string, enum: [APPLIED, CONFLICT] }
         code: { type: string, description: "Conflict reason: NOT_FOUND, PLAN_ARCHIVED, NOT_USING_TEMPLATE or REVISION_CONFLICT." }
+    BackupOperation:
+      type: object
+      additionalProperties: false
+      required: [id, plan_id, agent_id, type, source, status, plan_revision, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        plan_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        type: { type: string, enum: [BACKUP, RESTORE, SNAPSHOT_INDEX, DOWNLOAD, CHECK, FORGET, PRUNE, MAINTENANCE] }
+        source: { type: string, enum: [SCHEDULED, MANUAL] }
+        status: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCELED, MISSED, CONCURRENCY_SKIPPED] }
+        plan_revision: { type: integer, format: int64, minimum: 1 }
+        scheduled_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        exit_code: { type: integer }
+        error_code: { type: string }
+        snapshot_id: { type: string }
+        files_done: { type: integer, format: int64, minimum: 0 }
+        total_files: { type: integer, format: int64, minimum: 0 }
+        bytes_done: { type: integer, format: int64, minimum: 0 }
+        total_bytes: { type: integer, format: int64, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    BackupOperationList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/BackupOperation" }
+        next_cursor: { type: string }
     Operation:
       type: object
       additionalProperties: false

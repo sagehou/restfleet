@@ -108,6 +108,96 @@ func (e AgentInventoryCpuArch) Valid() bool {
 	}
 }
 
+// Defines values for BackupOperationSource.
+const (
+	MANUAL    BackupOperationSource = "MANUAL"
+	SCHEDULED BackupOperationSource = "SCHEDULED"
+)
+
+// Valid indicates whether the value is a known member of the BackupOperationSource enum.
+func (e BackupOperationSource) Valid() bool {
+	switch e {
+	case MANUAL:
+		return true
+	case SCHEDULED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BackupOperationStatus.
+const (
+	BackupOperationStatusCANCELED              BackupOperationStatus = "CANCELED"
+	BackupOperationStatusCONCURRENCYSKIPPED    BackupOperationStatus = "CONCURRENCY_SKIPPED"
+	BackupOperationStatusFAILED                BackupOperationStatus = "FAILED"
+	BackupOperationStatusMISSED                BackupOperationStatus = "MISSED"
+	BackupOperationStatusQUEUED                BackupOperationStatus = "QUEUED"
+	BackupOperationStatusRUNNING               BackupOperationStatus = "RUNNING"
+	BackupOperationStatusSUCCEEDED             BackupOperationStatus = "SUCCEEDED"
+	BackupOperationStatusSUCCEEDEDWITHWARNINGS BackupOperationStatus = "SUCCEEDED_WITH_WARNINGS"
+)
+
+// Valid indicates whether the value is a known member of the BackupOperationStatus enum.
+func (e BackupOperationStatus) Valid() bool {
+	switch e {
+	case BackupOperationStatusCANCELED:
+		return true
+	case BackupOperationStatusCONCURRENCYSKIPPED:
+		return true
+	case BackupOperationStatusFAILED:
+		return true
+	case BackupOperationStatusMISSED:
+		return true
+	case BackupOperationStatusQUEUED:
+		return true
+	case BackupOperationStatusRUNNING:
+		return true
+	case BackupOperationStatusSUCCEEDED:
+		return true
+	case BackupOperationStatusSUCCEEDEDWITHWARNINGS:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BackupOperationType.
+const (
+	BACKUP        BackupOperationType = "BACKUP"
+	CHECK         BackupOperationType = "CHECK"
+	DOWNLOAD      BackupOperationType = "DOWNLOAD"
+	FORGET        BackupOperationType = "FORGET"
+	MAINTENANCE   BackupOperationType = "MAINTENANCE"
+	PRUNE         BackupOperationType = "PRUNE"
+	RESTORE       BackupOperationType = "RESTORE"
+	SNAPSHOTINDEX BackupOperationType = "SNAPSHOT_INDEX"
+)
+
+// Valid indicates whether the value is a known member of the BackupOperationType enum.
+func (e BackupOperationType) Valid() bool {
+	switch e {
+	case BACKUP:
+		return true
+	case CHECK:
+		return true
+	case DOWNLOAD:
+		return true
+	case FORGET:
+		return true
+	case MAINTENANCE:
+		return true
+	case PRUNE:
+		return true
+	case RESTORE:
+		return true
+	case SNAPSHOTINDEX:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EnrollmentTokenStatus.
 const (
 	EnrollmentTokenStatusACTIVE  EnrollmentTokenStatus = "ACTIVE"
@@ -580,6 +670,44 @@ type AgentRevoke struct {
 	Reason string `json:"reason"`
 }
 
+// BackupOperation defines model for BackupOperation.
+type BackupOperation struct {
+	AgentId      openapi_types.UUID    `json:"agent_id"`
+	BytesDone    *int64                `json:"bytes_done,omitempty"`
+	CreatedAt    time.Time             `json:"created_at"`
+	ErrorCode    *string               `json:"error_code,omitempty"`
+	ExitCode     *int                  `json:"exit_code,omitempty"`
+	FilesDone    *int64                `json:"files_done,omitempty"`
+	FinishedAt   *time.Time            `json:"finished_at,omitempty"`
+	Id           openapi_types.UUID    `json:"id"`
+	PlanId       openapi_types.UUID    `json:"plan_id"`
+	PlanRevision int64                 `json:"plan_revision"`
+	ScheduledAt  *time.Time            `json:"scheduled_at,omitempty"`
+	SnapshotId   *string               `json:"snapshot_id,omitempty"`
+	Source       BackupOperationSource `json:"source"`
+	StartedAt    *time.Time            `json:"started_at,omitempty"`
+	Status       BackupOperationStatus `json:"status"`
+	TotalBytes   *int64                `json:"total_bytes,omitempty"`
+	TotalFiles   *int64                `json:"total_files,omitempty"`
+	Type         BackupOperationType   `json:"type"`
+	UpdatedAt    time.Time             `json:"updated_at"`
+}
+
+// BackupOperationSource defines model for BackupOperation.Source.
+type BackupOperationSource string
+
+// BackupOperationStatus defines model for BackupOperation.Status.
+type BackupOperationStatus string
+
+// BackupOperationType defines model for BackupOperation.Type.
+type BackupOperationType string
+
+// BackupOperationList defines model for BackupOperationList.
+type BackupOperationList struct {
+	Items      []BackupOperation `json:"items"`
+	NextCursor *string           `json:"next_cursor,omitempty"`
+}
+
 // BootstrapRequest defines model for BootstrapRequest.
 type BootstrapRequest struct {
 	DisplayName string `json:"display_name"`
@@ -1032,6 +1160,12 @@ type LogoutParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// ListBackupOperationsParams defines parameters for ListBackupOperations.
+type ListBackupOperationsParams struct {
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // BootstrapParams defines parameters for Bootstrap.
 type BootstrapParams struct {
 	XRestFleetBootstrapToken string `json:"X-RestFleet-Bootstrap-Token"`
@@ -1244,6 +1378,12 @@ type ServerInterface interface {
 
 	// (GET /api/v1/auth/session)
 	Session(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/backup-operations)
+	ListBackupOperations(w http.ResponseWriter, r *http.Request, params ListBackupOperationsParams)
+
+	// (GET /api/v1/backup-operations/{operation_id})
+	GetBackupOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID)
 
 	// (POST /api/v1/bootstrap)
 	Bootstrap(w http.ResponseWriter, r *http.Request, params BootstrapParams)
@@ -1565,6 +1705,78 @@ func (siw *ServerInterfaceWrapper) Session(w http.ResponseWriter, r *http.Reques
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Session(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBackupOperations operation middleware
+func (siw *ServerInterfaceWrapper) ListBackupOperations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBackupOperationsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBackupOperations(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBackupOperation operation middleware
+func (siw *ServerInterfaceWrapper) GetBackupOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "operation_id" -------------
+	var operationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "operation_id", r.PathValue("operation_id"), &operationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBackupOperation(w, r, operationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3722,6 +3934,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/templates/{template_id}/apply-to-plans", wrapper.ApplyTemplateToPlans)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/templates/{template_id}/archive", wrapper.ArchiveTemplate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/templates/{template_id}/dependent-plans", wrapper.ListTemplateDependentPlans)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations", wrapper.ListBackupOperations)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}", wrapper.GetBackupOperation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.ListStorageCredentials)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.CreateStorageCredential)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)

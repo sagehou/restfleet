@@ -82,3 +82,58 @@ func ValidCredentialTestCode(code string) bool {
 	}
 	return false
 }
+
+// BackupOperation is one scheduled backup run reported by an Agent. Credential
+// test operations keep their own narrower table and type.
+type BackupOperation struct {
+	ID           uuid.UUID
+	PlanID       uuid.UUID
+	AgentID      uuid.UUID
+	Type         string
+	Source       string
+	Status       string
+	PlanRevision int64
+	ConfigHash   string
+	ScheduledAt  *time.Time
+	StartedAt    *time.Time
+	FinishedAt   *time.Time
+	ExitCode     *int
+	ErrorCode    string
+	SnapshotID   string
+	FilesDone    int64
+	TotalFiles   int64
+	BytesDone    int64
+	TotalBytes   int64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type BackupOperationProgress struct {
+	OperationID  uuid.UUID
+	PlanID       uuid.UUID
+	AgentID      uuid.UUID
+	PlanRevision int64
+	ScheduledAt  time.Time
+	Sequence     uint64
+	Stage        string
+	FilesDone    int64
+	TotalFiles   int64
+	BytesDone    int64
+	TotalBytes   int64
+	ObservedAt   time.Time
+}
+
+type BackupOperationResult struct {
+	OperationID  uuid.UUID
+	PlanID       uuid.UUID
+	AgentID      uuid.UUID
+	PlanRevision int64
+	ScheduledAt  time.Time
+	Status       string
+	ErrorCode    string
+	ExitCode     int
+	SnapshotID   string
+	FilesDone    int64
+	BytesDone    int64
+	FinishedAt   time.Time
+}

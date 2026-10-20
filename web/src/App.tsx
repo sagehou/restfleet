@@ -5,6 +5,7 @@ import { StorageCredentials } from './StorageCredentials'
 import { Repositories } from './Repositories'
 import { Templates } from './Templates'
 import { Plans } from './Plans'
+import { Operations } from './Operations'
 
 type Session = components['schemas']['Session']
 type BootstrapStatus = components['schemas']['BootstrapStatus']
@@ -18,7 +19,7 @@ type AgentList = components['schemas']['AgentList']
 type EnrollmentTokenCreated = components['schemas']['EnrollmentTokenCreated']
 type Problem = components['schemas']['Problem']
 type Phase = 'loading' | 'bootstrap' | 'login' | 'authenticated' | 'error'
-type Page = 'overview' | 'hosts' | 'credentials' | 'repositories' | 'templates' | 'plans' | 'version'
+type Page = 'overview' | 'hosts' | 'credentials' | 'repositories' | 'templates' | 'plans' | 'operations' | 'version'
 type DataState = 'idle' | 'loading' | 'ready' | 'error'
 
 const navigation = [
@@ -264,7 +265,10 @@ export function App() {
           <button className={page === 'plans' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('plans')}>
             计划
           </button>
-          {navigation.slice(5).map((item) => (
+          <button className={page === 'operations' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('operations')}>
+            操作
+          </button>
+          {navigation.slice(7).map((item) => (
             <button className="nav-item" disabled key={item} title="后续里程碑提供">
               {item}
             </button>
@@ -291,6 +295,7 @@ export function App() {
         {page === 'repositories' && <Repositories hosts={hosts} canManage={session?.user.role === 'ADMIN'} onUnauthorized={storageSessionExpired} />}
         {page === 'templates' && <Templates canManage={session?.user.role === 'ADMIN'} onUnauthorized={storageSessionExpired} />}
         {page === 'plans' && <Plans hosts={hosts} canManage={session?.user.role === 'ADMIN'} onUnauthorized={storageSessionExpired} />}
+        {page === 'operations' && <Operations canManage={session?.user.role === 'ADMIN'} onUnauthorized={storageSessionExpired} />}
         {page === 'version' && (
           <VersionView version={version} state={dataState} />
         )}

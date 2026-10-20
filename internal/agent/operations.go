@@ -25,22 +25,23 @@ const (
 // OperationRecord is the durable local view of one scheduled run. It exists
 // before Restic starts so a crash cannot silently lose an execution.
 type OperationRecord struct {
-	ID           uuid.UUID `json:"id"`
-	PlanID       uuid.UUID `json:"plan_id"`
-	PlanRevision int64     `json:"plan_revision"`
-	ConfigHash   string    `json:"config_hash"`
-	ScheduledAt  time.Time `json:"scheduled_at"`
-	StartedAt    time.Time `json:"started_at,omitempty"`
-	FinishedAt   time.Time `json:"finished_at,omitempty"`
-	Status       string    `json:"status"`
-	ExitCode     int       `json:"exit_code,omitempty"`
-	ErrorCode    string    `json:"error_code,omitempty"`
-	SnapshotID   string    `json:"snapshot_id,omitempty"`
-	FilesDone    int64     `json:"files_done"`
-	TotalFiles   int64     `json:"total_files"`
-	BytesDone    int64     `json:"bytes_done"`
-	TotalBytes   int64     `json:"total_bytes"`
-	Uploaded     bool      `json:"uploaded,omitempty"`
+	ID             uuid.UUID `json:"id"`
+	PlanID         uuid.UUID `json:"plan_id"`
+	PlanRevision   int64     `json:"plan_revision"`
+	ConfigHash     string    `json:"config_hash"`
+	ScheduledAt    time.Time `json:"scheduled_at"`
+	StartedAt      time.Time `json:"started_at,omitempty"`
+	FinishedAt     time.Time `json:"finished_at,omitempty"`
+	Status         string    `json:"status"`
+	ExitCode       int       `json:"exit_code,omitempty"`
+	ErrorCode      string    `json:"error_code,omitempty"`
+	SnapshotID     string    `json:"snapshot_id,omitempty"`
+	FilesDone      int64     `json:"files_done"`
+	TotalFiles     int64     `json:"total_files"`
+	BytesDone      int64     `json:"bytes_done"`
+	TotalBytes     int64     `json:"total_bytes"`
+	Uploaded       bool      `json:"uploaded,omitempty"`
+	LastReportedAt time.Time `json:"last_reported_at,omitempty"`
 }
 
 // Terminal reports whether the record reached a final state.
@@ -150,4 +151,30 @@ func (s *State) PutPlanRuntime(runtime PlanRuntime) error {
 		}
 		return bucket.Put(runtime.PlanID[:], payload)
 	})
+}
+
+// ReportableOperations returns terminal results that still need upload and
+// running records whose progress is older than the throttling interval.
+func (s *State) ReportableOperations(now time.Time, progressInterval time.Duration) ([]OperationRecord, error) {
+	items := make([]OperationRecord, 0)
+	err := s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(operationsBucket))
+		if bucket == nil {
+			return nil
+		}
+		return bucket.ForEach(func(_, value []byte) error {
+			var record OperationRecord
+			if err := json.Unmarshal(value, &record); err != nil {
+				return err
+			}
+			switch {
+			case record.Terminal() && !record.Uploaded:
+				items = append(items, record)
+			case record.Status == OperationRunning && now.Sub(record.LastReportedAt) >= progressInterval:
+				items = append(items, record)
+			}
+			return nil
+		})
+	})
+	return items, err
 }
