@@ -88,6 +88,9 @@ type Store interface {
 	BackupOperations(context.Context, uuid.UUID, int) ([]domain.BackupOperation, error)
 	BackupOperation(context.Context, uuid.UUID) (domain.BackupOperation, error)
 	FleetBackupCounts(context.Context) (plans, operations, running, failed24h, unhealthy int64, err error)
+	CreateManualOperation(context.Context, domain.BackupOperation) error
+	NextQueuedManualOperation(context.Context, uuid.UUID) (domain.BackupOperation, bool, error)
+	MarkOperationDispatched(context.Context, uuid.UUID) error
 	Snapshots(context.Context, int) ([]domain.Snapshot, error)
 	SnapshotsByID(context.Context, string) ([]domain.Snapshot, error)
 	EnqueueSnapshotList(context.Context, domain.Operation, string, string) (domain.Operation, error)

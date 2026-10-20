@@ -137,6 +137,9 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 					return err
 				}
 			}
+			if err := s.dispatchQueuedJob(stream, agentID, selected, &serverSequence); err != nil {
+				return err
+			}
 		case message.GetInventoryReport() != nil:
 			inventory, err := inventoryFromProto(agentID, message.GetInventoryReport())
 			if err != nil {
@@ -358,4 +361,28 @@ func (s *Service) observeHeartbeatResult(result string) {
 	if s.observeHeartbeat != nil {
 		s.observeHeartbeat(result)
 	}
+}
+
+// dispatchQueuedJob pushes at most one manual job per heartbeat. Delivery is
+// at-least-once; the Agent de-duplicates by operation id.
+func (s *Service) dispatchQueuedJob(stream agentv1.AgentControlService_ConnectServer, agentID uuid.UUID, protocol string, sequence *uint64) error {
+	operation, ok, err := s.control.NextQueuedJob(stream.Context(), agentID)
+	if err != nil || !ok {
+		return nil
+	}
+	scheduled := timestamppb.Now()
+	if operation.ScheduledAt != nil {
+		scheduled = timestamppb.New(*operation.ScheduledAt)
+	}
+	if err := sendServerMessage(stream, sequence, protocol, &agentv1.ServerToAgent{
+		Payload: &agentv1.ServerToAgent_JobDispatch{JobDispatch: &agentv1.JobDispatch{
+			JobId: operation.ID.String(), OperationId: operation.ID.String(), Type: operation.Type,
+			CreatedAt: timestamppb.New(operation.CreatedAt), NotBefore: scheduled,
+			Deadline: timestamppb.New(operation.CreatedAt.Add(24 * time.Hour)),
+			PlanId:   operation.PlanID.String(), PlanRevision: operation.PlanRevision, ConfigHash: operation.ConfigHash,
+		}},
+	}); err != nil {
+		return err
+	}
+	return s.control.MarkJobDispatched(stream.Context(), operation.ID)
 }

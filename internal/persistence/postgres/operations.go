@@ -169,3 +169,30 @@ func (s *Store) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, er
 	}
 	return items, rows.Err()
 }
+
+// CreateManualOperation queues a user-triggered backup for one Agent.
+func (s *Store) CreateManualOperation(ctx context.Context, operation domain.BackupOperation) error {
+	_, err := s.pool.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,created_at,updated_at)
+		values($1,$2,$3,'BACKUP','MANUAL','QUEUED',$4,'',$5,$6,$6)`,
+		operation.ID, operation.PlanID, operation.AgentID, operation.PlanRevision, operation.ScheduledAt, operation.CreatedAt)
+	return persistenceError(err)
+}
+
+// NextQueuedManualOperation returns the oldest queued manual job for an Agent.
+func (s *Store) NextQueuedManualOperation(ctx context.Context, agentID uuid.UUID) (domain.BackupOperation, bool, error) {
+	row := s.pool.QueryRow(ctx, "select "+backupOperationColumns+` from backup_operations
+		where agent_id=$1 and source='MANUAL' and status='QUEUED' order by created_at limit 1`, agentID)
+	operation, err := scanBackupOperation(row)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.BackupOperation{}, false, nil
+	}
+	if err != nil {
+		return domain.BackupOperation{}, false, err
+	}
+	return operation, true, nil
+}
+
+func (s *Store) MarkOperationDispatched(ctx context.Context, id uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, "update backup_operations set status='RUNNING',started_at=coalesce(started_at,now()),updated_at=now() where id=$1 and status='QUEUED'", id)
+	return err
+}

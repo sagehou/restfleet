@@ -1330,6 +1330,12 @@ type ApplyPlanParams struct {
 	IfMatch    IfMatch   `json:"If-Match"`
 }
 
+// BackupPlanNowParams defines parameters for BackupPlanNow.
+type BackupPlanNowParams struct {
+	XCSRFToken     CsrfToken      `json:"X-CSRF-Token"`
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // PausePlanParams defines parameters for PausePlan.
 type PausePlanParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
@@ -1558,6 +1564,9 @@ type ServerInterface interface {
 
 	// (POST /api/v1/plans/{plan_id}/apply)
 	ApplyPlan(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID, params ApplyPlanParams)
+
+	// (POST /api/v1/plans/{plan_id}/backup)
+	BackupPlanNow(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID, params BackupPlanNowParams)
 
 	// (GET /api/v1/plans/{plan_id}/effective-config)
 	GetPlanEffectiveConfig(w http.ResponseWriter, r *http.Request, planId openapi_types.UUID)
@@ -2769,6 +2778,83 @@ func (siw *ServerInterfaceWrapper) ApplyPlan(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ApplyPlan(w, r, planId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BackupPlanNow operation middleware
+func (siw *ServerInterfaceWrapper) BackupPlanNow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "plan_id" -------------
+	var planId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "plan_id", r.PathValue("plan_id"), &planId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params BackupPlanNowParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BackupPlanNow(w, r, planId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4146,6 +4232,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}", wrapper.GetBackupOperation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/snapshots", wrapper.ListSnapshots)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/snapshots/{snapshot_id}/entries", wrapper.ListSnapshotEntries)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/plans/{plan_id}/backup", wrapper.BackupPlanNow)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.ListStorageCredentials)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.CreateStorageCredential)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)
