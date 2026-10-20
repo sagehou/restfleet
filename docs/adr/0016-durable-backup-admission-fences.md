@@ -1,5 +1,7 @@
 # 备份占用到期与后端清理分离
 
+期限修订见 [ADR-0032](0032-configurable-offline-window.md)：离线窗口默认 72h、可配置；schema 16 扩展时长上限。本文原期限为历史决定，其余隔离与清理约束保持。
+
 schema 11 使用独立 `gateway_backup_admissions` 保存有界备份占用及释放历史，复用现有 Repository advisory lock、StorageCredential 行锁、审计与 outbox。它不是 Backup Operation、每次 Restic 备份会话或 Agent ACK，不创建虚假的任务状态。备份占用与 `repository_leases` 共同构成中心写入准入边界；原有短时 worker 租约和数据面占用必须分别验证，不能用一个会自动过期的行表示两种事实。
 
 选择保守释放：有效期最多 24h，到期 MUST 禁止新的使用，但未释放占用 MUST 继续阻止同 Host/Repository/Gateway identity/StorageCredential 的另一个占用，以及中心测试、初始化、维护和凭据替换。DB 时间到期不证明旧 Gateway、网络请求或子进程已经停止，因此拒绝“到期即自动回收并运行维护”的方案。只有可信中心 owner 在撤销并等待所有会话、请求、子进程和刷新持久化清理完成后，才 MAY 提交精确 ID/owner 的释放；错误 owner、重复准入 ID 改参、过期重开和重用已释放 ID MUST 拒绝。释放可在撤销/到期后进行，保持幂等，不删除历史。

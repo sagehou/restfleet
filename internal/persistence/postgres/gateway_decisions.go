@@ -10,6 +10,29 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
+// LatestGatewayAuthorization also reads expired/withdrawn decisions: delivery
+// recovery must preserve their original timestamps, never mint a replacement.
+func (s *Store) LatestGatewayAuthorization(ctx context.Context, id, runtime uuid.UUID) (domain.GatewayDecision, error) {
+	var d domain.GatewayDecision
+	var seconds int64
+	var expires *time.Time
+	err := s.pool.QueryRow(ctx, `select request_id,runtime_id,revision,lifetime_seconds,issued_at,expires_at,revoked
+		from gateway_authorization_decisions where admission_id=$1 order by revision desc limit 1`, id).
+		Scan(&d.RequestID, &d.RuntimeID, &d.Revision, &seconds, &d.IssuedAt, &expires, &d.Revoked)
+	if err != nil {
+		return d, err
+	}
+	if d.RuntimeID != runtime {
+		return domain.GatewayDecision{}, domain.ErrGatewayDecision
+	}
+	d.RequestedLifetime = time.Duration(seconds) * time.Second
+	if expires != nil {
+		d.ExpiresAt = *expires
+	}
+	d.Admission, err = scanBackupAdmission(s.pool.QueryRow(ctx, "select "+admissionColumns+" from gateway_backup_admissions where id=$1", id))
+	return d, err
+}
+
 // DecideGatewayAuthorization serializes all revisions on the original admission
 // row. It never releases/reacquires or extends that fence and never signs data.
 func (s *Store) DecideGatewayAuthorization(ctx context.Context, r domain.GatewayDecisionRequest, hash string) (domain.GatewayDecision, error) {

@@ -1,6 +1,6 @@
 # 中心存储凭据（M4 多后端）
 
-当前提供配置导入、metadata、异步只读连接测试、替换/禁用，以及独立仓库记录。支持 OneDrive、Google Drive 和公网 HTTPS WebDAV，均包装在 rclone Crypt 后。仓库记录仍是 PROVISIONING，初始化任务、Public Gateway 与完整备份执行尚未接通，不能将“导入成功”或“读取测试成功”当成可备份。
+当前提供配置导入、metadata、异步只读连接测试、替换/禁用、独立仓库记录与中心初始化。支持 OneDrive、Google Drive 和公网 HTTPS WebDAV，均包装在 rclone Crypt 后。Gateway 复用 Agent mTLS，并通过近期真实后端探测参与仓库可用性判断；完整 Agent 调度和备份执行仍待接通，不能将“导入成功”或“读取测试成功”当成可备份。
 
 ## 准备与导入
 
@@ -48,7 +48,7 @@ runtime 自动生成服务 UID 私有 Unix socket，将连接固定到已验证�
 
 ## 升级与验收
 
-当前 schema 为 10。00010 增加 Agent 仓库凭据交付记录，启用方式见部署规范 §7.5；交付/ACK 不代表 Gateway 可用。00009 新增持久化仓库初始化任务与租约。迁移 00008 只扩展 provider CHECK，不重写现有 OneDrive 数据、AAD、凭据版本或 Repository 绑定。用既有 migrator 升级后再启动新 Server；存在新后端记录时 Down 会失败，不会删除或改标它们。
+当前 schema 为 16；用既有 migrator 按序升级后再启动新 Server。00009/00010 提供仓库初始化和 Agent 凭据交付，00011–00016 提供 Gateway 占用、授权、可靠回写和离线窗口；READY 投影复用现有记录，不增加迁移。交付/ACK 不代表 Gateway 可用。迁移 00008 只扩展 provider CHECK，不重写现有 OneDrive 数据、AAD、凭据版本或 Repository 绑定；存在历史记录时 Down 会被相应迁移拒绝，不会删除或改标它们。
 
 CI 验证配置拒绝、metadata 隔离、权限/事务/CAS、Google refresh、WebDAV DNS/TLS/重定向/清理、Web UI 和双架构构建。真实 OneDrive/Google OAuth 刷新及三种后端的写入、备份、恢复、认证失效和重启恢复仍 MUST 在持有测试凭据的安全环境验收；离线测试不替代真实服务兼容性。
 
@@ -56,7 +56,7 @@ CI 验证配置拒绝、metadata 隔离、权限/事务/CAS、Google refresh、W
 
 ## 仓库初始化
 
-仓库详情的“初始化仓库”创建中心持久化任务，可关闭页面后再打开查看结果。网络错误后重试复用原幂等 key；任务失败后重新点击则创建新任务，不更换已保存密码或路径。成功只表示中心验证 Restic v2 与空仓库，状态仍为 PROVISIONING；Gateway/Agent 确认完成前不能备份。
+仓库详情的“初始化仓库”创建中心持久化任务，可关闭页面后再打开查看结果。网络错误后重试复用原幂等 key；任务失败后重新点击则创建新任务，不更换已保存密码或路径。成功只表示中心验证 Restic v2 与空仓库，不能直接变成 READY。READY 还要求当前 Agent 确认、匹配的有效授权和小于 10min 的 Gateway 后端探测；观察过期或条件失效显示 DEGRADED，不表示备份完成。部署顺序见 [Gateway 启动交接](gateway-run.md)，新可用性流程尚待专门运行验收。
 
 INITIALIZE_TIMED_OUT / WORKER_LOST 表示超时或恢复尝试耗尽；REPOSITORY_LOCKED 不会自动 unlock；REPOSITORY_NOT_EMPTY / REPOSITORY_MISMATCH / PASSWORD_REJECTED 必须检查目标和身份，不可删除数据来绕过。原始 provider 错误不会显示。Web 页面从 last_initialize_operation_id 恢复轮询。
 

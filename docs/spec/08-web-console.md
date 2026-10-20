@@ -133,7 +133,7 @@ Sections：
 - Operations；
 - Danger zone（disable，不直接 delete data）。
 
-Actions：Test、Refresh Index、Check、Retention Preview、Prune、Unlock Preview、Rotate Gateway Credential。
+Actions：Test、Refresh Index、Check、Retention Preview、Prune、Unlock Preview。Gateway 通信身份复用 Agent 自动续证与管理员吊销（ADR-0033），MUST NOT 再提供独立密码轮换操作。
 
 UI 必须解释 `restore size`、`raw data`、`provider used` 三者差异。
 
@@ -142,6 +142,8 @@ UI 必须解释 `restore size`、`raw data`、`provider used` 三者差异。
 当前开放 list/detail 与 ADMIN 创建记录，复用现有控制台样式。创建使用已有 Host 与未禁用 StorageCredential，不接受密码或路径；Viewer 仅可读。列表和凭据选择 MUST 支持分页。Dashboard 仓库数 MUST 来源于未归档记录的实际计数。
 
 UI MUST 明示 PROVISIONING 暂不可备份；format_version 缺省显示“尚未验证”，快照与容量显示尚未采集而非虚构 0。保存的密钥版本不表示已被 Agent 接受；详情 MUST 分别显示 Agent 交付 revision 和 durable ACK 时间，缺省为尚未下发/等待确认。ACK 只表示本地安全保存，不表示 Gateway READY 或备份成功。失败请求显示错误，不伪装为空列表；创建冲突提示刷新列表确认已有结果。ADMIN 可对尚未初始化的 PROVISIONING 仓库提交初始化任务；UI MUST 从 last_initialize_operation_id 恢复轮询，模糊网络失败的手动重试 MUST 复用 key。成功显示中心验证时间与格式，仍明确等待 Gateway/Agent ACK；失败显示固定错误码，允许新任务重试。维护、轮换等未交付动作 MUST NOT 显示为可用。
+
+ADR-0035：详情 MUST 展示中心投影的 Gateway 可用性；READY 解释为当前授权匹配且小于 10min 的后端探测已通过，DEGRADED 解释为近期探测或当前授权条件不满足，PROVISIONING 展示未完成条件，LOCKED/DISABLED/ERROR 明示当前不可用。MUST 移除“Agent 确认尚未接通”等过时提示，通信认证显示复用本机密钥/mTLS、自动续证和可吊销，不再将 legacy Gateway secret revision 展示为当前通信凭据。继续说明初始化/ACK/READY 不是备份成功，定时执行仍按实际实现状态说明。UI 不自行从 ACK 推导 READY，也不新增身份轮换或维护操作。
 
 ### 6.4 多后端凭据显示
 

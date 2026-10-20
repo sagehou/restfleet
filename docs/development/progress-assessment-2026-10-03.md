@@ -1,5 +1,7 @@
 # 2026-10-03 开发进度与方向复核
 
+> 历史评估：本文描述 2026-10-03/04 时点，包含后来已合并的分支和已停止的本地验证。当前状态见 [实施计划 M4](../../IMPLEMENTATION_PLAN.md#m4--storage-credential-repository-and-gateway)，最新问题分析见 [规格审阅](m4-spec-review-2026-10-08.md)。下文的待办与开发顺序不能覆盖现行计划；运行验证仅在 GitHub Actions 执行。
+
 初始评估基线为已合并 `main`：`da0d92f`；2026-10-04 更新基线为 #51 合并后的 `2fbe498`。此前未合并、未推送的旧开发分支与本地改动已丢弃。Dependabot 的 #38–41、#43–50 共 12 个 PR 已合并，#42 被后续更新取代关闭。React/React DOM 已配对升级并分组更新；#51 另外修复 Web 高危传递依赖并增加 npm audit 门禁，最终 head 十项 Actions 全通过、audit 零漏洞。
 
 | 范围 | 当前证据与状态 |
