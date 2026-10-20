@@ -274,12 +274,16 @@ const (
 	INITIALIZEFAILED      OperationErrorCode = "INITIALIZE_FAILED"
 	INITIALIZETIMEDOUT    OperationErrorCode = "INITIALIZE_TIMED_OUT"
 	PASSWORDREJECTED      OperationErrorCode = "PASSWORD_REJECTED"
+	PATHINVALID           OperationErrorCode = "PATH_INVALID"
 	REFRESHFAILED         OperationErrorCode = "REFRESH_FAILED"
 	REPOSITORYLOCKED      OperationErrorCode = "REPOSITORY_LOCKED"
 	REPOSITORYMISMATCH    OperationErrorCode = "REPOSITORY_MISMATCH"
 	REPOSITORYNOTEMPTY    OperationErrorCode = "REPOSITORY_NOT_EMPTY"
 	REPOSITORYUNAVAILABLE OperationErrorCode = "REPOSITORY_UNAVAILABLE"
+	SCANFAILED            OperationErrorCode = "SCAN_FAILED"
+	SCANTIMEDOUT          OperationErrorCode = "SCAN_TIMED_OUT"
 	SECRETUNAVAILABLE     OperationErrorCode = "SECRET_UNAVAILABLE"
+	SNAPSHOTNOTFOUND      OperationErrorCode = "SNAPSHOT_NOT_FOUND"
 	TESTTIMEDOUT          OperationErrorCode = "TEST_TIMED_OUT"
 	WORKERLOST            OperationErrorCode = "WORKER_LOST"
 )
@@ -303,6 +307,8 @@ func (e OperationErrorCode) Valid() bool {
 		return true
 	case PASSWORDREJECTED:
 		return true
+	case PATHINVALID:
+		return true
 	case REFRESHFAILED:
 		return true
 	case REPOSITORYLOCKED:
@@ -313,7 +319,13 @@ func (e OperationErrorCode) Valid() bool {
 		return true
 	case REPOSITORYUNAVAILABLE:
 		return true
+	case SCANFAILED:
+		return true
+	case SCANTIMEDOUT:
+		return true
 	case SECRETUNAVAILABLE:
+		return true
+	case SNAPSHOTNOTFOUND:
 		return true
 	case TESTTIMEDOUT:
 		return true
@@ -391,6 +403,7 @@ func (e OperationStatus) Valid() bool {
 const (
 	CREDENTIALTEST       OperationType = "CREDENTIAL_TEST"
 	REPOSITORYINITIALIZE OperationType = "REPOSITORY_INITIALIZE"
+	SNAPSHOTLIST         OperationType = "SNAPSHOT_LIST"
 )
 
 // Valid indicates whether the value is a known member of the OperationType enum.
@@ -399,6 +412,8 @@ func (e OperationType) Valid() bool {
 	case CREDENTIALTEST:
 		return true
 	case REPOSITORYINITIALIZE:
+		return true
+	case SNAPSHOTLIST:
 		return true
 	default:
 		return false
@@ -501,6 +516,36 @@ func (e RepositoryStatus) Valid() bool {
 	case RepositoryStatusPROVISIONING:
 		return true
 	case RepositoryStatusREADY:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SnapshotEntriesSource.
+const (
+	Cache SnapshotEntriesSource = "cache"
+)
+
+// Valid indicates whether the value is a known member of the SnapshotEntriesSource enum.
+func (e SnapshotEntriesSource) Valid() bool {
+	switch e {
+	case Cache:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SnapshotScanPendingStatus.
+const (
+	SnapshotScanPendingStatusPENDING SnapshotScanPendingStatus = "PENDING"
+)
+
+// Valid indicates whether the value is a known member of the SnapshotScanPendingStatus enum.
+func (e SnapshotScanPendingStatus) Valid() bool {
+	switch e {
+	case SnapshotScanPendingStatusPENDING:
 		return true
 	default:
 		return false
@@ -1014,10 +1059,46 @@ type Snapshot struct {
 	SnapshotId   string             `json:"snapshot_id"`
 }
 
+// SnapshotEntries defines model for SnapshotEntries.
+type SnapshotEntries struct {
+	CollectedAt  time.Time             `json:"collected_at"`
+	Items        []SnapshotEntry       `json:"items"`
+	NextCursor   *string               `json:"next_cursor,omitempty"`
+	Path         string                `json:"path"`
+	RepositoryId openapi_types.UUID    `json:"repository_id"`
+	SnapshotId   string                `json:"snapshot_id"`
+	Source       SnapshotEntriesSource `json:"source"`
+	Truncated    bool                  `json:"truncated"`
+}
+
+// SnapshotEntriesSource defines model for SnapshotEntries.Source.
+type SnapshotEntriesSource string
+
+// SnapshotEntry defines model for SnapshotEntry.
+type SnapshotEntry struct {
+	Gid   int64     `json:"gid"`
+	Mode  string    `json:"mode"`
+	Mtime time.Time `json:"mtime"`
+	Name  string    `json:"name"`
+	Path  string    `json:"path"`
+	Size  int64     `json:"size"`
+	Type  string    `json:"type"`
+	Uid   int64     `json:"uid"`
+}
+
 // SnapshotList defines model for SnapshotList.
 type SnapshotList struct {
 	Items []Snapshot `json:"items"`
 }
+
+// SnapshotScanPending defines model for SnapshotScanPending.
+type SnapshotScanPending struct {
+	OperationId openapi_types.UUID        `json:"operation_id"`
+	Status      SnapshotScanPendingStatus `json:"status"`
+}
+
+// SnapshotScanPendingStatus defines model for SnapshotScanPending.Status.
+type SnapshotScanPendingStatus string
 
 // StorageCredential defines model for StorageCredential.
 type StorageCredential struct {
@@ -1283,6 +1364,12 @@ type ListSnapshotsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListSnapshotEntriesParams defines parameters for ListSnapshotEntries.
+type ListSnapshotEntriesParams struct {
+	Path         *string             `form:"path,omitempty" json:"path,omitempty"`
+	RepositoryId *openapi_types.UUID `form:"repository_id,omitempty" json:"repository_id,omitempty"`
+}
+
 // ListStorageCredentialsParams defines parameters for ListStorageCredentials.
 type ListStorageCredentialsParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
@@ -1495,6 +1582,9 @@ type ServerInterface interface {
 
 	// (GET /api/v1/snapshots)
 	ListSnapshots(w http.ResponseWriter, r *http.Request, params ListSnapshotsParams)
+
+	// (GET /api/v1/snapshots/{snapshot_id}/entries)
+	ListSnapshotEntries(w http.ResponseWriter, r *http.Request, snapshotId string, params ListSnapshotEntriesParams)
 
 	// (GET /api/v1/storage-credentials)
 	ListStorageCredentials(w http.ResponseWriter, r *http.Request, params ListStorageCredentialsParams)
@@ -3095,6 +3185,61 @@ func (siw *ServerInterfaceWrapper) ListSnapshots(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListSnapshotEntries operation middleware
+func (siw *ServerInterfaceWrapper) ListSnapshotEntries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "snapshot_id" -------------
+	var snapshotId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "snapshot_id", r.PathValue("snapshot_id"), &snapshotId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "snapshot_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSnapshotEntriesParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "repository_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "repository_id", r.URL.Query(), &params.RepositoryId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "repository_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repository_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSnapshotEntries(w, r, snapshotId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListStorageCredentials operation middleware
 func (siw *ServerInterfaceWrapper) ListStorageCredentials(w http.ResponseWriter, r *http.Request) {
 
@@ -4000,6 +4145,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations", wrapper.ListBackupOperations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}", wrapper.GetBackupOperation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/snapshots", wrapper.ListSnapshots)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/snapshots/{snapshot_id}/entries", wrapper.ListSnapshotEntries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.ListStorageCredentials)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.CreateStorageCredential)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)

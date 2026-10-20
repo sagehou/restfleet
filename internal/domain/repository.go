@@ -13,6 +13,8 @@ var (
 	ErrHostRepositoryExists  = errors.New("host already owns a repository")
 	ErrSharedRepository      = errors.New("shared repositories are not supported")
 	ErrHostUnavailable       = errors.New("host is disabled or revoked")
+	ErrSnapshotAmbiguous     = errors.New("snapshot exists in more than one repository")
+	ErrSnapshotUnavailable   = errors.New("snapshot cannot be browsed")
 )
 
 // Repository contains metadata and secret references, never plaintext credentials.

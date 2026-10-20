@@ -632,6 +632,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/snapshots/{snapshot_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Returns a fresh bounded page of direct children, or 202 with a pending SNAPSHOT_LIST operation. Browsing never runs Restic inside the request. */
+        get: operations["listSnapshotEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage-credentials": {
         parameters: {
             query?: never;
@@ -1033,13 +1052,46 @@ export interface components {
         SnapshotList: {
             items: components["schemas"]["Snapshot"][];
         };
+        SnapshotEntry: {
+            name: string;
+            path: string;
+            type: string;
+            /** Format: int64 */
+            size: number;
+            mode: string;
+            /** Format: int64 */
+            uid: number;
+            /** Format: int64 */
+            gid: number;
+            /** Format: date-time */
+            mtime: string;
+        };
+        SnapshotEntries: {
+            snapshot_id: string;
+            /** Format: uuid */
+            repository_id: string;
+            path: string;
+            items: components["schemas"]["SnapshotEntry"][];
+            next_cursor?: string | null;
+            /** @enum {string} */
+            source: "cache";
+            /** Format: date-time */
+            collected_at: string;
+            truncated: boolean;
+        };
+        SnapshotScanPending: {
+            /** @enum {string} */
+            status: "PENDING";
+            /** Format: uuid */
+            operation_id: string;
+        };
         Operation: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             repository_id?: string;
             /** @enum {string} */
-            type: "CREDENTIAL_TEST" | "REPOSITORY_INITIALIZE";
+            type: "CREDENTIAL_TEST" | "REPOSITORY_INITIALIZE" | "SNAPSHOT_LIST";
             /** @enum {string} */
             status: "QUEUED" | "DISPATCHED" | "ACKNOWLEDGED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCEL_REQUESTED" | "CANCELED" | "TIMED_OUT" | "LOST" | "REJECTED";
             /** @enum {string} */
@@ -1062,7 +1114,7 @@ export interface components {
             /** Format: date-time */
             finished_at?: string;
             /** @enum {string} */
-            error_code: "" | "CONNECTION_FAILED" | "TEST_TIMED_OUT" | "CONFIG_UNSAFE" | "REFRESH_FAILED" | "CREDENTIAL_CHANGED" | "CREDENTIAL_DISABLED" | "SECRET_UNAVAILABLE" | "WORKER_LOST" | "INITIALIZE_FAILED" | "INITIALIZE_TIMED_OUT" | "REPOSITORY_LOCKED" | "REPOSITORY_MISMATCH" | "REPOSITORY_NOT_EMPTY" | "PASSWORD_REJECTED" | "REPOSITORY_UNAVAILABLE";
+            error_code: "" | "CONNECTION_FAILED" | "TEST_TIMED_OUT" | "CONFIG_UNSAFE" | "REFRESH_FAILED" | "CREDENTIAL_CHANGED" | "CREDENTIAL_DISABLED" | "SECRET_UNAVAILABLE" | "WORKER_LOST" | "INITIALIZE_FAILED" | "INITIALIZE_TIMED_OUT" | "REPOSITORY_LOCKED" | "REPOSITORY_MISMATCH" | "REPOSITORY_NOT_EMPTY" | "PASSWORD_REJECTED" | "REPOSITORY_UNAVAILABLE" | "SNAPSHOT_NOT_FOUND" | "PATH_INVALID" | "SCAN_FAILED" | "SCAN_TIMED_OUT";
         };
         StorageCredential: {
             /** Format: uuid */
@@ -2675,6 +2727,49 @@ export interface operations {
             };
             400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listSnapshotEntries: {
+        parameters: {
+            query?: {
+                path?: string;
+                repository_id?: string;
+            };
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fresh bounded directory page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotEntries"];
+                };
+            };
+            /** @description A bounded scan is queued or running; poll the operation and retry. */
+            202: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotScanPending"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };

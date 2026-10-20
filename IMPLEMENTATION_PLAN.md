@@ -321,7 +321,7 @@
 
 ## M8 — Snapshot Index and Browser
 
-**Status: IN PROGRESS** — 成功备份的终态结果已写入快照索引，快照页面可列出元数据；`restic ls` 文件树浏览与大规模虚拟化待完成。
+**Status: IN PROGRESS** — 快照索引与列表已合入（#91）；`restic ls --json` 有界扫描、`SNAPSHOT_LIST` 后台任务、目录 API 与浏览页面已接入；大规模虚拟化与 Actions 验收待完成。
 
 ### Goal
 

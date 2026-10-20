@@ -115,6 +115,13 @@ func normalizeListPath(raw string) (string, error) {
 	return raw, nil
 }
 
+// NormalizeListPath is the single canonicalizer shared by the HTTP boundary and
+// the Restic adapter. It rejects relative, non-canonical, control-character and
+// traversal paths before any job is created.
+func NormalizeListPath(raw string) (string, error) {
+	return normalizeListPath(raw)
+}
+
 // List runs one read-only `restic ls` through the central repository scope and
 // returns the direct children of request.Path. Only fixed argv elements are
 // passed to Restic; the repository and password arrive through the environment.

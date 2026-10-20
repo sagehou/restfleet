@@ -89,6 +89,11 @@ type Store interface {
 	BackupOperation(context.Context, uuid.UUID) (domain.BackupOperation, error)
 	FleetBackupCounts(context.Context) (plans, operations, running, failed24h, unhealthy int64, err error)
 	Snapshots(context.Context, int) ([]domain.Snapshot, error)
+	SnapshotsByID(context.Context, string) ([]domain.Snapshot, error)
+	EnqueueSnapshotList(context.Context, domain.Operation, string, string) (domain.Operation, error)
+	ActiveSnapshotListOperation(context.Context, uuid.UUID) (domain.Operation, bool, error)
+	SnapshotListResult(context.Context, uuid.UUID, string, string, time.Time) (domain.SnapshotListResult, bool, error)
+	FinishSnapshotListJob(context.Context, uuid.UUID, uuid.UUID, string, domain.SnapshotListResult) error
 	SaveTemplateRevision(context.Context, domain.Template, int64, domain.AuditEvent) (domain.Template, error)
 	Repository(context.Context, uuid.UUID) (domain.Repository, error)
 	RepositoryCount(context.Context) (int64, error)
@@ -117,6 +122,7 @@ type Settings struct {
 	MasterKey                   []byte
 	RunCredentialTest           CredentialTestRunner
 	InitializeRepository        RepositoryInitializer
+	ListSnapshot                SnapshotLister
 	GatewayPublicURL            string
 	GatewayOfflineWindow        time.Duration
 	GatewaySigningKey           ed25519.PrivateKey
@@ -159,6 +165,7 @@ type ControlPlane struct {
 	masterKey            []byte
 	runCredentialTest    CredentialTestRunner
 	initializeRepository RepositoryInitializer
+	listSnapshot         SnapshotLister
 	gatewayPublicURL     string
 	gatewayOfflineWindow time.Duration
 	gatewaySigningKey    ed25519.PrivateKey
@@ -222,6 +229,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		masterKey:            append([]byte(nil), settings.MasterKey...),
 		runCredentialTest:    settings.RunCredentialTest,
 		initializeRepository: settings.InitializeRepository,
+		listSnapshot:         settings.ListSnapshot,
 		gatewayPublicURL:     settings.GatewayPublicURL,
 		gatewayOfflineWindow: settings.GatewayOfflineWindow,
 		gatewayPendingKey:    append([]byte(nil), settings.GatewayPendingDecryptionKey...),

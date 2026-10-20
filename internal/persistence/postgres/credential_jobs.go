@@ -197,10 +197,10 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	defer func() { _ = tx.Rollback(ctx) }()
 	var operationID uuid.UUID
 	var attempt, maxAttempts int
-	err = tx.QueryRow(ctx, `select id,operation_id,attempt,max_attempts from jobs
-		where queue in ('CREDENTIAL_TEST','REPOSITORY_INITIALIZE') and ((status='READY' and available_at<=clock_timestamp())
+	err = tx.QueryRow(ctx, `select id,operation_id,attempt,max_attempts,payload from jobs
+		where queue in ('CREDENTIAL_TEST','REPOSITORY_INITIALIZE','SNAPSHOT_LIST') and ((status='READY' and available_at<=clock_timestamp())
 		or (status='LEASED' and lease_expires_at<=clock_timestamp()))
-		order by available_at,id for update skip locked limit 1`).Scan(&job.ID, &operationID, &attempt, &maxAttempts)
+		order by available_at,id for update skip locked limit 1`).Scan(&job.ID, &operationID, &attempt, &maxAttempts, &job.Payload)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return job, domain.ErrNotFound
 	}
@@ -212,7 +212,13 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 		return job, err
 	}
 	if job.Operation.RepositoryID != nil {
-		r, repoErr := lockProvisionRepository(ctx, tx, *job.Operation.RepositoryID)
+		var r domain.Repository
+		var repoErr error
+		if job.Operation.Type == "SNAPSHOT_LIST" {
+			r, repoErr = lockRepositoryForRead(ctx, tx, *job.Operation.RepositoryID)
+		} else {
+			r, repoErr = lockProvisionRepository(ctx, tx, *job.Operation.RepositoryID)
+		}
 		if repoErr != nil && !errors.Is(repoErr, domain.ErrHostUnavailable) && !errors.Is(repoErr, domain.ErrRepositoryUnavailable) {
 			return job, repoErr
 		}
@@ -267,7 +273,14 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 		return job, domain.ErrOperationTransition
 	}
 	// Every plaintext read is authorized and audited after claim, including recovery.
-	audit, err := credentialJobAudit(job.Operation, "STORAGE_SECRET_ACCESS", "TEST_RUNTIME", now)
+	runtimeReason := "TEST_RUNTIME"
+	switch job.Operation.Type {
+	case "REPOSITORY_INITIALIZE":
+		runtimeReason = "INITIALIZE_RUNTIME"
+	case "SNAPSHOT_LIST":
+		runtimeReason = "SNAPSHOT_LIST_RUNTIME"
+	}
+	audit, err := credentialJobAudit(job.Operation, "STORAGE_SECRET_ACCESS", runtimeReason, now)
 	if err != nil {
 		return job, err
 	}
@@ -275,7 +288,7 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 		return job, err
 	}
 	if job.Repository != nil {
-		repoAudit, err := credentialJobAudit(job.Operation, "REPOSITORY_SECRET_ACCESS", "INITIALIZE_RUNTIME", now)
+		repoAudit, err := credentialJobAudit(job.Operation, "REPOSITORY_SECRET_ACCESS", runtimeReason, now)
 		if err != nil {
 			return job, err
 		}
@@ -505,7 +518,7 @@ func finishCredentialJob(ctx context.Context, tx pgx.Tx, job *domain.CredentialJ
 func finishJobRow(ctx context.Context, tx pgx.Tx, job *domain.CredentialJob, to string, now time.Time) error {
 	// Completion keeps the lease fence in the final UPDATE, after audit writes.
 	status := "DONE"
-	if to != "SUCCEEDED" {
+	if to != "SUCCEEDED" && to != "SUCCEEDED_WITH_WARNINGS" {
 		status = "DEAD"
 	}
 	query := `update jobs set status=$2,lease_owner=null,lease_expires_at=null,last_error_code=$3,updated_at=$4 where id=$1`

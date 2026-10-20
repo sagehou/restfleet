@@ -85,6 +85,7 @@ func run(logger *slog.Logger) error {
 	var credentialRuntime *rclone.Runtime
 	var runCredentialTest control.CredentialTestRunner
 	var initializeRepository control.RepositoryInitializer
+	var listSnapshot control.SnapshotLister
 	if config.EnrollmentEnabled {
 		credentialRuntime, err = rclone.NewRuntime(config.CredentialRuntimeDir, config.RcloneBinary)
 		if err != nil {
@@ -97,10 +98,12 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 		initializeRepository = provisioner.Provision
+		listSnapshot = provisioner.List
 	}
 	controlPlane, err := control.NewControlPlane(store, control.Settings{
 		RunCredentialTest:           runCredentialTest,
 		InitializeRepository:        initializeRepository,
+		ListSnapshot:                listSnapshot,
 		BootstrapToken:              config.BootstrapToken,
 		MasterKey:                   config.MasterKey,
 		GatewayPublicURL:            config.GatewayPublicURL,

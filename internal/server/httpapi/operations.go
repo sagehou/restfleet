@@ -91,3 +91,42 @@ func (a *API) ListSnapshots(w http.ResponseWriter, r *http.Request, params ListS
 	}
 	a.json(w, http.StatusOK, response)
 }
+
+func (a *API) ListSnapshotEntries(w http.ResponseWriter, r *http.Request, snapshotID string, params ListSnapshotEntriesParams) {
+	authenticated, ok := a.authorizeRead(w, r)
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" && params.Path == nil && params.RepositoryId == nil {
+		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
+		return
+	}
+	path := "/"
+	if params.Path != nil {
+		path = *params.Path
+	}
+	result, pending, err := a.control.SnapshotEntries(r.Context(), snapshotID, params.RepositoryId, path, authenticated.User.ID)
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	if pending {
+		w.Header().Set("Retry-After", "1")
+		a.json(w, http.StatusAccepted, SnapshotScanPending{
+			Status: SnapshotScanPendingStatusPENDING, OperationId: result.OperationID,
+		})
+		return
+	}
+	response := SnapshotEntries{
+		SnapshotId: result.SnapshotID, RepositoryId: result.RepositoryID, Path: result.Path,
+		Items: make([]SnapshotEntry, 0, len(result.Entries)), Source: Cache,
+		CollectedAt: result.CollectedAt, Truncated: result.Truncated,
+	}
+	for _, entry := range result.Entries {
+		response.Items = append(response.Items, SnapshotEntry{
+			Name: entry.Name, Path: entry.Path, Type: entry.Type, Size: entry.Size,
+			Mode: entry.Mode, Uid: entry.UID, Gid: entry.GID, Mtime: entry.ModTime,
+		})
+	}
+	a.json(w, http.StatusOK, response)
+}

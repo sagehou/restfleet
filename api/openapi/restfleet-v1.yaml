@@ -978,6 +978,46 @@ paths:
         "401": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/snapshots/{snapshot_id}/entries:
+    parameters:
+      - name: snapshot_id
+        in: path
+        required: true
+        schema: { type: string, minLength: 64, maxLength: 64 }
+    get:
+      operationId: listSnapshotEntries
+      description: >-
+        Returns a fresh bounded page of direct children, or 202 with a pending
+        SNAPSHOT_LIST operation. Browsing never runs Restic inside the request.
+      parameters:
+        - name: path
+          in: query
+          schema: { type: string, maxLength: 4096, default: "/" }
+        - name: repository_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Fresh bounded directory page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SnapshotEntries" }
+        "202":
+          description: A bounded scan is queued or running; poll the operation and retry.
+          headers:
+            Retry-After:
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SnapshotScanPending" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/storage-credentials:
     get:
       operationId: listStorageCredentials
@@ -1484,6 +1524,43 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/Snapshot" }
+    SnapshotEntry:
+      type: object
+      additionalProperties: false
+      required: [name, path, type, size, mode, uid, gid, mtime]
+      properties:
+        name: { type: string }
+        path: { type: string }
+        type: { type: string }
+        size: { type: integer, format: int64, minimum: 0 }
+        mode: { type: string }
+        uid: { type: integer, format: int64, minimum: 0 }
+        gid: { type: integer, format: int64, minimum: 0 }
+        mtime: { type: string, format: date-time }
+    SnapshotEntries:
+      type: object
+      additionalProperties: false
+      required: [snapshot_id, repository_id, path, items, source, collected_at, truncated]
+      properties:
+        snapshot_id: { type: string }
+        repository_id: { type: string, format: uuid }
+        path: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SnapshotEntry" }
+        next_cursor:
+          type: string
+          nullable: true
+        source: { type: string, enum: [cache] }
+        collected_at: { type: string, format: date-time }
+        truncated: { type: boolean }
+    SnapshotScanPending:
+      type: object
+      additionalProperties: false
+      required: [status, operation_id]
+      properties:
+        status: { type: string, enum: [PENDING] }
+        operation_id: { type: string, format: uuid }
     Operation:
       type: object
       additionalProperties: false
@@ -1491,7 +1568,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         repository_id: { type: string, format: uuid }
-        type: { type: string, enum: [CREDENTIAL_TEST, REPOSITORY_INITIALIZE] }
+        type: { type: string, enum: [CREDENTIAL_TEST, REPOSITORY_INITIALIZE, SNAPSHOT_LIST] }
         status: { type: string, enum: [QUEUED, DISPATCHED, ACKNOWLEDGED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCEL_REQUESTED, CANCELED, TIMED_OUT, LOST, REJECTED] }
         source: { type: string, enum: [USER] }
         storage_credential_id: { type: string, format: uuid }
@@ -1503,7 +1580,7 @@ components:
         acknowledged_at: { type: string, format: date-time }
         started_at: { type: string, format: date-time }
         finished_at: { type: string, format: date-time }
-        error_code: { type: string, enum: ["", CONNECTION_FAILED, TEST_TIMED_OUT, CONFIG_UNSAFE, REFRESH_FAILED, CREDENTIAL_CHANGED, CREDENTIAL_DISABLED, SECRET_UNAVAILABLE, WORKER_LOST, INITIALIZE_FAILED, INITIALIZE_TIMED_OUT, REPOSITORY_LOCKED, REPOSITORY_MISMATCH, REPOSITORY_NOT_EMPTY, PASSWORD_REJECTED, REPOSITORY_UNAVAILABLE] }
+        error_code: { type: string, enum: ["", CONNECTION_FAILED, TEST_TIMED_OUT, CONFIG_UNSAFE, REFRESH_FAILED, CREDENTIAL_CHANGED, CREDENTIAL_DISABLED, SECRET_UNAVAILABLE, WORKER_LOST, INITIALIZE_FAILED, INITIALIZE_TIMED_OUT, REPOSITORY_LOCKED, REPOSITORY_MISMATCH, REPOSITORY_NOT_EMPTY, PASSWORD_REJECTED, REPOSITORY_UNAVAILABLE, SNAPSHOT_NOT_FOUND, PATH_INVALID, SCAN_FAILED, SCAN_TIMED_OUT] }
     StorageCredential:
       type: object
       additionalProperties: false

@@ -13,7 +13,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
+export async function requestJSONResponse<T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
   const headers = new Headers(init?.headers)
   headers.set('Accept', 'application/json')
   if (init?.body) headers.set('Content-Type', 'application/json')
@@ -23,7 +23,11 @@ export async function requestJSON<T>(path: string, init?: RequestInit): Promise<
     try { problem = (await response.json()) as Problem } catch { problem = undefined }
     throw new ApiError(response.status, problem)
   }
-  return (await response.json()) as T
+  return { status: response.status, body: (await response.json()) as T }
+}
+
+export async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await requestJSONResponse<T>(path, init)).body
 }
 
 export function csrfToken(): string {
