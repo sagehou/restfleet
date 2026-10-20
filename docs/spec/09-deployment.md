@@ -385,6 +385,8 @@ request MUST 采用上述中心私有目录/文件及精确 JSON 策略，最多
 
 准备 MUST 先校验中心配置、DB/schema/审计及已确认交付，自动生成占用/owner/初次决定 ID，先 fsync 并 no-replace 发布 plan，再调用已有预留事务。plan MUST 为中心所有 0600 文件、0700 私有目录，不包含秘密；字段顺序为 `version`（2）、`preparation`（完整原 request）、`startup`（完整版本 1 初始化 metadata），最多 8192 bytes。已有 plan MUST 精确匹配输入和当前绑定；失败/重试 MUST 保留原文件、ID 和期限，不覆盖文件、不忽略 `.pending` 痕迹。原预留事务的已释放/到期/冲突拒绝与审计保持；提交或输出丢失不能通过改用新 plan 自动接管原占用。
 
+`gateway-prepare --draft` MAY 只发布同一 plan 而不调用预留事务，用于旧 runtime 仍占用时提前生成本地 service.json。draft MUST 同样校验已确认交付和当前中心配置，但不创建占用、不授予运行/初始化/释放权限；plan 仍不是 bearer 凭据，`gateway-start` 对未预留 admission 的初始化会被中心拒绝。轮换协调 MUST 在旧占用经终结记录原子释放后才以同一 plan 调用预留事务。draft 的精确重复 MAY 幂等返回原文件；绑定变化、已释放或已预留的非精确输入 MUST 拒绝。
+
 一个 plan 只对应一个仓库。`RESTFLEET_GATEWAY_AUTHORITY_FILE` MAY 直接指向成功初始化后的该 plan，worker 从 `authority_socket` 取得目标；原版本 1 多目标 manifest 保持兼容。准备命令不注册全局审计来源、不产生授权或交付材料、不启动 Gateway；部署者 MUST 独立准备 fresh runtime、来源、公钥 pin、本地配置和 Queue，并串行执行准备→全局来源注册→启动 Gateway 等待材料→单次初始化→启动续期 worker。启动失败继续保留占用，不能根据文件存在推断成功或清理。总命令 context 仍最多 10s，普通 Server 启动不得自动执行准备/初始化。受控故障恢复、期限前换运行、READY 和 Agent 实际执行仍需接通。
 
 #### 显式启动交接
@@ -530,7 +532,7 @@ Agent 客户端 MUST 复用本机 TLSIdentity 和已保存 Repository credential
 
 本节扩展 §7.13/7.20 的固定审计事件 allowlist，并替代 §7.21 关于 replay 永不触发封存/释放的绝对表述：replay 只有重送既有已签名终结记录时，中心才执行上述事务；tail、普通记录、回执或排空本身仍不构成证明。中心不可达/确认丢失时 MUST 保存原 wire；恢复后 MAY 用原 replay 命令精确重送，不得重签、补造或恢复失败 owner。升级 MUST 先中心后 Gateway，旧中心 MUST 拒绝未知事件并保持未确认状态。
 
-硬崩溃、SIGKILL、队列损坏/已满、最终刷新或清理不确定且没有终结记录时 MUST 保留占用，后续需可信中心受控恢复。完整新 runtime 自动预置、期限前换运行和真实产品备份仍待接通；READY 读模型见 §7.26。本次未新增测试用例，新终结流程的专门验收保持待验证；既有 Actions 通过不能替代它。
+硬崩溃、SIGKILL、队列损坏/已满、最终刷新或清理不确定且没有终结记录时 MUST 保留占用，后续需可信中心受控恢复。中心正常轮换与受控恢复入口见 §7.27；本地新 runtime 的配置/进程仍由可信部署独立准备和启动，中心 MUST NOT 生成 Gateway 私钥或代替服务管理器重启。真实产品备份仍待接通；READY 读模型见 §7.26。本次未新增测试用例，新终结/轮换/恢复流程的专门验收保持待验证；既有 Actions 通过不能替代它。
 
 ### 7.26 Gateway 真实后端观察与仓库可用性（ADR-0035）
 
@@ -543,6 +545,40 @@ Agent 客户端 MUST 复用本机 TLSIdentity 和已保存 Repository credential
 中心 MUST 按原 RFGR 来源/签名/解密/序列/时间接收，scoped event 的 Host/Repository/Gateway 必须与原 header 一致；全局来源不得产生该观察。仓库 list/detail 只 MAY 从这些已提交记录构建 READY 读模型：当前初始化/ACK、身份/凭据/配置指纹、完整交付/秘密引用匹配，原占用及该 runtime 的最新普通授权未到期/撤回，来源未封存/占用未释放；用于观察的原 grant 在探测时有效，且观察不在未来、距今小于 10min。曾有观察但条件不满足 MUST 显示 DEGRADED。LOCKED/DISABLED/ERROR 保持优先，无观察不得因回执或 ACK 显示 READY。
 
 该读模型 MUST 不更新配置 revision/updated_at、不产生授权/维护/清理/备份结果。控制面不可用时本地备份仍按原窗口执行；恢复后的过期历史回放不能重新 READY，实际新探测才能恢复可用显示。必须按预期观察/备份/刷新量配置原有 Queue 上限，满/坏/不确定队列继续停止使用并保留 fence，不为健康记录丢弃其他证据。升级先中心后 Gateway；旧 reader 拒绝未知事件。按用户要求未新增/改写测试，新生产观察和状态投影仍待专门验收。
+
+### 7.27 Gateway 正常轮换与受控恢复（ADR-0036）
+
+正式部署或 Actions MAY 以中心服务 UID 显式执行；开发工作区 MUST NOT 执行：
+
+```text
+restfleet-server gateway-rotate --config-file /var/lib/restfleet/gateway-rotation/rotation.json
+restfleet-server gateway-recover --config-file /var/lib/restfleet/gateway-recovery/recovery.json
+```
+
+两个文件 MUST 位于中心服务所有 canonical 0700 私有目录，0400/0600 regular、单链接、无特殊权限/symlink/hardlink/pending；字段全部显式，MAY 排版空白，其他编码 MUST 与 Go `encoding/json` 规范重编码相同。生产 MUST 以非 root 中心 UID 执行。
+
+`rotation.json` 字段顺序为 `version`（1）、`current`（既有 `GatewayAuthorityTarget`：binding、source_public、socket_path、gateway_uid、shared_group）、`next_preparation`（§7.18 的中心准备输入）、`plan_file`、`audit_config_file`、`wait_seconds`（1..300）。current/next 的 runtime 必须不同、Agent/UID/组必须相同；两个路径必须独立、绝对、规范且不是配置文件本身。`audit_config_file` MUST 是 §7.22 的受保护全局来源 metadata，其 runtime 必须等于下一 runtime，来源公钥不得与仓库来源相同。
+
+轮换 MUST 先读取当前最新决定并核验完整 binding；只有原占用未释放、仍有足够剩余时间（至少 `wait_seconds + 60s`）时才 MAY 开始。中心 MUST 投递明确撤回并保持同一 owner；等待下一状态时每 1s 重读权威记录，超时或信号取消 MUST 返回固定错误并保留 fence。只有 `released_at` 已提交且存在该 runtime 的 `GATEWAY_RUNTIME_CLEANUP_COMPLETE` 时，才 MAY 调用原 `gateway-prepare` 预留下一占用、注册下一全局来源、等待新材料 socket、执行单次初始化并接续原 authority worker。旧占用仍存在时，部署者 MAY 先用 `gateway-prepare --draft` 发布同一 plan、`gateway-audit-register` 和 `finalize` 生成 service.json 并启动等待中的新进程；draft 不预留、不授权，轮换命令在清理证明后才以同一 plan 预留。已 committed 撤回只 MAY 精确重放；不得重新初始化、重发材料、复用旧 binding 或把恢复释放当作清理证明。部署者 MUST 在等待窗口内以 Gateway 服务 UID 启动已预置的新进程；中心命令不启动子进程。
+
+`recovery.json` 字段顺序为 `version`（1）、`binding`（完整 §7.11 binding）、`source_public`（可选；从未注册来源时 MUST 省略，否则为 32-byte 非全零 Ed25519 公钥）。恢复 MUST 由管理员在停止旧进程并隔离 Host 后显式执行，且同时满足 §8.9：占用已到期、无终结记录、无有效普通授权、来源匹配。事务 MUST 原子撤回剩余授权、关闭来源、写 `GATEWAY_BACKUP_RECOVERY` / `RECOVERY_CONFIRMED` 审计并释放占用；MUST NOT 生成 `runtime_cleanup/joined`、删除 Queue、重发材料或恢复旧 owner。已释放的精确重复 MAY 幂等成功；未到期、已有终结记录或来源不匹配 MUST 拒绝且保留占用。
+
+两个命令均复用现有 DB/schema、签名/待回写密钥和审计链，不新增 schema、wire、公开 HTTP/gRPC API 或服务依赖。RESTFLEET_GATEWAY_AUTHORITY_FILE 非空时 `gateway-rotate` MUST 拒绝，避免同一 admission 出现第二个投递者；`gateway-recover` MUST 在停用活动 authority worker 后执行，同一进程配置非空时 MUST 拒绝。REP-058–060 的既有边界保持，轮换/恢复的 Actions 专门验收在 M4 退出前补齐；命令成功不代表 Repository READY 或真实备份完成。
+
+#### 本地新 runtime 预置
+
+Gateway 服务 UID MAY 在正式部署或 Actions 执行以下命令；开发工作区 MUST NOT 执行：
+
+```text
+restfleet-gateway provision --config-file /var/lib/restfleet-gateway/metadata/provision.json --state-file /var/lib/restfleet-gateway/metadata/provision-state.json
+restfleet-gateway finalize --config-file /var/lib/restfleet-gateway/metadata/provision.json --state-file /var/lib/restfleet-gateway/metadata/provision-state.json --plan-file /var/lib/restfleet-gateway/metadata/plan.json --registration-file /var/lib/restfleet-gateway/metadata/registration.json --output-file /var/lib/restfleet-gateway/metadata/service.json
+```
+
+`provision.json` 是 Gateway 所有的受保护配置，字段顺序为 `version`（1）、`environment`、`agent_id`、`admission_lifetime_seconds`、`lifetime_seconds`、`material_socket`、`authority_socket`、`gateway_uid`、`shared_group`、`central_pin_file`、`audit_source_file`、`repository_source_file`、`audit_queue_directory`、`queue_directory`、`runtime_directory`、`rclone_binary`、`certificate_file`、`tls_key_file`、`client_ca_file`、`listen_address`、`max_bytes`、`max_records`、`max_sessions`、`server_uid`、`replay_socket`、`startup_wait_seconds`。所有字段显式；路径、UID/组、端口、socket 长度和上限沿用 §7.23/§7.24。`gateway_uid` MUST 等于当前 Gateway 服务 UID；共享组模式要求 `server_uid` 为不同非 root UID，私有模式要求二者相同。Queue MUST 已存在或由命令创建为当前服务所有 0700 持久目录；runtime MUST 为当前服务所有 0700 tmpfs；TLS/CA/pin/Rclone 仍按既有受保护策略校验。
+
+`provision` MUST 生成新的 runtime UUIDv7、独立全局审计 origin UUIDv7 及两把本机来源 seed，创建缺失的私有 Queue/runtime 目录，并以无覆盖语义写 durable `provision-state.json`（仅含公开 ID/公钥和原配置）。stdout 只输出 `version`、`preparation`、`audit_registration`：前者按 §7.18 字段供中心 `gateway-prepare`，后者按 §7.22 字段供 `gateway-audit-register`。私钥 MUST 留在 Gateway 文件；命令不联系中心、不注册、不初始化、不启动进程。已有 state MUST 精确匹配原 config 和 source 公钥幂等返回；state 缺失但 source 已存在、config/来源不匹配或目录不安全 MUST 拒绝，不得接管旧运行。
+
+中心准备与注册成功后，部署者 MUST 将 plan 和注册结果复制为 Gateway 服务 UID 可读的受保护文件（内容只有公开 metadata；不得复制中心私钥/DB 材料）。`finalize` MUST 核验 plan/registration 的 runtime、Agent、来源公钥、socket、UID/组与 state 完全一致，构建 §7.23 `service.json` 并调用同一 `Validate`；已有不同输出 MUST 拒绝，精确重复 MAY 幂等。成功后部署者以 `restfleet-gateway run --config-file service.json` 启动本进程。预置/定稿成功不证明来源已注册、占用合法、清理或 READY。
 
 ## 8. Native Agent 安装
 

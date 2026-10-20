@@ -21,7 +21,16 @@ import (
 // files. Optional follow hands the initialized admission to its sole worker;
 // it never retries initialization, creates a CA or starts a subprocess.
 func runGatewayCommand(args []string, output io.Writer) error {
-	if len(args) == 0 || (args[0] != "gateway-start" && args[0] != "gateway-audit-register" && args[0] != "gateway-prepare") {
+	if len(args) == 0 {
+		return control.ErrGatewayStartup
+	}
+	switch args[0] {
+	case "gateway-rotate":
+		return runGatewayRotateCommand(args[1:])
+	case "gateway-recover":
+		return runGatewayRecoverCommand(args[1:])
+	}
+	if args[0] != "gateway-start" && args[0] != "gateway-audit-register" && args[0] != "gateway-prepare" {
 		return control.ErrGatewayStartup
 	}
 	failure := control.ErrGatewayStartup
@@ -40,8 +49,10 @@ func runGatewayCommand(args []string, output io.Writer) error {
 	var auditPath string
 	var waitSeconds int
 	var follow bool
+	var draft bool
 	if prepare {
 		flags.StringVar(&planPath, "plan-file", "", "durable protected startup plan")
+		flags.BoolVar(&draft, "draft", false, "write the plan without reserving an admission")
 	} else if !register {
 		flags.StringVar(&auditPath, "audit-config-file", "", "protected global audit registration metadata")
 		flags.IntVar(&waitSeconds, "wait-seconds", 0, "wait for the initial material socket, at most 300 seconds")
@@ -117,7 +128,11 @@ func runGatewayCommand(args []string, output io.Writer) error {
 			return failure
 		}
 	} else if prepare {
-		if c.PrepareGateway(ctx, preparation, planPath) != nil {
+		if draft {
+			if c.PrepareGatewayDraft(ctx, preparation, planPath) != nil {
+				return failure
+			}
+		} else if c.PrepareGateway(ctx, preparation, planPath) != nil {
 			return failure
 		}
 	} else {

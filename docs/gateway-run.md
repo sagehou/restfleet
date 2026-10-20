@@ -54,4 +54,32 @@ restfleet-gateway run --config-file /var/lib/restfleet-gateway/metadata/service.
 
 先给 Gateway 正常停止信号，允许其 join、最后刷新、清理和最终回写完成；只有中心验证终结记录后，原占用才释放。随后停止 follow。systemd 继续使用 `Restart=no` 和 `TimeoutStopSec=120s`。
 
-启动、材料安装或回执失败时 MUST 保留 plan、Queue、来源和原占用，不能循环重跑初始化。中心授权投递进程中断后，可用普通 Server 的原 authority-file worker 精确恢复已提交决定的投递；禁止通过重新交付材料恢复失败 owner。Gateway 硬崩溃且没有清理证明时仍保持阻塞，受控恢复与期限前换运行尚待接通。Agent 配对和已接受配置始终保留。
+启动、材料安装或回执失败时 MUST 保留 plan、Queue、来源和原占用，不能循环重跑初始化。中心授权投递进程中断后，可用普通 Server 的原 authority-file worker 精确恢复已提交决定的投递；禁止通过重新交付材料恢复失败 owner。Gateway 硬崩溃且没有清理证明时仍保持阻塞，受控恢复与期限前换运行见下节。Agent 配对和已接受配置始终保留。
+
+## 正常轮换与受控恢复
+
+正常轮换由中心单一命令完成状态顺序；下一 runtime 可由 Gateway 服务 UID 预置和定稿，再启动其进程：
+
+```text
+restfleet-gateway provision --config-file /var/lib/restfleet-gateway/metadata/provision.json --state-file /var/lib/restfleet-gateway/metadata/provision-state.json
+# 将输出中的 preparation / audit_registration 分别安装为中心受保护请求与注册文件
+restfleet-server gateway-prepare --config-file .../request.json --plan-file .../plan.json --draft
+restfleet-server gateway-audit-register --config-file .../registration.json > .../registration-result.json
+restfleet-gateway finalize --config-file .../provision.json --state-file .../provision-state.json --plan-file .../plan.json --registration-file .../registration-result.json --output-file .../service.json
+restfleet-gateway run --config-file .../service.json
+restfleet-server gateway-rotate --config-file /var/lib/restfleet/gateway-rotation/rotation.json
+```
+
+`gateway-prepare --draft` 只写 plan，不预留、不授权；新进程可以在旧运行仍占用时先启动等待材料。`gateway-rotate` 只有在旧占用经终结记录原子释放后才用同一 plan 预留，随后注册来源、等待材料 socket 并初始化。若部署顺序不允许提前启动，也可在轮换命令等待期内完成 `--draft`/`finalize`/`run`。draft plan 被 `gateway-start` 直接初始化时，中心会因 admission 不存在而拒绝。
+
+中心轮换命令先向当前 runtime 投递明确撤回，等待其签名终结记录和中心原子释放，再自动准备下一占用、注册下一全局来源、等待新材料 socket、执行单次初始化并接续授权 worker。等待超时、回执丢失或没有终结记录时保留原 fence，不准备下一运行。已提交撤回只精确重放；下一 plan 只能使用新 runtime/来源/占用。
+
+没有终结记录且原占用已经到期时，管理员 MUST 先停止旧进程并隔离 Host，再显式执行：
+
+```text
+restfleet-server gateway-recover --config-file /var/lib/restfleet/gateway-recovery/recovery.json
+```
+
+恢复在同一事务中撤回该 runtime、关闭来源、写 `RECOVERY_CONFIRMED` 审计并释放占用；不伪造清理记录、不删除 Queue、不重发材料、不恢复旧 owner。未到期、已有终结记录或来源不匹配时拒绝。恢复后仍需新的 runtime/占用才能继续备份。
+
+正常轮换和恢复只证明中心状态转换，不代表 Repository READY 或真实备份成功；新增行为仍待 Actions 专门验收。
