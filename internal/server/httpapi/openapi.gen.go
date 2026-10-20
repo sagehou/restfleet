@@ -1000,6 +1000,25 @@ type Session struct {
 	User              User      `json:"user"`
 }
 
+// Snapshot defines model for Snapshot.
+type Snapshot struct {
+	AgentId      openapi_types.UUID `json:"agent_id"`
+	BytesAdded   int64              `json:"bytes_added"`
+	CapturedAt   time.Time          `json:"captured_at"`
+	FilesNew     int64              `json:"files_new"`
+	HostId       openapi_types.UUID `json:"host_id"`
+	OperationId  openapi_types.UUID `json:"operation_id"`
+	PlanId       openapi_types.UUID `json:"plan_id"`
+	RecordedAt   time.Time          `json:"recorded_at"`
+	RepositoryId openapi_types.UUID `json:"repository_id"`
+	SnapshotId   string             `json:"snapshot_id"`
+}
+
+// SnapshotList defines model for SnapshotList.
+type SnapshotList struct {
+	Items []Snapshot `json:"items"`
+}
+
 // StorageCredential defines model for StorageCredential.
 type StorageCredential struct {
 	CreatedAt           time.Time                 `json:"created_at"`
@@ -1259,6 +1278,11 @@ type InitializeRepositoryParams struct {
 	IdempotencyKey string    `json:"Idempotency-Key"`
 }
 
+// ListSnapshotsParams defines parameters for ListSnapshots.
+type ListSnapshotsParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListStorageCredentialsParams defines parameters for ListStorageCredentials.
 type ListStorageCredentialsParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
@@ -1468,6 +1492,9 @@ type ServerInterface interface {
 
 	// (POST /api/v1/repositories/{repository_id}/initialize)
 	InitializeRepository(w http.ResponseWriter, r *http.Request, repositoryId openapi_types.UUID, params InitializeRepositoryParams)
+
+	// (GET /api/v1/snapshots)
+	ListSnapshots(w http.ResponseWriter, r *http.Request, params ListSnapshotsParams)
 
 	// (GET /api/v1/storage-credentials)
 	ListStorageCredentials(w http.ResponseWriter, r *http.Request, params ListStorageCredentialsParams)
@@ -3035,6 +3062,39 @@ func (siw *ServerInterfaceWrapper) InitializeRepository(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// ListSnapshots operation middleware
+func (siw *ServerInterfaceWrapper) ListSnapshots(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSnapshotsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSnapshots(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListStorageCredentials operation middleware
 func (siw *ServerInterfaceWrapper) ListStorageCredentials(w http.ResponseWriter, r *http.Request) {
 
@@ -3939,6 +3999,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/templates/{template_id}/dependent-plans", wrapper.ListTemplateDependentPlans)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations", wrapper.ListBackupOperations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}", wrapper.GetBackupOperation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/snapshots", wrapper.ListSnapshots)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.ListStorageCredentials)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/storage-credentials", wrapper.CreateStorageCredential)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage-credentials/{credential_id}", wrapper.GetStorageCredential)

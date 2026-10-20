@@ -138,3 +138,33 @@ func (s *Store) FleetBackupCounts(ctx context.Context) (plans, operations, runni
 		Scan(&plans, &operations, &running, &failed24h, &unhealthy)
 	return
 }
+
+// RecordSnapshot indexes one successful backup snapshot. Duplicate results are
+// ignored, so replayed JobResult messages stay idempotent.
+func (s *Store) RecordSnapshot(ctx context.Context, snapshot domain.Snapshot) error {
+	_, err := s.pool.Exec(ctx, `insert into snapshots(plan_id,snapshot_id,agent_id,host_id,repository_id,operation_id,captured_at,recorded_at,files_new,bytes_added)
+		values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		on conflict (plan_id,snapshot_id) do nothing`,
+		snapshot.PlanID, snapshot.SnapshotID, snapshot.AgentID, snapshot.HostID, snapshot.RepositoryID,
+		snapshot.OperationID, snapshot.CapturedAt, snapshot.RecordedAt, snapshot.FilesNew, snapshot.BytesAdded)
+	return err
+}
+
+func (s *Store) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, error) {
+	rows, err := s.pool.Query(ctx, `select plan_id,snapshot_id,agent_id,host_id,repository_id,operation_id,captured_at,recorded_at,files_new,bytes_added
+		from snapshots order by recorded_at desc limit $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]domain.Snapshot, 0)
+	for rows.Next() {
+		var item domain.Snapshot
+		if err := rows.Scan(&item.PlanID, &item.SnapshotID, &item.AgentID, &item.HostID, &item.RepositoryID,
+			&item.OperationID, &item.CapturedAt, &item.RecordedAt, &item.FilesNew, &item.BytesAdded); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}

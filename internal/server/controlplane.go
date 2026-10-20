@@ -88,6 +88,8 @@ type Store interface {
 	BackupOperations(context.Context, uuid.UUID, int) ([]domain.BackupOperation, error)
 	BackupOperation(context.Context, uuid.UUID) (domain.BackupOperation, error)
 	FleetBackupCounts(context.Context) (plans, operations, running, failed24h, unhealthy int64, err error)
+	RecordSnapshot(context.Context, domain.Snapshot) error
+	Snapshots(context.Context, int) ([]domain.Snapshot, error)
 	SaveTemplateRevision(context.Context, domain.Template, int64, domain.AuditEvent) (domain.Template, error)
 	Repository(context.Context, uuid.UUID) (domain.Repository, error)
 	RepositoryCount(context.Context) (int64, error)

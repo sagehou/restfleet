@@ -137,3 +137,17 @@ type BackupOperationResult struct {
 	BytesDone    int64
 	FinishedAt   time.Time
 }
+
+// Snapshot indexes one successful backup run.
+type Snapshot struct {
+	PlanID       uuid.UUID
+	SnapshotID   string
+	AgentID      uuid.UUID
+	HostID       uuid.UUID
+	RepositoryID uuid.UUID
+	OperationID  uuid.UUID
+	CapturedAt   time.Time
+	RecordedAt   time.Time
+	FilesNew     int64
+	BytesAdded   int64
+}
