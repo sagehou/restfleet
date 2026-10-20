@@ -130,6 +130,28 @@ message DesiredStateSnapshot {
   google.protobuf.Timestamp generated_at = 2;
   string config_hash = 3;
   RuntimePolicy runtime_policy = 4;
+  // Plans the Agent schedules locally. Empty until the control plane
+  // materialises them; the field is part of the canonical config hash.
+  repeated PlanSchedule plans = 5;
+}
+
+// PlanSchedule is the scheduling subset of one plan. It carries no secrets.
+message PlanSchedule {
+  string plan_id = 1;
+  int64 revision = 2;
+  string name = 3;
+  string repository_id = 4;
+  string host_id = 5;
+  string cron = 6;
+  string timezone = 7;
+  int32 jitter_seconds = 8;
+  int32 misfire_grace_seconds = 9;
+  string concurrency_policy = 10;
+  repeated string paths = 11;
+  repeated string exclude_patterns = 12;
+  bool exclude_caches = 13;
+  bool one_file_system = 14;
+  string config_hash = 15;
 }
 
 message RuntimePolicy {

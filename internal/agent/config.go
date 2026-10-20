@@ -164,6 +164,29 @@ func desiredStateFromProto(
 			MaxParallelIOJobs: snapshot.GetRuntimePolicy().GetMaxParallelIoJobs(),
 			LogLimitBytes:     snapshot.GetRuntimePolicy().GetLogLimitBytes(),
 		},
+		Plans: make([]domain.PlanSchedule, 0, len(snapshot.GetPlans())),
+	}
+	for _, plan := range snapshot.GetPlans() {
+		planID, err := uuid.Parse(plan.GetPlanId())
+		if err != nil {
+			return domain.DesiredState{}, &domain.DesiredStateError{Code: "PLAN_ID_INVALID", FieldPath: "plans.plan_id"}
+		}
+		repositoryID, err := uuid.Parse(plan.GetRepositoryId())
+		if err != nil {
+			return domain.DesiredState{}, &domain.DesiredStateError{Code: "PLAN_REPOSITORY_INVALID", FieldPath: "plans.repository_id"}
+		}
+		hostID, err := uuid.Parse(plan.GetHostId())
+		if err != nil {
+			return domain.DesiredState{}, &domain.DesiredStateError{Code: "PLAN_HOST_INVALID", FieldPath: "plans.host_id"}
+		}
+		state.Plans = append(state.Plans, domain.PlanSchedule{
+			PlanID: planID, Revision: plan.GetRevision(), Name: plan.GetName(),
+			HostID: hostID, RepositoryID: repositoryID, Cron: plan.GetCron(), Timezone: plan.GetTimezone(),
+			JitterSeconds: int(plan.GetJitterSeconds()), MisfireGraceSeconds: int(plan.GetMisfireGraceSeconds()),
+			ConcurrencyPolicy: plan.GetConcurrencyPolicy(), Paths: plan.GetPaths(),
+			ExcludePatterns: plan.GetExcludePatterns(), ExcludeCaches: plan.GetExcludeCaches(),
+			OneFileSystem: plan.GetOneFileSystem(), ConfigHash: plan.GetConfigHash(),
+		})
 	}
 	return state, state.Validate()
 }

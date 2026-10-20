@@ -1188,6 +1188,9 @@ type DesiredStateSnapshot struct {
 	GeneratedAt   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=generated_at,json=generatedAt,proto3" json:"generated_at,omitempty"`
 	ConfigHash    string                 `protobuf:"bytes,3,opt,name=config_hash,json=configHash,proto3" json:"config_hash,omitempty"`
 	RuntimePolicy *RuntimePolicy         `protobuf:"bytes,4,opt,name=runtime_policy,json=runtimePolicy,proto3" json:"runtime_policy,omitempty"`
+	// Plans the Agent schedules locally. Empty until the control plane
+	// materialises them; the field is part of the canonical config hash.
+	Plans         []*PlanSchedule `protobuf:"bytes,5,rep,name=plans,proto3" json:"plans,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1250,6 +1253,170 @@ func (x *DesiredStateSnapshot) GetRuntimePolicy() *RuntimePolicy {
 	return nil
 }
 
+func (x *DesiredStateSnapshot) GetPlans() []*PlanSchedule {
+	if x != nil {
+		return x.Plans
+	}
+	return nil
+}
+
+// PlanSchedule is the scheduling subset of one plan. It carries no secrets.
+type PlanSchedule struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	PlanId              string                 `protobuf:"bytes,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	Revision            int64                  `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	Name                string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	RepositoryId        string                 `protobuf:"bytes,4,opt,name=repository_id,json=repositoryId,proto3" json:"repository_id,omitempty"`
+	HostId              string                 `protobuf:"bytes,5,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"`
+	Cron                string                 `protobuf:"bytes,6,opt,name=cron,proto3" json:"cron,omitempty"`
+	Timezone            string                 `protobuf:"bytes,7,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	JitterSeconds       int32                  `protobuf:"varint,8,opt,name=jitter_seconds,json=jitterSeconds,proto3" json:"jitter_seconds,omitempty"`
+	MisfireGraceSeconds int32                  `protobuf:"varint,9,opt,name=misfire_grace_seconds,json=misfireGraceSeconds,proto3" json:"misfire_grace_seconds,omitempty"`
+	ConcurrencyPolicy   string                 `protobuf:"bytes,10,opt,name=concurrency_policy,json=concurrencyPolicy,proto3" json:"concurrency_policy,omitempty"`
+	Paths               []string               `protobuf:"bytes,11,rep,name=paths,proto3" json:"paths,omitempty"`
+	ExcludePatterns     []string               `protobuf:"bytes,12,rep,name=exclude_patterns,json=excludePatterns,proto3" json:"exclude_patterns,omitempty"`
+	ExcludeCaches       bool                   `protobuf:"varint,13,opt,name=exclude_caches,json=excludeCaches,proto3" json:"exclude_caches,omitempty"`
+	OneFileSystem       bool                   `protobuf:"varint,14,opt,name=one_file_system,json=oneFileSystem,proto3" json:"one_file_system,omitempty"`
+	ConfigHash          string                 `protobuf:"bytes,15,opt,name=config_hash,json=configHash,proto3" json:"config_hash,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *PlanSchedule) Reset() {
+	*x = PlanSchedule{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlanSchedule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlanSchedule) ProtoMessage() {}
+
+func (x *PlanSchedule) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlanSchedule.ProtoReflect.Descriptor instead.
+func (*PlanSchedule) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PlanSchedule) GetPlanId() string {
+	if x != nil {
+		return x.PlanId
+	}
+	return ""
+}
+
+func (x *PlanSchedule) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *PlanSchedule) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PlanSchedule) GetRepositoryId() string {
+	if x != nil {
+		return x.RepositoryId
+	}
+	return ""
+}
+
+func (x *PlanSchedule) GetHostId() string {
+	if x != nil {
+		return x.HostId
+	}
+	return ""
+}
+
+func (x *PlanSchedule) GetCron() string {
+	if x != nil {
+		return x.Cron
+	}
+	return ""
+}
+
+func (x *PlanSchedule) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
+}
+
+func (x *PlanSchedule) GetJitterSeconds() int32 {
+	if x != nil {
+		return x.JitterSeconds
+	}
+	return 0
+}
+
+func (x *PlanSchedule) GetMisfireGraceSeconds() int32 {
+	if x != nil {
+		return x.MisfireGraceSeconds
+	}
+	return 0
+}
+
+func (x *PlanSchedule) GetConcurrencyPolicy() string {
+	if x != nil {
+		return x.ConcurrencyPolicy
+	}
+	return ""
+}
+
+func (x *PlanSchedule) GetPaths() []string {
+	if x != nil {
+		return x.Paths
+	}
+	return nil
+}
+
+func (x *PlanSchedule) GetExcludePatterns() []string {
+	if x != nil {
+		return x.ExcludePatterns
+	}
+	return nil
+}
+
+func (x *PlanSchedule) GetExcludeCaches() bool {
+	if x != nil {
+		return x.ExcludeCaches
+	}
+	return false
+}
+
+func (x *PlanSchedule) GetOneFileSystem() bool {
+	if x != nil {
+		return x.OneFileSystem
+	}
+	return false
+}
+
+func (x *PlanSchedule) GetConfigHash() string {
+	if x != nil {
+		return x.ConfigHash
+	}
+	return ""
+}
+
 type RuntimePolicy struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	MaxParallelIoJobs uint32                 `protobuf:"varint,1,opt,name=max_parallel_io_jobs,json=maxParallelIoJobs,proto3" json:"max_parallel_io_jobs,omitempty"`
@@ -1260,7 +1427,7 @@ type RuntimePolicy struct {
 
 func (x *RuntimePolicy) Reset() {
 	*x = RuntimePolicy{}
-	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[14]
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1272,7 +1439,7 @@ func (x *RuntimePolicy) String() string {
 func (*RuntimePolicy) ProtoMessage() {}
 
 func (x *RuntimePolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[14]
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1285,7 +1452,7 @@ func (x *RuntimePolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimePolicy.ProtoReflect.Descriptor instead.
 func (*RuntimePolicy) Descriptor() ([]byte, []int) {
-	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{14}
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *RuntimePolicy) GetMaxParallelIoJobs() uint32 {
@@ -1324,7 +1491,7 @@ type CredentialRevision struct {
 
 func (x *CredentialRevision) Reset() {
 	*x = CredentialRevision{}
-	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[15]
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1336,7 +1503,7 @@ func (x *CredentialRevision) String() string {
 func (*CredentialRevision) ProtoMessage() {}
 
 func (x *CredentialRevision) ProtoReflect() protoreflect.Message {
-	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[15]
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1349,7 +1516,7 @@ func (x *CredentialRevision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CredentialRevision.ProtoReflect.Descriptor instead.
 func (*CredentialRevision) Descriptor() ([]byte, []int) {
-	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{15}
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CredentialRevision) GetDeliveryId() string {
@@ -1453,7 +1620,7 @@ type CredentialRevisionAccepted struct {
 
 func (x *CredentialRevisionAccepted) Reset() {
 	*x = CredentialRevisionAccepted{}
-	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[16]
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1465,7 +1632,7 @@ func (x *CredentialRevisionAccepted) String() string {
 func (*CredentialRevisionAccepted) ProtoMessage() {}
 
 func (x *CredentialRevisionAccepted) ProtoReflect() protoreflect.Message {
-	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[16]
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1478,7 +1645,7 @@ func (x *CredentialRevisionAccepted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CredentialRevisionAccepted.ProtoReflect.Descriptor instead.
 func (*CredentialRevisionAccepted) Descriptor() ([]byte, []int) {
-	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{16}
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *CredentialRevisionAccepted) GetDeliveryId() string {
@@ -1606,13 +1773,32 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\n" +
 	"error_code\x18\x02 \x01(\tR\terrorCode\x12\x1d\n" +
 	"\n" +
-	"field_path\x18\x03 \x01(\tR\tfieldPath\"\xdc\x01\n" +
+	"field_path\x18\x03 \x01(\tR\tfieldPath\"\x94\x02\n" +
 	"\x14DesiredStateSnapshot\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\x03R\brevision\x12=\n" +
 	"\fgenerated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\vgeneratedAt\x12\x1f\n" +
 	"\vconfig_hash\x18\x03 \x01(\tR\n" +
 	"configHash\x12H\n" +
-	"\x0eruntime_policy\x18\x04 \x01(\v2!.restfleet.agent.v1.RuntimePolicyR\rruntimePolicy\"h\n" +
+	"\x0eruntime_policy\x18\x04 \x01(\v2!.restfleet.agent.v1.RuntimePolicyR\rruntimePolicy\x126\n" +
+	"\x05plans\x18\x05 \x03(\v2 .restfleet.agent.v1.PlanScheduleR\x05plans\"\x80\x04\n" +
+	"\fPlanSchedule\x12\x17\n" +
+	"\aplan_id\x18\x01 \x01(\tR\x06planId\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\x03R\brevision\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12#\n" +
+	"\rrepository_id\x18\x04 \x01(\tR\frepositoryId\x12\x17\n" +
+	"\ahost_id\x18\x05 \x01(\tR\x06hostId\x12\x12\n" +
+	"\x04cron\x18\x06 \x01(\tR\x04cron\x12\x1a\n" +
+	"\btimezone\x18\a \x01(\tR\btimezone\x12%\n" +
+	"\x0ejitter_seconds\x18\b \x01(\x05R\rjitterSeconds\x122\n" +
+	"\x15misfire_grace_seconds\x18\t \x01(\x05R\x13misfireGraceSeconds\x12-\n" +
+	"\x12concurrency_policy\x18\n" +
+	" \x01(\tR\x11concurrencyPolicy\x12\x14\n" +
+	"\x05paths\x18\v \x03(\tR\x05paths\x12)\n" +
+	"\x10exclude_patterns\x18\f \x03(\tR\x0fexcludePatterns\x12%\n" +
+	"\x0eexclude_caches\x18\r \x01(\bR\rexcludeCaches\x12&\n" +
+	"\x0fone_file_system\x18\x0e \x01(\bR\roneFileSystem\x12\x1f\n" +
+	"\vconfig_hash\x18\x0f \x01(\tR\n" +
+	"configHash\"h\n" +
 	"\rRuntimePolicy\x12/\n" +
 	"\x14max_parallel_io_jobs\x18\x01 \x01(\rR\x11maxParallelIoJobs\x12&\n" +
 	"\x0flog_limit_bytes\x18\x02 \x01(\x04R\rlogLimitBytes\"\xec\x03\n" +
@@ -1653,7 +1839,7 @@ func file_restfleet_agent_v1_agent_control_proto_rawDescGZIP() []byte {
 	return file_restfleet_agent_v1_agent_control_proto_rawDescData
 }
 
-var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_restfleet_agent_v1_agent_control_proto_goTypes = []any{
 	(*AgentToServer)(nil),               // 0: restfleet.agent.v1.AgentToServer
 	(*ServerToAgent)(nil),               // 1: restfleet.agent.v1.ServerToAgent
@@ -1669,47 +1855,49 @@ var file_restfleet_agent_v1_agent_control_proto_goTypes = []any{
 	(*ConfigAccepted)(nil),              // 11: restfleet.agent.v1.ConfigAccepted
 	(*ConfigRejected)(nil),              // 12: restfleet.agent.v1.ConfigRejected
 	(*DesiredStateSnapshot)(nil),        // 13: restfleet.agent.v1.DesiredStateSnapshot
-	(*RuntimePolicy)(nil),               // 14: restfleet.agent.v1.RuntimePolicy
-	(*CredentialRevision)(nil),          // 15: restfleet.agent.v1.CredentialRevision
-	(*CredentialRevisionAccepted)(nil),  // 16: restfleet.agent.v1.CredentialRevisionAccepted
-	nil,                                 // 17: restfleet.agent.v1.InventoryReport.AvailableBytesEntry
-	(*timestamppb.Timestamp)(nil),       // 18: google.protobuf.Timestamp
+	(*PlanSchedule)(nil),                // 14: restfleet.agent.v1.PlanSchedule
+	(*RuntimePolicy)(nil),               // 15: restfleet.agent.v1.RuntimePolicy
+	(*CredentialRevision)(nil),          // 16: restfleet.agent.v1.CredentialRevision
+	(*CredentialRevisionAccepted)(nil),  // 17: restfleet.agent.v1.CredentialRevisionAccepted
+	nil,                                 // 18: restfleet.agent.v1.InventoryReport.AvailableBytesEntry
+	(*timestamppb.Timestamp)(nil),       // 19: google.protobuf.Timestamp
 }
 var file_restfleet_agent_v1_agent_control_proto_depIdxs = []int32{
-	18, // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
+	19, // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
 	2,  // 1: restfleet.agent.v1.AgentToServer.hello:type_name -> restfleet.agent.v1.Hello
 	4,  // 2: restfleet.agent.v1.AgentToServer.certificate_rotation_request:type_name -> restfleet.agent.v1.CertificateRotationRequest
 	6,  // 3: restfleet.agent.v1.AgentToServer.heartbeat:type_name -> restfleet.agent.v1.Heartbeat
 	10, // 4: restfleet.agent.v1.AgentToServer.inventory_report:type_name -> restfleet.agent.v1.InventoryReport
 	11, // 5: restfleet.agent.v1.AgentToServer.config_accepted:type_name -> restfleet.agent.v1.ConfigAccepted
 	12, // 6: restfleet.agent.v1.AgentToServer.config_rejected:type_name -> restfleet.agent.v1.ConfigRejected
-	16, // 7: restfleet.agent.v1.AgentToServer.credential_revision_accepted:type_name -> restfleet.agent.v1.CredentialRevisionAccepted
-	18, // 8: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
+	17, // 7: restfleet.agent.v1.AgentToServer.credential_revision_accepted:type_name -> restfleet.agent.v1.CredentialRevisionAccepted
+	19, // 8: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
 	3,  // 9: restfleet.agent.v1.ServerToAgent.welcome:type_name -> restfleet.agent.v1.Welcome
 	5,  // 10: restfleet.agent.v1.ServerToAgent.certificate_rotation_response:type_name -> restfleet.agent.v1.CertificateRotationResponse
 	13, // 11: restfleet.agent.v1.ServerToAgent.desired_state_snapshot:type_name -> restfleet.agent.v1.DesiredStateSnapshot
-	15, // 12: restfleet.agent.v1.ServerToAgent.credential_revision:type_name -> restfleet.agent.v1.CredentialRevision
-	18, // 13: restfleet.agent.v1.Hello.local_time:type_name -> google.protobuf.Timestamp
-	18, // 14: restfleet.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
-	18, // 15: restfleet.agent.v1.Welcome.drain_deadline:type_name -> google.protobuf.Timestamp
-	18, // 16: restfleet.agent.v1.CertificateRotationResponse.not_after:type_name -> google.protobuf.Timestamp
+	16, // 12: restfleet.agent.v1.ServerToAgent.credential_revision:type_name -> restfleet.agent.v1.CredentialRevision
+	19, // 13: restfleet.agent.v1.Hello.local_time:type_name -> google.protobuf.Timestamp
+	19, // 14: restfleet.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
+	19, // 15: restfleet.agent.v1.Welcome.drain_deadline:type_name -> google.protobuf.Timestamp
+	19, // 16: restfleet.agent.v1.CertificateRotationResponse.not_after:type_name -> google.protobuf.Timestamp
 	7,  // 17: restfleet.agent.v1.Heartbeat.active_operations:type_name -> restfleet.agent.v1.ActiveOperation
 	8,  // 18: restfleet.agent.v1.Heartbeat.next_runs:type_name -> restfleet.agent.v1.NextRun
 	9,  // 19: restfleet.agent.v1.Heartbeat.health_checks:type_name -> restfleet.agent.v1.HealthCheck
-	18, // 20: restfleet.agent.v1.Heartbeat.local_time:type_name -> google.protobuf.Timestamp
-	18, // 21: restfleet.agent.v1.NextRun.scheduled_at:type_name -> google.protobuf.Timestamp
-	18, // 22: restfleet.agent.v1.InventoryReport.captured_at:type_name -> google.protobuf.Timestamp
-	17, // 23: restfleet.agent.v1.InventoryReport.available_bytes:type_name -> restfleet.agent.v1.InventoryReport.AvailableBytesEntry
-	18, // 24: restfleet.agent.v1.DesiredStateSnapshot.generated_at:type_name -> google.protobuf.Timestamp
-	14, // 25: restfleet.agent.v1.DesiredStateSnapshot.runtime_policy:type_name -> restfleet.agent.v1.RuntimePolicy
-	18, // 26: restfleet.agent.v1.CredentialRevision.valid_from:type_name -> google.protobuf.Timestamp
-	0,  // 27: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
-	1,  // 28: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
-	28, // [28:29] is the sub-list for method output_type
-	27, // [27:28] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	19, // 20: restfleet.agent.v1.Heartbeat.local_time:type_name -> google.protobuf.Timestamp
+	19, // 21: restfleet.agent.v1.NextRun.scheduled_at:type_name -> google.protobuf.Timestamp
+	19, // 22: restfleet.agent.v1.InventoryReport.captured_at:type_name -> google.protobuf.Timestamp
+	18, // 23: restfleet.agent.v1.InventoryReport.available_bytes:type_name -> restfleet.agent.v1.InventoryReport.AvailableBytesEntry
+	19, // 24: restfleet.agent.v1.DesiredStateSnapshot.generated_at:type_name -> google.protobuf.Timestamp
+	15, // 25: restfleet.agent.v1.DesiredStateSnapshot.runtime_policy:type_name -> restfleet.agent.v1.RuntimePolicy
+	14, // 26: restfleet.agent.v1.DesiredStateSnapshot.plans:type_name -> restfleet.agent.v1.PlanSchedule
+	19, // 27: restfleet.agent.v1.CredentialRevision.valid_from:type_name -> google.protobuf.Timestamp
+	0,  // 28: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
+	1,  // 29: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
+	29, // [29:30] is the sub-list for method output_type
+	28, // [28:29] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_restfleet_agent_v1_agent_control_proto_init() }
@@ -1738,7 +1926,7 @@ func file_restfleet_agent_v1_agent_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_restfleet_agent_v1_agent_control_proto_rawDesc), len(file_restfleet_agent_v1_agent_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
