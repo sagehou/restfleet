@@ -1979,6 +1979,9 @@ type JobProgress struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
 	Sequence      uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	PlanId        string                 `protobuf:"bytes,11,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	PlanRevision  int64                  `protobuf:"varint,12,opt,name=plan_revision,json=planRevision,proto3" json:"plan_revision,omitempty"`
+	ScheduledAt   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=scheduled_at,json=scheduledAt,proto3" json:"scheduled_at,omitempty"`
 	Stage         string                 `protobuf:"bytes,3,opt,name=stage,proto3" json:"stage,omitempty"`
 	FilesDone     int64                  `protobuf:"varint,4,opt,name=files_done,json=filesDone,proto3" json:"files_done,omitempty"`
 	TotalFiles    int64                  `protobuf:"varint,5,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`
@@ -2033,6 +2036,27 @@ func (x *JobProgress) GetSequence() uint64 {
 	return 0
 }
 
+func (x *JobProgress) GetPlanId() string {
+	if x != nil {
+		return x.PlanId
+	}
+	return ""
+}
+
+func (x *JobProgress) GetPlanRevision() int64 {
+	if x != nil {
+		return x.PlanRevision
+	}
+	return 0
+}
+
+func (x *JobProgress) GetScheduledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ScheduledAt
+	}
+	return nil
+}
+
 func (x *JobProgress) GetStage() string {
 	if x != nil {
 		return x.Stage
@@ -2079,6 +2103,9 @@ type JobResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
 	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	PlanId        string                 `protobuf:"bytes,11,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	PlanRevision  int64                  `protobuf:"varint,12,opt,name=plan_revision,json=planRevision,proto3" json:"plan_revision,omitempty"`
+	ScheduledAt   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=scheduled_at,json=scheduledAt,proto3" json:"scheduled_at,omitempty"`
 	ErrorCode     string                 `protobuf:"bytes,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	ExitCode      int64                  `protobuf:"varint,4,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
 	SnapshotId    string                 `protobuf:"bytes,5,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
@@ -2132,6 +2159,27 @@ func (x *JobResult) GetStatus() string {
 		return x.Status
 	}
 	return ""
+}
+
+func (x *JobResult) GetPlanId() string {
+	if x != nil {
+		return x.PlanId
+	}
+	return ""
+}
+
+func (x *JobResult) GetPlanRevision() int64 {
+	if x != nil {
+		return x.PlanRevision
+	}
+	return 0
+}
+
+func (x *JobResult) GetScheduledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ScheduledAt
+	}
+	return nil
 }
 
 func (x *JobResult) GetErrorCode() string {
@@ -2373,10 +2421,13 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12\x1d\n" +
 	"\n" +
-	"error_code\x18\x03 \x01(\tR\terrorCode\"\x9f\x02\n" +
+	"error_code\x18\x03 \x01(\tR\terrorCode\"\x9c\x03\n" +
 	"\vJobProgress\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1a\n" +
-	"\bsequence\x18\x02 \x01(\x04R\bsequence\x12\x14\n" +
+	"\bsequence\x18\x02 \x01(\x04R\bsequence\x12\x17\n" +
+	"\aplan_id\x18\v \x01(\tR\x06planId\x12#\n" +
+	"\rplan_revision\x18\f \x01(\x03R\fplanRevision\x12=\n" +
+	"\fscheduled_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vscheduledAt\x12\x14\n" +
 	"\x05stage\x18\x03 \x01(\tR\x05stage\x12\x1d\n" +
 	"\n" +
 	"files_done\x18\x04 \x01(\x03R\tfilesDone\x12\x1f\n" +
@@ -2387,10 +2438,13 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\vtotal_bytes\x18\a \x01(\x03R\n" +
 	"totalBytes\x12;\n" +
 	"\vobserved_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"observedAt\"\xb8\x02\n" +
+	"observedAt\"\xb5\x03\n" +
 	"\tJobResult\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1d\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x17\n" +
+	"\aplan_id\x18\v \x01(\tR\x06planId\x12#\n" +
+	"\rplan_revision\x18\f \x01(\x03R\fplanRevision\x12=\n" +
+	"\fscheduled_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vscheduledAt\x12\x1d\n" +
 	"\n" +
 	"error_code\x18\x03 \x01(\tR\terrorCode\x12\x1b\n" +
 	"\texit_code\x18\x04 \x01(\x03R\bexitCode\x12\x1f\n" +
@@ -2482,15 +2536,17 @@ var file_restfleet_agent_v1_agent_control_proto_depIdxs = []int32{
 	24, // 33: restfleet.agent.v1.JobDispatch.created_at:type_name -> google.protobuf.Timestamp
 	24, // 34: restfleet.agent.v1.JobDispatch.not_before:type_name -> google.protobuf.Timestamp
 	24, // 35: restfleet.agent.v1.JobDispatch.deadline:type_name -> google.protobuf.Timestamp
-	24, // 36: restfleet.agent.v1.JobProgress.observed_at:type_name -> google.protobuf.Timestamp
-	24, // 37: restfleet.agent.v1.JobResult.finished_at:type_name -> google.protobuf.Timestamp
-	0,  // 38: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
-	1,  // 39: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
-	39, // [39:40] is the sub-list for method output_type
-	38, // [38:39] is the sub-list for method input_type
-	38, // [38:38] is the sub-list for extension type_name
-	38, // [38:38] is the sub-list for extension extendee
-	0,  // [0:38] is the sub-list for field type_name
+	24, // 36: restfleet.agent.v1.JobProgress.scheduled_at:type_name -> google.protobuf.Timestamp
+	24, // 37: restfleet.agent.v1.JobProgress.observed_at:type_name -> google.protobuf.Timestamp
+	24, // 38: restfleet.agent.v1.JobResult.scheduled_at:type_name -> google.protobuf.Timestamp
+	24, // 39: restfleet.agent.v1.JobResult.finished_at:type_name -> google.protobuf.Timestamp
+	0,  // 40: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
+	1,  // 41: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
+	41, // [41:42] is the sub-list for method output_type
+	40, // [40:41] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_restfleet_agent_v1_agent_control_proto_init() }

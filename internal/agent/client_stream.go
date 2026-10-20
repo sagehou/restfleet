@@ -106,6 +106,8 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	defer rotationTimer.Stop()
 	incoming := receiveServerMessages(ctx, stream)
 	rotationPending := false
+	reports := time.NewTicker(5 * time.Second)
+	defer reports.Stop()
 
 	for {
 		select {
@@ -121,6 +123,10 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 					Heartbeat: heartbeatSnapshot(state, bootID, acceptedRevision, clockOffset),
 				},
 			}); err != nil {
+				return true, err
+			}
+		case <-reports.C:
+			if err := reportOperations(stream, &agentSequence, protocol, state, 5*time.Second); err != nil {
 				return true, err
 			}
 		case <-rotationTimer.C:

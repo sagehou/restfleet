@@ -219,6 +219,9 @@ message JobRejected {
 message JobProgress {
   string operation_id = 1;
   uint64 sequence = 2;
+  string plan_id = 11;
+  int64 plan_revision = 12;
+  google.protobuf.Timestamp scheduled_at = 13;
   string stage = 3;
   int64 files_done = 4;
   int64 total_files = 5;
@@ -230,6 +233,9 @@ message JobProgress {
 message JobResult {
   string operation_id = 1;
   string status = 2;
+  string plan_id = 11;
+  int64 plan_revision = 12;
+  google.protobuf.Timestamp scheduled_at = 13;
   string error_code = 3;
   int64 exit_code = 4;
   string snapshot_id = 5;

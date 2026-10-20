@@ -582,6 +582,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backup-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBackupOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backup-operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getBackupOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage-credentials": {
         parameters: {
             query?: never;
@@ -917,6 +951,47 @@ export interface components {
             status: "APPLIED" | "CONFLICT";
             /** @description Conflict reason: NOT_FOUND, PLAN_ARCHIVED, NOT_USING_TEMPLATE or REVISION_CONFLICT. */
             code?: string;
+        };
+        BackupOperation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            plan_id: string;
+            /** Format: uuid */
+            agent_id: string;
+            /** @enum {string} */
+            type: "BACKUP" | "RESTORE" | "SNAPSHOT_INDEX" | "DOWNLOAD" | "CHECK" | "FORGET" | "PRUNE" | "MAINTENANCE";
+            /** @enum {string} */
+            source: "SCHEDULED" | "MANUAL";
+            /** @enum {string} */
+            status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCELED" | "MISSED" | "CONCURRENCY_SKIPPED";
+            /** Format: int64 */
+            plan_revision: number;
+            /** Format: date-time */
+            scheduled_at?: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+            exit_code?: number;
+            error_code?: string;
+            snapshot_id?: string;
+            /** Format: int64 */
+            files_done?: number;
+            /** Format: int64 */
+            total_files?: number;
+            /** Format: int64 */
+            bytes_done?: number;
+            /** Format: int64 */
+            total_bytes?: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        BackupOperationList: {
+            items: components["schemas"]["BackupOperation"][];
+            next_cursor?: string;
         };
         Operation: {
             /** Format: uuid */
@@ -2469,6 +2544,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listBackupOperations: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Backup operations reported by Agents, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupOperationList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    getBackupOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One backup operation with its latest counters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupOperation"];
                 };
             };
             400: components["responses"]["Problem"];

@@ -158,6 +158,43 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			if !credentialCapable || err != nil || s.control.AcceptAgentCredential(stream.Context(), agentID, id, ack.GetRevision()) != nil {
 				return s.invalidMessage(stream, meta, "CREDENTIAL_ACK_INVALID")
 			}
+		case message.GetJobProgress() != nil:
+			progress := message.GetJobProgress()
+			operationID, opErr := uuid.Parse(progress.GetOperationId())
+			planID, planErr := uuid.Parse(progress.GetPlanId())
+			if opErr != nil || planErr != nil || progress.GetScheduledAt() == nil || progress.GetObservedAt() == nil {
+				return s.invalidMessage(stream, meta, "JOB_PROGRESS_INVALID")
+			}
+			if err := s.control.RecordOperationProgress(stream.Context(), domain.BackupOperationProgress{
+				OperationID: operationID, PlanID: planID, AgentID: agentID,
+				PlanRevision: progress.GetPlanRevision(), ScheduledAt: progress.GetScheduledAt().AsTime().UTC(),
+				Sequence: progress.GetSequence(), Stage: progress.GetStage(),
+				FilesDone: progress.GetFilesDone(), TotalFiles: progress.GetTotalFiles(),
+				BytesDone: progress.GetBytesDone(), TotalBytes: progress.GetTotalBytes(),
+				ObservedAt: progress.GetObservedAt().AsTime().UTC(),
+			}); err != nil {
+				return status.Error(codes.Unavailable, "job progress persistence failed")
+			}
+		case message.GetJobResult() != nil:
+			result := message.GetJobResult()
+			operationID, opErr := uuid.Parse(result.GetOperationId())
+			planID, planErr := uuid.Parse(result.GetPlanId())
+			if opErr != nil || planErr != nil || result.GetScheduledAt() == nil || result.GetFinishedAt() == nil {
+				return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
+			}
+			if err := s.control.RecordOperationResult(stream.Context(), domain.BackupOperationResult{
+				OperationID: operationID, PlanID: planID, AgentID: agentID,
+				PlanRevision: result.GetPlanRevision(), ScheduledAt: result.GetScheduledAt().AsTime().UTC(),
+				Status: result.GetStatus(), ErrorCode: result.GetErrorCode(), ExitCode: int(result.GetExitCode()),
+				SnapshotID: result.GetSnapshotId(), FilesDone: result.GetFilesNew(), BytesDone: result.GetDataAdded(),
+				FinishedAt: result.GetFinishedAt().AsTime().UTC(),
+			}); err != nil {
+				var validation *control.ValidationError
+				if errors.As(err, &validation) {
+					return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
+				}
+				return status.Error(codes.Unavailable, "job result persistence failed")
+			}
 		case message.GetConfigAccepted() != nil:
 			accepted := message.GetConfigAccepted()
 			if err := s.control.AcceptAgentConfig(stream.Context(), agentID, domain.AgentConfigResult{
