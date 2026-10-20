@@ -100,33 +100,52 @@ func (p *Provisioner) Provision(ctx context.Context, request ProvisionRequest,
 }
 
 func (p *Provisioner) provision(ctx context.Context, request ProvisionRequest, config, rcloneBinary string) (RepositoryInfo, error) {
+	var info RepositoryInfo
+	err := p.withRepository(ctx, config, rcloneBinary, request.Remote, request.GatewayID, request.RepositoryID, request.Password,
+		func(workCtx context.Context, dir, repository, passwordFile string) error {
+			var err error
+			info, err = p.initialize(workCtx, dir, repository, passwordFile, request.ExpectedID)
+			return err
+		})
+	if err != nil {
+		return RepositoryInfo{}, err
+	}
+	return info, nil
+}
+
+// withRepository prepares the private repository scope shared by every central
+// Restic command. The full-access backend has no TCP listener or public route,
+// and both children are owned directly so cancellation cannot orphan Restic's
+// rclone backend.
+func (p *Provisioner) withRepository(ctx context.Context, config, rcloneBinary, remote string,
+	gatewayID, repositoryID uuid.UUID, password []byte,
+	fn func(context.Context, string, string, string) error,
+) error {
 	dir := filepath.Dir(config)
 	socket := filepath.Join(dir, "rest.sock")
 	// Linux sockaddr_un is bounded; ':' separates the socket from the REST path.
 	if len(socket) >= 108 || bytes.ContainsAny([]byte(socket), ":\x00") {
-		return RepositoryInfo{}, ErrInvalidProvision
+		return ErrInvalidProvision
 	}
 	passwordFile := filepath.Join(dir, "password")
 	file, err := os.OpenFile(passwordFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0600)
 	if err != nil {
-		return RepositoryInfo{}, rclone.ErrUnsafeRuntime
+		return rclone.ErrUnsafeRuntime
 	}
-	_, writeErr := file.Write(request.Password)
+	_, writeErr := file.Write(password)
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil || os.Mkdir(filepath.Join(dir, "cache"), 0700) != nil {
-		return RepositoryInfo{}, rclone.ErrUnsafeRuntime
+		return rclone.ErrUnsafeRuntime
 	}
-	// This full-access backend has no TCP listener or public route. Both children
-	// are owned directly, so cancellation cannot orphan Restic's rclone backend.
 	workCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	backendPath := request.Remote + ":restfleet/agents/" + request.GatewayID.String() + "/" + request.RepositoryID.String()
+	backendPath := remote + ":restfleet/agents/" + gatewayID.String() + "/" + repositoryID.String()
 	backend := command(workCtx, rcloneBinary, dir, "serve", "restic", backendPath,
 		"--config", config, "--addr", socket, "--cache-objects=false",
 		"--retries", "1", "--low-level-retries", "1", "--contimeout", "10s", "--timeout", "30s")
 	backend.Stdout = io.Discard
 	if backend.Start() != nil {
-		return RepositoryInfo{}, ErrBackendFailed
+		return ErrBackendFailed
 	}
 	stopped := make(chan struct{})
 	go func() {
@@ -141,21 +160,21 @@ func (p *Provisioner) provision(ctx context.Context, request ProvisionRequest, c
 	}()
 	if err := waitSocket(workCtx, socket); err != nil {
 		if ctx.Err() != nil {
-			return RepositoryInfo{}, ctx.Err()
+			return ctx.Err()
 		}
-		return RepositoryInfo{}, ErrBackendFailed
+		return ErrBackendFailed
 	}
 
 	endpoint := &url.URL{Scheme: "http+unix", Path: socket + ":/"}
 	repository := "rest:" + endpoint.String()
-	info, err := p.initialize(workCtx, dir, repository, passwordFile, request.ExpectedID)
+	runErr := fn(workCtx, dir, repository, passwordFile)
 	if ctx.Err() != nil {
-		return RepositoryInfo{}, ctx.Err()
+		return ctx.Err()
 	}
 	if workCtx.Err() != nil {
-		return RepositoryInfo{}, ErrBackendFailed
+		return ErrBackendFailed
 	}
-	return info, err
+	return runErr
 }
 
 func waitSocket(ctx context.Context, socket string) error {
