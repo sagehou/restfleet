@@ -16,7 +16,9 @@ func (c *ControlPlane) RecordOperationProgress(ctx context.Context, progress dom
 	return c.store.UpsertOperationProgress(ctx, progress)
 }
 
-// RecordOperationResult writes the terminal state. Duplicate delivery is safe.
+// RecordOperationResult writes the terminal state and indexes the produced
+// snapshot in the same transaction. A failed index write therefore fails the
+// whole result so the Agent replays it; it is never silently lost.
 func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.BackupOperationResult) error {
 	if result.OperationID.Version() != 7 || result.PlanID.Version() != 7 || result.AgentID.Version() != 7 {
 		return domain.ErrNotFound
@@ -26,20 +28,7 @@ func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.
 	default:
 		return &ValidationError{Field: "status", Code: "INVALID_OPERATION_STATUS"}
 	}
-	if err := c.store.UpsertOperationResult(ctx, result); err != nil {
-		return err
-	}
-	if result.SnapshotID != "" {
-		if plan, err := c.store.Plan(ctx, result.PlanID); err == nil {
-			_ = c.store.RecordSnapshot(ctx, domain.Snapshot{
-				PlanID: plan.ID, SnapshotID: result.SnapshotID, AgentID: result.AgentID,
-				HostID: plan.HostID, RepositoryID: plan.RepositoryID, OperationID: result.OperationID,
-				CapturedAt: result.FinishedAt, RecordedAt: c.clock().UTC(),
-				FilesNew: result.FilesDone, BytesAdded: result.BytesDone,
-			})
-		}
-	}
-	return nil
+	return c.store.UpsertOperationResult(ctx, result)
 }
 
 func (c *ControlPlane) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, error) {

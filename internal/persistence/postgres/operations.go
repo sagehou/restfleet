@@ -82,22 +82,24 @@ func (s *Store) UpsertOperationProgress(ctx context.Context, progress domain.Bac
 	return tx.Commit(ctx)
 }
 
-// UpsertOperationResult writes the terminal record. A duplicate delivery simply
-// rewrites the same terminal values.
+// UpsertOperationResult writes the terminal record and indexes its snapshot in
+// the same transaction. A duplicate delivery simply rewrites the same terminal
+// values; a failed index write rolls the result back for replay.
 func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupOperationResult) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var exists bool
-	err = tx.QueryRow(ctx, `select exists(select 1 from plans p join agents a on a.id=$2 and a.host_id=p.host_id
-		where p.id=$1)`, result.PlanID, result.AgentID).Scan(&exists)
+	var hostID, repositoryID uuid.UUID
+	err = tx.QueryRow(ctx, `select p.host_id, p.repository_id from plans p
+		join agents a on a.id=$2 and a.host_id=p.host_id where p.id=$1`,
+		result.PlanID, result.AgentID).Scan(&hostID, &repositoryID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrPlanBindingInvalid
+	}
 	if err != nil {
 		return err
-	}
-	if !exists {
-		return domain.ErrPlanBindingInvalid
 	}
 	finished := result.FinishedAt
 	if _, err = tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,
@@ -122,6 +124,16 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 			return err
 		}
 	}
+	if result.SnapshotID != "" {
+		if _, err = tx.Exec(ctx, `insert into snapshots(plan_id,snapshot_id,agent_id,host_id,repository_id,
+			operation_id,captured_at,recorded_at,files_new,bytes_added)
+			values($1,$2,$3,$4,$5,$6,$7,now(),$8,$9)
+			on conflict (plan_id,snapshot_id) do nothing`,
+			result.PlanID, result.SnapshotID, result.AgentID, hostID, repositoryID,
+			result.OperationID, finished, result.FilesDone, result.BytesDone); err != nil {
+			return persistenceError(err)
+		}
+	}
 	return tx.Commit(ctx)
 }
 
@@ -137,17 +149,6 @@ func (s *Store) FleetBackupCounts(ctx context.Context) (plans, operations, runni
 		(select count(*) from plans where archived_at is null and backup_health='FAILED')`).
 		Scan(&plans, &operations, &running, &failed24h, &unhealthy)
 	return
-}
-
-// RecordSnapshot indexes one successful backup snapshot. Duplicate results are
-// ignored, so replayed JobResult messages stay idempotent.
-func (s *Store) RecordSnapshot(ctx context.Context, snapshot domain.Snapshot) error {
-	_, err := s.pool.Exec(ctx, `insert into snapshots(plan_id,snapshot_id,agent_id,host_id,repository_id,operation_id,captured_at,recorded_at,files_new,bytes_added)
-		values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-		on conflict (plan_id,snapshot_id) do nothing`,
-		snapshot.PlanID, snapshot.SnapshotID, snapshot.AgentID, snapshot.HostID, snapshot.RepositoryID,
-		snapshot.OperationID, snapshot.CapturedAt, snapshot.RecordedAt, snapshot.FilesNew, snapshot.BytesAdded)
-	return err
 }
 
 func (s *Store) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, error) {
