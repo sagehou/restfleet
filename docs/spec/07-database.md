@@ -1,5 +1,11 @@
 # 07 — PostgreSQL 数据库规范
 
+ADR-0033 兼容说明：schema 16 的 Gateway secret 引用继续保留，不新增身份表、verifier 或候选密码状态；生产认证复用 AgentCertificate/Agent 身份，Gateway secret MUST NOT 用于生产密码回退。新 capability 仅接收 Restic 密码，其余交付/ACK/占用 fencing 仍复用原事务。
+
+readiness MUST 检查当前连续编号的全部迁移已应用，不能只取最大已应用版本；后续版本 MUST NOT 掩盖缺失/未应用的前置迁移。Goose 同一版本有多条历史记录时，MUST 以最新记录判断当前应用状态。
+
+ADR-0035 不增加 schema。仓库可用性 MUST 从 `gateway_pending_records` 关联原签名来源、`audit_events` 固定 `GATEWAY_BACKEND_READY`、原 grant 与最新决定，并核验当前 delivery/Host/Agent/仓库/凭据绑定。普通审计写入、来源注册、回执或 pending tail 不能单独作为后端观察。查询只形成读模型，不更新仓库配置 revision 或释放占用；所有写入仍走既有有序回放/审计事务。
+
 ## 1. 选择 PostgreSQL
 
 V1 使用 PostgreSQL，而非生产 SQLite，原因：
@@ -246,7 +252,7 @@ ACK MUST 重验 ACTIVE Agent/Host、未禁用的仓库/存储凭据、当前交�
 
 首次准入 MUST 按 Agent→Host→Repository→独占 StorageCredential→admission→audit 锁定，复用 Repository advisory xact lock；凭据锁必须直接取得 FOR UPDATE，MUST NOT 先共享再升级造成跨 Host 死锁。必须验证 Agent/Host ACTIVE、仓库已初始化且为 PROVISIONING/READY/DEGRADED、凭据未 DISABLED、精确当前凭据 ACK。同凭据任何未终态 Operation 或有效 repository lease MUST 阻止准入。
 
-准入至少 1min、最多 24h，使用 DB UTC 时间；并发精确重放返回原始 ID/截止时间，不续期或重复 outbox。改变 owner/Agent/delivery/配置/时长、重开过期或已释放 ID MUST 拒绝。创建和释放 MUST 与脱敏 outbox/审计同事务；审计等待后必须再次检查截止时间。
+准入至少 1min、最多 30d（schema 16 / ADR-0032），使用 DB UTC 时间；可信协调者 SHOULD 为新占用预留配置的离线窗口。并发精确重放返回原始 ID/截止时间，不续期或重复 outbox。改变 owner/Agent/delivery/配置/时长、重开过期或已释放 ID MUST 拒绝。创建和释放 MUST 与脱敏 outbox/审计同事务；审计等待后必须再次检查截止时间。
 
 未释放占用对 Host、Agent、Repository、Gateway identity、StorageCredential 分别有 partial unique index，条件只能是 released_at IS NULL，MUST NOT 将到期当作清理成功。现有 enqueue、claim、refresh/completion、初始化租约取得和凭据替换 MUST 在相同凭据锁下检查此 fence。禁用凭据仍可执行，后续在线使用校验拒绝它，但不隐式释放占用。
 
@@ -262,7 +268,7 @@ ACK MUST 重验 ACTIVE Agent/Host、未禁用的仓库/存储凭据、当前交�
 
 普通签发/续期 MUST 复用 §5.4.4 的身份、凭据、精确 ACK 和占用锁，之后读取最新决定；同一占用的 runtime_id 不得改变。ExpectedRevision 必须等于最新 revision，首次为 0；同 request_id 只允许重放仍为最新的完整相同决定，不追加审计/outbox，不更新时间。其他旧键、跨绑定、同版本改参、签发时钟倒退及吊销后的普通续期 MUST 拒绝。
 
-新决定 MUST 使用 DB UTC 整秒时间；普通请求期限 1s..12h，实际到期时间为签发时间加请求期限与原占用截止时间（向下取整秒）的较早者。MUST NOT 延长 schema 11 的占用期限，不释放再申请；原占用仍然连续排斥维护、凭据替换及其他 owner。审计等待后 MUST 复查占用和授权剩余期限，任何错误全部回滚；服务仅在事务提交并再次验证返回绑定、版本和期限后签名。
+新决定 MUST 使用 DB UTC 整秒时间；普通请求期限 1s..720h（schema 16），中心服务 MUST 进一步限制在配置窗口内，默认 72h；普通请求的零值由中心服务先展开为该配置值，持久化层不接受未展开的零值。实际到期时间为签发时间加请求期限与原占用截止时间（向下取整秒）的较早者。MUST NOT 延长 schema 11 的占用期限，不释放再申请；原占用仍然连续排斥维护、凭据替换及其他 owner。审计等待后 MUST 复查占用和授权剩余期限，任何错误全部回滚；服务仅在事务提交并再次验证返回绑定、版本和期限后签名。
 
 明确吊销使用相同 ID/owner/运行绑定及 revision CAS，但不要求 Agent/凭据仍启用或原占用未过期。吊销必须 expires_at=NULL、请求期限=0，wire 对应 expires_at=0；它是终态，不表示清理完成。已知吊销 MUST 同时阻止在线 Check、材料借用与 token 刷新。任一尚有效且未被明确吊销的历史签名授权 MUST 阻止直接释放；吊销或所有授权到期后，仍只有可信清理确认才能释放。
 
@@ -285,6 +291,12 @@ MUST 停止旧中心 writer 后迁移并升级至 schema 12；旧代码不会检
 `gateway_audit_origins` MUST 以 UUIDv7 id 为主键、runtime_id 唯一，保存可信协调注册的 32-byte 来源公钥、DB UTC created_at 和只可中心显式设置的 closed_at。MUST NOT FK 到 Host/Repository/凭据/占用；全局审计没有数据面授权。精确注册幂等，公钥与 runtime 不可替换，已封存来源不能重开。
 
 `gateway_audit_records` MUST 以 (origin_id,runtime_id,sequence) 为主键，保存全局唯一 record_id、精确 wire SHA-256 与发生/提交时间；两 ID MUST 复合 FK 到来源。来源行锁后，精确旧记录仅确认既有 effect；新记录 MUST 依序关联前一 wire hash、发生于注册 UTC 整秒之后且不晚于中央时钟，未封存。固定无资源审计事件与接收历史 MUST 同事务，不存秘密或原始请求，失败不产生回执。角色仅 SELECT/INSERT 历史及 UPDATE(closed_at)，无换 key/runtime、UPDATE/DELETE 历史权限；已有来源时 Down MUST 拒绝。升级 MUST 停旧 Gateway producer/中心 reader 后迁移 schema 15；旧协议 reader 只会拒绝全局域，不能混跑后忽略该审计。
+
+### 5.4.9 可配置离线窗口（schema 16，ADR-0032）
+
+迁移 00016 MUST 只扩展占用与授权请求期限的 CHECK 上限至 30d / 2592000 秒，不改历史记录、不延长现有到期时间，也不授予修改期限、释放或接管的额外权限。配置默认 72h；原占用内续期、到期不释放及吊销终态保持不变。单次备份会话仍最多 24h。
+
+升级 MUST 停止旧 Gateway/中心 writer，执行迁移后使用同版本二进制；旧 v1 reader 会拒绝超过 12h 的授权，不能混跑。Down 遇到不满足旧 24h/12h 约束的历史记录 MUST 原子失败，使用前向修复。
 
 ### 5.5 template_revisions / plan_revisions
 
@@ -464,6 +476,10 @@ Primary key `(scope_hash, idempotency_key_hash)`。不保存原始 key。并发�
 - Agent backup active lease 由 heartbeat/operation 更新；数据面已委托的占用还必须经可信 Gateway 清理确认才释放，不能由 Agent 心跳或超时单独释放；
 - maintenance 开始前检查 active leases，并在一个 transaction 中取得 maintenance lease；
 - advisory lock 只作为进程并发保护，业务可见状态仍存表。
+
+### 8.1 已签名停止终结的原子提交
+
+ADR-0034 不新增 schema。经过注册来源验证的固定 `runtime_cleanup/joined` 事件 MUST 使用现有接收历史的 `audit`/`global_audit` kind。仓库终结 MUST 在原 credential/admission/source 锁下先验证连续序列和全部先前 effect，再在同一事务中提交接收历史、runtime 明确撤回决定、来源封存、占用释放、审计及 outbox；任何失败 MUST 整体回滚。全局终结 MUST 仅原子封存自己的来源。精确重复 MAY 在封存/释放后返回原回执；新记录 MUST 拒绝。不能仅凭 Queue tail、到期、Agent ACK 或 socket 不可达执行此事务。
 
 ## 9. Secret 与权限分离
 

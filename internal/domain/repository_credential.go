@@ -16,10 +16,14 @@ import (
 
 const RepositoryCredentialsCapability = "repository_credentials_v1"
 
+// Negotiates reuse of enrollment mTLS for the Gateway. No new protobuf fields
+// or second Agent identity are needed; GatewayPassword is absent in this mode.
+const RepositoryIdentityCapability = "repository_identity_v1"
+
 var ErrRepositoryCredential = errors.New("repository credential is unavailable or invalid")
 
 // RepositoryCredential is borrowed secret material, never an API/trace DTO.
-// The durable gateway password is NOT a BackupSession capability.
+// GatewayPassword is legacy delivery material, unused by the mTLS Gateway.
 type RepositoryCredential struct {
 	DeliveryID, AgentID, HostID, RepositoryID, GatewayID uuid.UUID
 	Revision, GatewayRevision, ResticRevision            int64
@@ -93,7 +97,11 @@ func (c RepositoryCredential) Validate() error {
 	if !strings.HasSuffix(c.Endpoint, path) || !ValidGatewayOrigin(strings.TrimSuffix(c.Endpoint, path)) {
 		return ErrRepositoryCredential
 	}
-	for _, password := range [][]byte{c.GatewayPassword, c.ResticPassword} {
+	passwords := [][]byte{c.ResticPassword}
+	if len(c.GatewayPassword) != 0 {
+		passwords = append(passwords, c.GatewayPassword)
+	}
+	for _, password := range passwords {
 		decoded, err := base64.RawURLEncoding.Strict().DecodeString(string(password))
 		valid := err == nil && len(decoded) == 32 && len(password) == 43
 		clear(decoded)

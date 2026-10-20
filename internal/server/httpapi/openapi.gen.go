@@ -693,12 +693,14 @@ type Repository struct {
 	Name                      string              `json:"name"`
 	ResticSecretRevision      int64               `json:"restic_secret_revision"`
 	Revision                  int64               `json:"revision"`
-	Status                    RepositoryStatus    `json:"status"`
-	StorageCredentialId       openapi_types.UUID  `json:"storage_credential_id"`
-	UpdatedAt                 time.Time           `json:"updated_at"`
+
+	// Status Availability view. READY requires initialization, current Agent ACK, live matching authorization and a verified Gateway backend observation less than ten minutes old; revision tracks configuration only.
+	Status              RepositoryStatus   `json:"status"`
+	StorageCredentialId openapi_types.UUID `json:"storage_credential_id"`
+	UpdatedAt           time.Time          `json:"updated_at"`
 }
 
-// RepositoryStatus defines model for Repository.Status.
+// RepositoryStatus Availability view. READY requires initialization, current Agent ACK, live matching authorization and a verified Gateway backend observation less than ten minutes old; revision tracks configuration only.
 type RepositoryStatus string
 
 // RepositoryCreate defines model for RepositoryCreate.

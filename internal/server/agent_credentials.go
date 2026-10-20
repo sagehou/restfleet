@@ -12,11 +12,11 @@ import (
 
 // WithAgentCredential is mTLS-only. agentID MUST come from the verified peer,
 // never a request payload. The callback must not retain or log the material.
-func (c *ControlPlane) WithAgentCredential(ctx context.Context, agentID uuid.UUID, force bool, send func(domain.RepositoryCredential) error) error {
+func (c *ControlPlane) WithAgentCredential(ctx context.Context, agentID uuid.UUID, force bool, send func(domain.RepositoryCredential) error, identityAuth ...bool) error {
 	if c.gatewayPublicURL == "" {
 		return nil
 	}
-	if send == nil {
+	if send == nil || len(identityAuth) > 1 {
 		return domain.ErrRepositoryCredential
 	}
 	d, err := c.store.PrepareAgentCredential(ctx, agentID, c.credentialConfigurationHash(), force)
@@ -30,9 +30,11 @@ func (c *ControlPlane) WithAgentCredential(ctx context.Context, agentID uuid.UUI
 	value := domain.RepositoryCredential{DeliveryID: d.ID, AgentID: agentID, HostID: r.HostID, RepositoryID: r.ID, GatewayID: r.GatewayID,
 		Revision: d.Revision, GatewayRevision: r.GatewaySecretRevision, ResticRevision: r.ResticSecretRevision, ValidFrom: d.CreatedAt,
 		Endpoint: c.gatewayPublicURL + "/restic/" + r.GatewayID.String() + "/" + r.ID.String() + "/", CABundlePEM: c.enrollment.ServerCABundlePEM}
-	value.GatewayPassword, err = openRepositorySecret(c.masterKey, r, "GATEWAY", d.Gateway)
-	if err != nil {
-		return domain.ErrRepositoryCredential
+	if len(identityAuth) == 0 || !identityAuth[0] {
+		value.GatewayPassword, err = openRepositorySecret(c.masterKey, r, "GATEWAY", d.Gateway)
+		if err != nil {
+			return domain.ErrRepositoryCredential
+		}
 	}
 	defer func() { value.Clear() }()
 	value.ResticPassword, err = openRepositorySecret(c.masterKey, r, "RESTIC_KEY", d.Restic)

@@ -12,8 +12,20 @@ ADR-0018–0025 已提供有界授权、持久决定、单次材料交付和本�
 - Gateway MUST 验证中心签名及完整 binding，并将 statement 交给同一已初始化 `AuthorizedBackup.AcceptAuthorization`。owner MUST 保留原 admission 到期上限；失败、关闭或失效 owner 不得借高版本续期复活。明确吊销触发生命周期 watchdog 和每操作 guard 的停止、取消、join、明文清零和 Queue 冻结。
 - 来源签名回执 MUST 绑定本次 fresh challenge 与精确 signed statement 的 SHA-256。回执只证明 statement 已接受，不证明数据面/子进程已退出、持久回写已排空、READY 或 fence 可释放。
 - 传输失败 MUST 保留已提交决定和原 fence，不修改授权状态。回执丢失代表接收不确定；可信协调器 MAY 显式重放同一最新已提交决定及原幂等键，MUST NOT 自动签发新 grant、重新交付材料或延长原到期。已经失败的 owner MAY 拒绝重放；收到吊销不恢复 owner。
-- 不增加 DB schema、公共 HTTP/gRPC API、依赖或生产特权。无自动重试/续期调度器；本批提供内部通道与协调入口。全局离线拒绝审计、完整 daemon/readiness、Agent 能力交付及可信清理恢复仍需后续接线。
+- 不增加 DB schema、公共 HTTP/gRPC API、依赖或生产特权。初始批次只提供内部通道与协调入口；持续投递按下述接线补充执行，可信清理恢复仍未完成。
 
 ## 验证
 
 REP-047–048 在 Actions 验证独立签名域、规范编码、帧上限/UID/pin/binding 拒绝、取消 join、跨非 root UID 续期/精确重放/吊销及第三 UID 拒绝。三后端真实 PostgreSQL 从首次初始化开始验证续期、禁用后吊销、回执丢失重放、失效 ACK/来源封存/审计失败的原子拒绝；活动 owner 验证实际交付吊销后的请求/子进程 join、明文清零与不可复活。
+
+## 持续投递接线（2026-10-16）
+
+Server MAY 通过受保护的 `RESTFLEET_GATEWAY_AUTHORITY_FILE` 启用现有已初始化运行的唯一授权协调者，格式与部署规范 §7.19 一致。每个 admission MUST 串行处理，最多 32 个目标；初始化和可信清理 MUST 与该协调者互斥，不能同时启动另一个投递者。该文件 MUST NOT 用于初始化、重新交付材料、重启 Gateway 或恢复失败 owner。
+
+ADR-0025 的显式 `gateway-start --follow` MAY 在单次初始化成功后直接接续同一 worker；该方式只接受一个版本 2 plan，并拒绝同时设置 authority-file。部署者 MUST 选择一个协调入口，不能与另一个进程的同 admission worker 并行。设置失败不进入持续投递；命令中断后 MUST NOT 自动重新初始化。
+
+PostgreSQL 最新 committed 决定 MUST 是唯一持久投递依据。启动或回执丢失后 MUST 先向原已注册来源精确重送最新决定，包括 revision 1；此路径 MUST NOT 调用新决定事务，不受后来缩小的离线配置窗口重写，签发/到期时间 MUST 保持原值。旧决定过期后 MUST NOT 续发新 grant 来恢复 owner。内存确认版本只用于减少重复投递，不能授予权限。
+
+每 10s SHOULD 检查明确 Agent/Host/Repository/StorageCredential 吊销或禁用；读取失败、连接失败、健康离线、证书或授权到期 MUST NOT 写成吊销。明确撤回 MAY 安全覆盖未确认 grant；普通续期 MUST 先确认上一决定的回执，再在实际有效期过半时复用原 CAS 决定事务核验当前授权。原 admission 截止 MUST 不变。停止 MUST 取消并 join 全部投递；来源封存、清理证明、占用释放和 Repository READY MUST 继续独立核验。
+
+按用户指示，本次未新增/改写测试用例；新增协调行为仍待 Actions 验收，既有通道测试通过不等于完整恢复已验收。
