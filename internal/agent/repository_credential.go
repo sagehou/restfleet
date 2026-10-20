@@ -49,6 +49,13 @@ func (s *State) ApplyRepositoryCredential(identity Identity, message *agentv1.Cr
 			return nil, domain.ErrRepositoryCredential
 		}
 		if c.Revision == previous.Revision {
+			// Dropping an obsolete communication password does not change any
+			// authenticated binding or repository encryption key. This one-way
+			// migration also handles reconnecting after an Agent upgrade.
+			if len(c.GatewayPassword) == 0 {
+				clear(previous.GatewayPassword)
+				previous.GatewayPassword = nil
+			}
 			old, err := json.Marshal(previous)
 			if err != nil {
 				return nil, domain.ErrRepositoryCredential
@@ -59,7 +66,7 @@ func (s *State) ApplyRepositoryCredential(identity Identity, message *agentv1.Cr
 				return nil, domain.ErrRepositoryCredential
 			}
 		} else if c.DeliveryID == previous.DeliveryID ||
-			(c.GatewayRevision == previous.GatewayRevision && !bytes.Equal(c.GatewayPassword, previous.GatewayPassword)) ||
+			(c.GatewayRevision == previous.GatewayRevision && len(c.GatewayPassword) != 0 && !bytes.Equal(c.GatewayPassword, previous.GatewayPassword)) ||
 			(c.ResticRevision == previous.ResticRevision && !bytes.Equal(c.ResticPassword, previous.ResticPassword)) {
 			return nil, domain.ErrRepositoryCredential
 		}

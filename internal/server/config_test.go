@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func clearEnvironment(t *testing.T) {
@@ -27,6 +28,7 @@ func clearEnvironment(t *testing.T) {
 		"RESTFLEET_MASTER_KEY_FILE",
 		"RESTFLEET_PUBLIC_URL",
 		"RESTFLEET_GATEWAY_PUBLIC_URL",
+		"RESTFLEET_GATEWAY_OFFLINE_WINDOW",
 		"RESTFLEET_GATEWAY_SIGNING_KEY",
 		"RESTFLEET_GATEWAY_SIGNING_KEY_FILE",
 		"RESTFLEET_GATEWAY_PENDING_KEY",
@@ -62,6 +64,29 @@ func TestRuntimeConfigRejectsProductionSecretEnvironment(t *testing.T) {
 	_, err := LoadRuntimeConfig()
 	if err == nil || !strings.Contains(err.Error(), "DATABASE_URL_FILE") {
 		t.Fatalf("production environment secret was not rejected: %v", err)
+	}
+}
+
+func TestGatewayOfflineWindowConfiguration(t *testing.T) {
+	clearEnvironment(t)
+	t.Setenv("RESTFLEET_ENV", "development")
+	t.Setenv("RESTFLEET_DATABASE_URL", "postgres://development-only")
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+	}{
+		{"", 72 * time.Hour}, {"96h", 96 * time.Hour}, {"1m", time.Minute}, {"720h", 720 * time.Hour},
+		{"0", 0}, {"-1h", 0}, {"721h", 0}, {"1m0.001s", 0}, {"invalid", 0},
+	} {
+		t.Setenv("RESTFLEET_GATEWAY_OFFLINE_WINDOW", tc.value)
+		config, err := LoadRuntimeConfig()
+		if tc.want == 0 {
+			if err == nil {
+				t.Fatalf("invalid offline window accepted: %q", tc.value)
+			}
+		} else if err != nil || config.GatewayOfflineWindow != tc.want {
+			t.Fatalf("offline window %q: %v", tc.value, err)
+		}
 	}
 }
 

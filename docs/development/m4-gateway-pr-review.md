@@ -1,5 +1,7 @@
 # M4 Gateway 待审查分支
 
+> 历史草稿：下文保存 #51 合并前的审查材料，不代表当前进度。#51 已以 `2fbe498` 合并；当前状态见 [实施计划 M4](../../IMPLEMENTATION_PLAN.md#m4--storage-credential-repository-and-gateway)，后续交付见 [M4 历史](m4-delivery-history.md)。
+
 目标分支为 `feat/m4-gateway-pending-replay`，基线 `da0d92f`，草稿 PR 为 [#51](https://github.com/sagehou/restfleet/pull/51)。当前内容尚未合并，不计入 main 完成进度。
 
 ## 拟用 PR 标题

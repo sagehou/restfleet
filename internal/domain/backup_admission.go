@@ -12,7 +12,9 @@ var ErrBackupAdmission = errors.New("backup admission is unavailable or does not
 
 // BackupAdmissionRequest is central-only. ID and Owner are durable UUIDv7
 // identities allocated by the trusted caller, not bearer capabilities. AgentID
-// MUST come from authenticated identity; no caller selects a Host or Repository.
+// MUST come from authenticated identity or protected CENTRAL provisioning
+// metadata, never an unauthenticated/Agent-selected subject. No caller selects
+// a Host or Repository.
 type BackupAdmissionRequest struct {
 	ID, Owner, AgentID, DeliveryID uuid.UUID
 	ConfigurationHash              string
@@ -27,7 +29,7 @@ func (r BackupAdmissionRequest) Validate() error {
 	}
 	hash, err := hex.DecodeString(r.ConfigurationHash)
 	if err != nil || len(hash) != 32 || hex.EncodeToString(hash) != r.ConfigurationHash ||
-		r.Lifetime < time.Minute || r.Lifetime > 24*time.Hour || r.Lifetime%time.Second != 0 {
+		r.Lifetime < time.Minute || r.Lifetime > MaxGatewayOfflineWindow || r.Lifetime%time.Second != 0 {
 		return ErrBackupAdmission
 	}
 	return nil

@@ -1,5 +1,7 @@
 # ADR-0014：Gateway 验证本次备份的临时锁清理
 
+2026-10-14 修订：[ADR-0033](0033-gateway-agent-identity.md) 替代下文独立秘密能力及长期 Gateway 密码要求。生产入口复用 Agent mTLS 身份与 Gateway 生成的非秘密会话 ID；对象保护、锁归属、资源限制及中心维护边界仍有效。原认证描述保留为历史与旧夹具说明。
+
 用户确认：历史对象不可删除/覆盖，但正常 Restic 备份 MUST 能清理自身临时锁。固定版本 [Restic 0.19.1](https://github.com/restic/restic/blob/v0.19.1/internal/restic/lock.go) 刷新锁时先创建新锁、再删除旧锁；[rclone 1.75.1](https://github.com/rclone/rclone/blob/v1.75.1/cmd/serve/restic/restic.go) 的 append-only 允许删除任意 `locks/` 对象，单独使用该开关不能证明归属。
 
 公开入口 MUST 经过 RestFleet Gateway 安全层，rclone MUST 只监听私有 Unix socket、启用 append-only 并关闭对象缓存。每个 socket MUST 固定到一个 Host 的一个 Repository，禁止请求改变 remote/path。中心维护通道保持独立。Agent MUST NOT 创建 config/keys、初始化仓库或执行维护性 unlock。

@@ -10,7 +10,7 @@ import (
 
 func TestGatewayDecisionRequestBounds(t *testing.T) {
 	id := uuid.Must(uuid.NewV7())
-	r := GatewayDecisionRequest{ID: id, AdmissionID: id, Owner: id, RuntimeID: id, Lifetime: 12 * time.Hour}
+	r := GatewayDecisionRequest{ID: id, AdmissionID: id, Owner: id, RuntimeID: id, Lifetime: MaxGatewayOfflineWindow}
 	if r.Validate() != nil {
 		t.Fatal("valid request rejected")
 	}
