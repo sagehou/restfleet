@@ -242,6 +242,8 @@ retry_policy
 
 ## 9. Job Dispatch
 
+协议消息：`ServerToAgent.JobDispatch`；Agent 回 `JobAccepted` / `JobRejected`，运行中发 `JobProgress`（`operation_id` + 单调 `sequence`），终态发 `JobResult`（status、error_code、exit_code、snapshot_id、统计）。这些字段均为增量扩展，不改变既有协议版本。
+
 `JobDispatch` 包含：
 
 ```text
