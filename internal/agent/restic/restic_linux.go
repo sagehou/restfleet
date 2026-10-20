@@ -36,6 +36,10 @@ type BackupRequest struct {
 	ExcludeCaches   bool
 	OneFileSystem   bool
 	SkipIfUnchanged bool
+	// TLSClientCertFile holds the combined client certificate and key for the
+	// Gateway REST endpoint; CACertFile pins the Gateway CA.
+	TLSClientCertFile string
+	CACertFile        string
 }
 
 // PreparedFiles holds the generated mode-0600 inputs for one invocation.
@@ -135,6 +139,12 @@ func BackupArgs(request BackupRequest, prepared PreparedFiles) ([]string, error)
 	}
 	if request.SkipIfUnchanged {
 		args = append(args, "--skip-if-unchanged")
+	}
+	if request.TLSClientCertFile != "" {
+		args = append(args, "--tls-client-cert", request.TLSClientCertFile)
+	}
+	if request.CACertFile != "" {
+		args = append(args, "--cacert", request.CACertFile)
 	}
 	return args, nil
 }

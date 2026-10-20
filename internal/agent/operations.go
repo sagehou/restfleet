@@ -1,0 +1,153 @@
+package agent
+
+import (
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	bolt "go.etcd.io/bbolt"
+)
+
+const (
+	operationsBucket  = "operations"
+	planRuntimeBucket = "plan_runtime"
+
+	OperationRunning            = "RUNNING"
+	OperationSucceeded          = "SUCCEEDED"
+	OperationSucceededWarnings  = "SUCCEEDED_WITH_WARNINGS"
+	OperationFailed             = "FAILED"
+	OperationCanceled           = "CANCELED"
+	OperationMissed             = "MISSED"
+	OperationConcurrencySkipped = "CONCURRENCY_SKIPPED"
+)
+
+// OperationRecord is the durable local view of one scheduled run. It exists
+// before Restic starts so a crash cannot silently lose an execution.
+type OperationRecord struct {
+	ID           uuid.UUID `json:"id"`
+	PlanID       uuid.UUID `json:"plan_id"`
+	PlanRevision int64     `json:"plan_revision"`
+	ConfigHash   string    `json:"config_hash"`
+	ScheduledAt  time.Time `json:"scheduled_at"`
+	StartedAt    time.Time `json:"started_at,omitempty"`
+	FinishedAt   time.Time `json:"finished_at,omitempty"`
+	Status       string    `json:"status"`
+	ExitCode     int       `json:"exit_code,omitempty"`
+	ErrorCode    string    `json:"error_code,omitempty"`
+	SnapshotID   string    `json:"snapshot_id,omitempty"`
+	FilesDone    int64     `json:"files_done"`
+	TotalFiles   int64     `json:"total_files"`
+	BytesDone    int64     `json:"bytes_done"`
+	TotalBytes   int64     `json:"total_bytes"`
+	Uploaded     bool      `json:"uploaded,omitempty"`
+}
+
+// Terminal reports whether the record reached a final state.
+func (r OperationRecord) Terminal() bool {
+	switch r.Status {
+	case OperationSucceeded, OperationSucceededWarnings, OperationFailed,
+		OperationCanceled, OperationMissed, OperationConcurrencySkipped:
+		return true
+	}
+	return false
+}
+
+// PlanRuntime persists the next scheduled instant so restarts neither skip nor
+// duplicate a run.
+type PlanRuntime struct {
+	PlanID          uuid.UUID `json:"plan_id"`
+	LastScheduledAt time.Time `json:"last_scheduled_at,omitempty"`
+	NextRunAt       time.Time `json:"next_run_at,omitempty"`
+	LastOperationID uuid.UUID `json:"last_operation_id,omitempty"`
+}
+
+func (s *State) PutOperation(record OperationRecord) error {
+	payload, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists([]byte(operationsBucket))
+		if err != nil {
+			return err
+		}
+		return bucket.Put(record.ID[:], payload)
+	})
+}
+
+func (s *State) Operation(id uuid.UUID) (OperationRecord, bool, error) {
+	var record OperationRecord
+	found := false
+	err := s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(operationsBucket))
+		if bucket == nil {
+			return nil
+		}
+		value := bucket.Get(id[:])
+		if value == nil {
+			return nil
+		}
+		found = true
+		return json.Unmarshal(value, &record)
+	})
+	return record, found, err
+}
+
+// RunningOperations lists non-terminal runs. The set is bounded by one entry
+// per plan under FORBID, so a full scan is acceptable.
+func (s *State) RunningOperations() ([]OperationRecord, error) {
+	items := make([]OperationRecord, 0)
+	err := s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(operationsBucket))
+		if bucket == nil {
+			return nil
+		}
+		return bucket.ForEach(func(_, value []byte) error {
+			var record OperationRecord
+			if err := json.Unmarshal(value, &record); err != nil {
+				return err
+			}
+			if record.Status == OperationRunning {
+				items = append(items, record)
+			}
+			return nil
+		})
+	})
+	return items, err
+}
+
+func (s *State) PlanRuntime(planID uuid.UUID) (PlanRuntime, bool, error) {
+	var runtime PlanRuntime
+	found := false
+	err := s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(planRuntimeBucket))
+		if bucket == nil {
+			return nil
+		}
+		value := bucket.Get(planID[:])
+		if value == nil {
+			return nil
+		}
+		found = true
+		return json.Unmarshal(value, &runtime)
+	})
+	return runtime, found, err
+}
+
+func (s *State) PutPlanRuntime(runtime PlanRuntime) error {
+	if runtime.PlanID == uuid.Nil {
+		return errors.New("plan runtime requires a plan id")
+	}
+	payload, err := json.Marshal(runtime)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists([]byte(planRuntimeBucket))
+		if err != nil {
+			return err
+		}
+		return bucket.Put(runtime.PlanID[:], payload)
+	})
+}
