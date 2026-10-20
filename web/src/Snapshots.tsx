@@ -54,7 +54,7 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
     setMessage('')
     setEntries(null)
     const endpoint = `/api/v1/snapshots/${encodeURIComponent(snapshot.snapshot_id)}/entries?path=${encodeURIComponent(path)}&repository_id=${encodeURIComponent(snapshot.repository_id)}`
-    const pollOperation = async (operationID: string, remaining: number) => {
+    async function pollOperation(operationID: string, remaining: number) {
       try {
         const operation = await requestJSON<Operation>(`/api/v1/operations/${encodeURIComponent(operationID)}`, { signal: controller.signal })
         if (!active) return
@@ -80,7 +80,7 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
         }
       }
     }
-    const fetchPage = async (remaining: number) => {
+    async function fetchPage(remaining: number) {
       try {
         const response = await requestJSONResponse<SnapshotEntries | SnapshotScanPending>(endpoint, { signal: controller.signal })
         if (!active) return
