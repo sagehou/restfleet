@@ -129,6 +129,7 @@ func (e BackupOperationSource) Valid() bool {
 // Defines values for BackupOperationStatus.
 const (
 	BackupOperationStatusCANCELED              BackupOperationStatus = "CANCELED"
+	BackupOperationStatusCANCELREQUESTED       BackupOperationStatus = "CANCEL_REQUESTED"
 	BackupOperationStatusCONCURRENCYSKIPPED    BackupOperationStatus = "CONCURRENCY_SKIPPED"
 	BackupOperationStatusFAILED                BackupOperationStatus = "FAILED"
 	BackupOperationStatusMISSED                BackupOperationStatus = "MISSED"
@@ -142,6 +143,8 @@ const (
 func (e BackupOperationStatus) Valid() bool {
 	switch e {
 	case BackupOperationStatusCANCELED:
+		return true
+	case BackupOperationStatusCANCELREQUESTED:
 		return true
 	case BackupOperationStatusCONCURRENCYSKIPPED:
 		return true
@@ -717,25 +720,29 @@ type AgentRevoke struct {
 
 // BackupOperation defines model for BackupOperation.
 type BackupOperation struct {
-	AgentId      openapi_types.UUID    `json:"agent_id"`
-	BytesDone    *int64                `json:"bytes_done,omitempty"`
-	CreatedAt    time.Time             `json:"created_at"`
-	ErrorCode    *string               `json:"error_code,omitempty"`
-	ExitCode     *int                  `json:"exit_code,omitempty"`
-	FilesDone    *int64                `json:"files_done,omitempty"`
-	FinishedAt   *time.Time            `json:"finished_at,omitempty"`
-	Id           openapi_types.UUID    `json:"id"`
-	PlanId       openapi_types.UUID    `json:"plan_id"`
-	PlanRevision int64                 `json:"plan_revision"`
-	ScheduledAt  *time.Time            `json:"scheduled_at,omitempty"`
-	SnapshotId   *string               `json:"snapshot_id,omitempty"`
-	Source       BackupOperationSource `json:"source"`
-	StartedAt    *time.Time            `json:"started_at,omitempty"`
-	Status       BackupOperationStatus `json:"status"`
-	TotalBytes   *int64                `json:"total_bytes,omitempty"`
-	TotalFiles   *int64                `json:"total_files,omitempty"`
-	Type         BackupOperationType   `json:"type"`
-	UpdatedAt    time.Time             `json:"updated_at"`
+	AgentId           openapi_types.UUID    `json:"agent_id"`
+	BytesDone         *int64                `json:"bytes_done,omitempty"`
+	CancelReason      *string               `json:"cancel_reason,omitempty"`
+	CancelRequestedAt *time.Time            `json:"cancel_requested_at,omitempty"`
+	CreatedAt         time.Time             `json:"created_at"`
+	ErrorCode         *string               `json:"error_code,omitempty"`
+	ExitCode          *int                  `json:"exit_code,omitempty"`
+	FilesDone         *int64                `json:"files_done,omitempty"`
+	FinishedAt        *time.Time            `json:"finished_at,omitempty"`
+	Id                openapi_types.UUID    `json:"id"`
+	ParentOperationId *openapi_types.UUID   `json:"parent_operation_id,omitempty"`
+	PlanId            openapi_types.UUID    `json:"plan_id"`
+	PlanRevision      int64                 `json:"plan_revision"`
+	RootOperationId   *openapi_types.UUID   `json:"root_operation_id,omitempty"`
+	ScheduledAt       *time.Time            `json:"scheduled_at,omitempty"`
+	SnapshotId        *string               `json:"snapshot_id,omitempty"`
+	Source            BackupOperationSource `json:"source"`
+	StartedAt         *time.Time            `json:"started_at,omitempty"`
+	Status            BackupOperationStatus `json:"status"`
+	TotalBytes        *int64                `json:"total_bytes,omitempty"`
+	TotalFiles        *int64                `json:"total_files,omitempty"`
+	Type              BackupOperationType   `json:"type"`
+	UpdatedAt         time.Time             `json:"updated_at"`
 }
 
 // BackupOperationSource defines model for BackupOperation.Source.
@@ -746,6 +753,11 @@ type BackupOperationStatus string
 
 // BackupOperationType defines model for BackupOperation.Type.
 type BackupOperationType string
+
+// BackupOperationCancel defines model for BackupOperationCancel.
+type BackupOperationCancel struct {
+	Reason *string `json:"reason,omitempty"`
+}
 
 // BackupOperationList defines model for BackupOperationList.
 type BackupOperationList struct {
@@ -1269,6 +1281,16 @@ type ListBackupOperationsParams struct {
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// CancelBackupOperationParams defines parameters for CancelBackupOperation.
+type CancelBackupOperationParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// RetryBackupOperationParams defines parameters for RetryBackupOperation.
+type RetryBackupOperationParams struct {
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // BootstrapParams defines parameters for Bootstrap.
 type BootstrapParams struct {
 	XRestFleetBootstrapToken string `json:"X-RestFleet-Bootstrap-Token"`
@@ -1442,6 +1464,9 @@ type RevokeAgentJSONRequestBody = AgentRevoke
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
+// CancelBackupOperationJSONRequestBody defines body for CancelBackupOperation for application/json ContentType.
+type CancelBackupOperationJSONRequestBody = BackupOperationCancel
+
 // BootstrapJSONRequestBody defines body for Bootstrap for application/json ContentType.
 type BootstrapJSONRequestBody = BootstrapRequest
 
@@ -1504,6 +1529,12 @@ type ServerInterface interface {
 
 	// (GET /api/v1/backup-operations/{operation_id})
 	GetBackupOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID)
+
+	// (POST /api/v1/backup-operations/{operation_id}/cancel)
+	CancelBackupOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID, params CancelBackupOperationParams)
+
+	// (POST /api/v1/backup-operations/{operation_id}/retry)
+	RetryBackupOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID, params RetryBackupOperationParams)
 
 	// (POST /api/v1/bootstrap)
 	Bootstrap(w http.ResponseWriter, r *http.Request, params BootstrapParams)
@@ -1906,6 +1937,114 @@ func (siw *ServerInterfaceWrapper) GetBackupOperation(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetBackupOperation(w, r, operationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelBackupOperation operation middleware
+func (siw *ServerInterfaceWrapper) CancelBackupOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "operation_id" -------------
+	var operationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "operation_id", r.PathValue("operation_id"), &operationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CancelBackupOperationParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelBackupOperation(w, r, operationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetryBackupOperation operation middleware
+func (siw *ServerInterfaceWrapper) RetryBackupOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "operation_id" -------------
+	var operationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "operation_id", r.PathValue("operation_id"), &operationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RetryBackupOperationParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CsrfToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetryBackupOperation(w, r, operationId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4230,6 +4369,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/templates/{template_id}/dependent-plans", wrapper.ListTemplateDependentPlans)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations", wrapper.ListBackupOperations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}", wrapper.GetBackupOperation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}/cancel", wrapper.CancelBackupOperation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}/retry", wrapper.RetryBackupOperation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/snapshots", wrapper.ListSnapshots)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/snapshots/{snapshot_id}/entries", wrapper.ListSnapshotEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/plans/{plan_id}/backup", wrapper.BackupPlanNow)

@@ -77,6 +77,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			ConnectionId: connectionID.String(), SelectedProtocolVersion: selected,
 			ServerTime: timestamppb.Now(), HeartbeatIntervalSeconds: s.heartbeatSeconds,
 			DesiredConfigRevision: agent.DesiredRevision, MinimumAgentVersion: "0.1.0",
+			ServerCapabilities: []string{domain.JobResultAckCapability, domain.JobCancelCapability},
 		}},
 	}); err != nil {
 		return err
@@ -89,6 +90,8 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 
 	credentialCapable := slices.Contains(hello.GetCapabilities(), domain.RepositoryCredentialsCapability)
 	identityCapable := slices.Contains(hello.GetCapabilities(), domain.RepositoryIdentityCapability)
+	resultAckCapable := slices.Contains(hello.GetCapabilities(), domain.JobResultAckCapability)
+	cancelCapable := slices.Contains(hello.GetCapabilities(), domain.JobCancelCapability)
 	if credentialCapable {
 		if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, true, identityCapable); err != nil {
 			return err
@@ -139,6 +142,11 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			}
 			if err := s.dispatchQueuedJob(stream, agentID, selected, &serverSequence); err != nil {
 				return err
+			}
+			if cancelCapable {
+				if err := s.dispatchCancellations(stream, agentID, selected, &serverSequence); err != nil {
+					return err
+				}
 			}
 		case message.GetInventoryReport() != nil:
 			inventory, err := inventoryFromProto(agentID, message.GetInventoryReport())
@@ -198,6 +206,17 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				}
 				return status.Error(codes.Unavailable, "job result persistence failed")
 			}
+			if resultAckCapable {
+				if err := sendServerMessage(stream, &serverSequence, selected, &agentv1.ServerToAgent{
+					Payload: &agentv1.ServerToAgent_JobResultAccepted{
+						JobResultAccepted: &agentv1.JobResultAccepted{OperationId: result.GetOperationId()},
+					},
+				}); err != nil {
+					return err
+				}
+			}
+		case message.GetJobCancelAccepted() != nil:
+			// The terminal JobResult, not this ack, advances the operation.
 		case message.GetConfigAccepted() != nil:
 			accepted := message.GetConfigAccepted()
 			if err := s.control.AcceptAgentConfig(stream.Context(), agentID, domain.AgentConfigResult{
@@ -385,4 +404,24 @@ func (s *Service) dispatchQueuedJob(stream agentv1.AgentControlService_ConnectSe
 		return err
 	}
 	return s.control.MarkJobDispatched(stream.Context(), operation.ID)
+}
+
+// dispatchCancellations repeats pending cancel requests until the Agent reports
+// a terminal result. Cancellation is idempotent on the Agent.
+func (s *Service) dispatchCancellations(stream agentv1.AgentControlService_ConnectServer, agentID uuid.UUID, protocol string, sequence *uint64) error {
+	operations, err := s.control.PendingCancellations(stream.Context(), agentID)
+	if err != nil {
+		return status.Error(codes.Unavailable, "cancellation state unavailable")
+	}
+	for _, operation := range operations {
+		if err := sendServerMessage(stream, sequence, protocol, &agentv1.ServerToAgent{
+			Payload: &agentv1.ServerToAgent_JobCancel{JobCancel: &agentv1.JobCancel{
+				OperationId: operation.ID.String(), JobId: operation.ID.String(), Reason: operation.CancelReason,
+				Deadline: timestamppb.New(time.Now().Add(time.Minute)),
+			}},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

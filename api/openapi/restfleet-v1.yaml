@@ -961,6 +961,60 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/backup-operations/{operation_id}/cancel:
+    parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: cancelBackupOperation
+      description: Closes a queued run immediately or asks the Agent to stop a running one.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BackupOperationCancel" }
+      responses:
+        "200":
+          description: Cancellation recorded; a running Agent will report CANCELED.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupOperation" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/backup-operations/{operation_id}/retry:
+    parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: retryBackupOperation
+      description: Creates a new manual operation linked to the terminal operation.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "202":
+          description: Retry queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupOperation" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/snapshots:
     get:
       operationId: listSnapshots
@@ -1503,7 +1557,7 @@ components:
         agent_id: { type: string, format: uuid }
         type: { type: string, enum: [BACKUP, RESTORE, SNAPSHOT_INDEX, DOWNLOAD, CHECK, FORGET, PRUNE, MAINTENANCE] }
         source: { type: string, enum: [SCHEDULED, MANUAL] }
-        status: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCELED, MISSED, CONCURRENCY_SKIPPED] }
+        status: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCEL_REQUESTED, CANCELED, MISSED, CONCURRENCY_SKIPPED] }
         plan_revision: { type: integer, format: int64, minimum: 1 }
         scheduled_at: { type: string, format: date-time }
         started_at: { type: string, format: date-time }
@@ -1517,6 +1571,15 @@ components:
         total_bytes: { type: integer, format: int64, minimum: 0 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        parent_operation_id: { type: string, format: uuid }
+        root_operation_id: { type: string, format: uuid }
+        cancel_requested_at: { type: string, format: date-time }
+        cancel_reason: { type: string }
+    BackupOperationCancel:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: { type: string, maxLength: 512 }
     BackupOperationList:
       type: object
       additionalProperties: false

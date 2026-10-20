@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { components } from './api/schema'
-import { ApiError, errorMessage, requestJSON } from './api/client'
+import { ApiError, csrfToken, errorMessage, requestJSON } from './api/client'
 
 type BackupOperation = components['schemas']['BackupOperation']
 type BackupOperationList = components['schemas']['BackupOperationList']
@@ -9,7 +9,16 @@ type Props = { canManage: boolean; onUnauthorized: () => void }
 const endpoint = '/api/v1/backup-operations'
 const statusLabels: Record<BackupOperation['status'], string> = {
   QUEUED: '排队中', RUNNING: '运行中', SUCCEEDED: '成功', SUCCEEDED_WITH_WARNINGS: '成功（有告警）',
-  FAILED: '失败', CANCELED: '已取消', MISSED: '错过执行', CONCURRENCY_SKIPPED: '并发跳过',
+  FAILED: '失败', CANCEL_REQUESTED: '取消请求中', CANCELED: '已取消', MISSED: '错过执行', CONCURRENCY_SKIPPED: '并发跳过',
+}
+
+function terminal(status: BackupOperation['status']): boolean {
+  return status === 'SUCCEEDED' || status === 'SUCCEEDED_WITH_WARNINGS' || status === 'FAILED' ||
+    status === 'CANCELED' || status === 'MISSED' || status === 'CONCURRENCY_SKIPPED'
+}
+
+function retryable(status: BackupOperation['status']): boolean {
+  return status === 'FAILED' || status === 'CANCELED' || status === 'MISSED' || status === 'CONCURRENCY_SKIPPED'
 }
 
 function percent(operation: BackupOperation): string {
@@ -25,6 +34,7 @@ export function Operations({ onUnauthorized }: Props) {
   const [selected, setSelected] = useState<BackupOperation | null>(null)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [busyID, setBusyID] = useState('')
 
   const handleError = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) { onUnauthorized(); return }
@@ -48,9 +58,44 @@ export function Operations({ onUnauthorized }: Props) {
     return () => controller.abort()
   }, [load])
 
-  // Refresh while anything is running so progress moves without manual reload.
+  const cancel = useCallback(async (operation: BackupOperation) => {
+    if (!window.confirm(`取消操作 ${operation.id.slice(0, 8)}？运行中的备份会在 Agent 收到请求后停止。`)) return
+    setBusyID(operation.id)
+    setMessage('')
+    try {
+      const updated = await requestJSON<BackupOperation>(`${endpoint}/${operation.id}/cancel`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken() },
+        body: JSON.stringify({ reason: '用户取消' }),
+      })
+      setItems((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setSelected((current) => current?.id === updated.id ? updated : current)
+    } catch (error) {
+      handleError(error)
+    } finally {
+      setBusyID('')
+    }
+  }, [handleError])
+
+  const retry = useCallback(async (operation: BackupOperation) => {
+    setBusyID(operation.id)
+    setMessage('')
+    try {
+      const created = await requestJSON<BackupOperation>(`${endpoint}/${operation.id}/retry`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken() },
+      })
+      setItems((current) => [created, ...current])
+    } catch (error) {
+      handleError(error)
+    } finally {
+      setBusyID('')
+    }
+  }, [handleError])
+
+  // Refresh while anything is running or cancellation is pending.
   useEffect(() => {
-    if (!items.some((item) => item.status === 'RUNNING')) return
+    if (!items.some((item) => item.status === 'RUNNING' || item.status === 'CANCEL_REQUESTED')) return
     const timer = setInterval(() => { void load() }, 5000)
     return () => clearInterval(timer)
   }, [items, load])
@@ -82,6 +127,12 @@ export function Operations({ onUnauthorized }: Props) {
             <div><dt>退出码 / 错误</dt><dd>{selected.exit_code ?? '—'} {selected.error_code || ''}</dd></div>
           </dl>
           <div className="actions">
+            {canManage && !terminal(selected.status) && selected.status !== 'CANCEL_REQUESTED' && (
+              <button className="secondary-button" disabled={busyID === selected.id} onClick={() => { void cancel(selected) }}>取消</button>
+            )}
+            {canManage && retryable(selected.status) && (
+              <button className="secondary-button" disabled={busyID === selected.id} onClick={() => { void retry(selected) }}>重试</button>
+            )}
             <button className="secondary-button" onClick={() => setSelected(null)}>关闭详情</button>
           </div>
         </article>
@@ -95,7 +146,15 @@ export function Operations({ onUnauthorized }: Props) {
           <td>{statusLabels[item.status]}</td>
           <td>{item.scheduled_at ?? '—'}</td>
           <td>{percent(item)}</td>
-          <td><button className="table-link" onClick={() => setSelected(item)}>查看</button></td>
+          <td>
+            <button className="table-link" onClick={() => setSelected(item)}>查看</button>
+            {canManage && !terminal(item.status) && item.status !== 'CANCEL_REQUESTED' && (
+              <button className="table-link" disabled={busyID === item.id} onClick={() => { void cancel(item) }}>取消</button>
+            )}
+            {canManage && retryable(item.status) && (
+              <button className="table-link" disabled={busyID === item.id} onClick={() => { void retry(item) }}>重试</button>
+            )}
+          </td>
         </tr>)}</tbody>
       </table></div>}
       {nextCursor && <button className="secondary-button" disabled={loading} onClick={() => { setLoading(true); void load(nextCursor) }}>加载更多</button>}

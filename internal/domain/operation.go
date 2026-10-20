@@ -107,6 +107,11 @@ type BackupOperation struct {
 	TotalBytes   int64
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+
+	ParentOperationID *uuid.UUID
+	RootOperationID   *uuid.UUID
+	CancelRequestedAt *time.Time
+	CancelReason      string
 }
 
 type BackupOperationProgress struct {

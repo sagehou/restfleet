@@ -27,6 +27,7 @@ message AgentToServer {
     JobRejected job_rejected = 18;
     JobProgress job_progress = 19;
     JobResult job_result = 20;
+    JobCancelAccepted job_cancel_accepted = 21;
   }
 }
 
@@ -41,6 +42,8 @@ message ServerToAgent {
     DesiredStateSnapshot desired_state_snapshot = 12;
     CredentialRevision credential_revision = 13;
     JobDispatch job_dispatch = 14;
+    JobCancel job_cancel = 15;
+    JobResultAccepted job_result_accepted = 16;
   }
 }
 
@@ -65,6 +68,7 @@ message Welcome {
   int64 desired_config_revision = 5;
   string minimum_agent_version = 6;
   google.protobuf.Timestamp drain_deadline = 7;
+  repeated string server_capabilities = 8;
 }
 
 message CertificateRotationRequest {
@@ -212,6 +216,25 @@ message JobRejected {
   string job_id = 1;
   string operation_id = 2;
   string error_code = 3;
+}
+
+// JobCancel is idempotent. The Agent stops the process group and reports the
+// terminal JobResult; the Server never assumes cancellation without that result.
+message JobCancel {
+  string operation_id = 1;
+  string reason = 2;
+  google.protobuf.Timestamp deadline = 3;
+  string job_id = 4;
+}
+
+message JobCancelAccepted {
+  string operation_id = 1;
+}
+
+// JobResultAccepted confirms that the terminal result was durably stored.
+// The Agent keeps the result pending until this message arrives.
+message JobResultAccepted {
+  string operation_id = 1;
 }
 
 // JobProgress mirrors Restic status messages; sequence is monotonic per

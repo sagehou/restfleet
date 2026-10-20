@@ -15,6 +15,13 @@ import (
 
 const snapshotListLifetime = 5 * time.Minute
 
+func optionalUUID(value *uuid.UUID) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
 // lockRepositoryForRead locks the host and repository rows for a read-only
 // snapshot job. Unlike provisioning, an initialized READY repository is valid.
 func lockRepositoryForRead(ctx context.Context, tx pgx.Tx, id uuid.UUID) (domain.Repository, error) {

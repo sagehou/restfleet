@@ -10,13 +10,14 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
-const backupOperationColumns = "id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,started_at,finished_at,exit_code,error_code,snapshot_id,files_done,total_files,bytes_done,total_bytes,created_at,updated_at"
+const backupOperationColumns = "id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,started_at,finished_at,exit_code,error_code,snapshot_id,files_done,total_files,bytes_done,total_bytes,created_at,updated_at,parent_operation_id,root_operation_id,cancel_requested_at,cancel_reason"
 
 func scanBackupOperation(row rowScanner) (domain.BackupOperation, error) {
 	var o domain.BackupOperation
 	err := row.Scan(&o.ID, &o.PlanID, &o.AgentID, &o.Type, &o.Source, &o.Status, &o.PlanRevision, &o.ConfigHash,
 		&o.ScheduledAt, &o.StartedAt, &o.FinishedAt, &o.ExitCode, &o.ErrorCode, &o.SnapshotID,
-		&o.FilesDone, &o.TotalFiles, &o.BytesDone, &o.TotalBytes, &o.CreatedAt, &o.UpdatedAt)
+		&o.FilesDone, &o.TotalFiles, &o.BytesDone, &o.TotalBytes, &o.CreatedAt, &o.UpdatedAt,
+		&o.ParentOperationID, &o.RootOperationID, &o.CancelRequestedAt, &o.CancelReason)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return o, domain.ErrNotFound
 	}
@@ -63,8 +64,8 @@ func (s *Store) UpsertOperationProgress(ctx context.Context, progress domain.Bac
 	}
 	if _, err = tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,started_at,created_at,updated_at)
 		values($1,$2,$3,'BACKUP','SCHEDULED','RUNNING',$4,'',$5,$6,$6,$6)
-		on conflict (id) do update set status='RUNNING',updated_at=excluded.updated_at,
-			started_at=coalesce(backup_operations.started_at,excluded.started_at)`,
+		on conflict (id) do update set status=case when backup_operations.status='CANCEL_REQUESTED' then 'CANCEL_REQUESTED' else 'RUNNING' end,
+			updated_at=excluded.updated_at,started_at=coalesce(backup_operations.started_at,excluded.started_at)`,
 		progress.OperationID, progress.PlanID, progress.AgentID, progress.PlanRevision, progress.ScheduledAt, progress.ObservedAt); err != nil {
 		return persistenceError(err)
 	}
@@ -172,10 +173,63 @@ func (s *Store) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, er
 
 // CreateManualOperation queues a user-triggered backup for one Agent.
 func (s *Store) CreateManualOperation(ctx context.Context, operation domain.BackupOperation) error {
-	_, err := s.pool.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,created_at,updated_at)
-		values($1,$2,$3,'BACKUP','MANUAL','QUEUED',$4,'',$5,$6,$6)`,
-		operation.ID, operation.PlanID, operation.AgentID, operation.PlanRevision, operation.ScheduledAt, operation.CreatedAt)
+	_, err := s.pool.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,created_at,updated_at,parent_operation_id,root_operation_id)
+		values($1,$2,$3,'BACKUP','MANUAL','QUEUED',$4,$5,$6,$7,$7,$8,$9)`,
+		operation.ID, operation.PlanID, operation.AgentID, operation.PlanRevision, operation.ConfigHash,
+		operation.ScheduledAt, operation.CreatedAt, optionalUUID(operation.ParentOperationID), optionalUUID(operation.RootOperationID))
 	return persistenceError(err)
+}
+
+// CancelBackupOperation immediately closes a queued operation and asks the
+// Agent to stop a running one. The terminal result remains authoritative.
+func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason string, now time.Time) (domain.BackupOperation, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	operation, err := scanBackupOperation(tx.QueryRow(ctx, "select "+backupOperationColumns+" from backup_operations where id=$1 for update", id))
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	switch operation.Status {
+	case "CANCELED", "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS", "FAILED", "MISSED", "CONCURRENCY_SKIPPED":
+		return domain.BackupOperation{}, domain.ErrOperationTerminal
+	case "CANCEL_REQUESTED":
+		return operation, tx.Commit(ctx)
+	case "QUEUED":
+		operation.Status, operation.FinishedAt = "CANCELED", &now
+	default:
+		operation.Status = "CANCEL_REQUESTED"
+	}
+	operation.CancelRequestedAt, operation.CancelReason, operation.UpdatedAt = &now, reason, now
+	var finished any
+	if operation.FinishedAt != nil {
+		finished = *operation.FinishedAt
+	}
+	if _, err = tx.Exec(ctx, `update backup_operations set status=$2,finished_at=$3,cancel_requested_at=$4,cancel_reason=$5,updated_at=$4
+		where id=$1 and finished_at is null`, id, operation.Status, finished, now, reason); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	return operation, tx.Commit(ctx)
+}
+
+func (s *Store) PendingCancelOperations(ctx context.Context, agentID uuid.UUID) ([]domain.BackupOperation, error) {
+	rows, err := s.pool.Query(ctx, "select "+backupOperationColumns+` from backup_operations
+		where agent_id=$1 and status='CANCEL_REQUESTED' order by created_at`, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]domain.BackupOperation, 0)
+	for rows.Next() {
+		operation, err := scanBackupOperation(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, operation)
+	}
+	return items, rows.Err()
 }
 
 // NextQueuedManualOperation returns the oldest queued manual job for an Agent.

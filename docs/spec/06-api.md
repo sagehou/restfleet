@@ -291,12 +291,12 @@ Plan create/update 返回 normalized effective config、warnings 与 status。Se
 ## 11. Operations
 
 ```http
-GET   /api/v1/operations
-GET   /api/v1/operations/{operation_id}
-GET   /api/v1/operations/{operation_id}/logs
-GET   /api/v1/operations/{operation_id}/events
-POST  /api/v1/operations/{operation_id}/cancel
-POST  /api/v1/operations/{operation_id}/retry
+GET   /api/v1/backup-operations
+GET   /api/v1/backup-operations/{operation_id}
+GET   /api/v1/backup-operations/{operation_id}/logs
+GET   /api/v1/backup-operations/{operation_id}/events
+POST  /api/v1/backup-operations/{operation_id}/cancel
+POST  /api/v1/backup-operations/{operation_id}/retry
 ```
 
 Filter：type、status、host_id、repo_id、plan_id、created_after/before。
@@ -304,7 +304,7 @@ Filter：type、status、host_id、repo_id、plan_id、created_after/before。
 Logs：cursor + stream filter，返回 redacted chunks。可选 SSE endpoint：
 
 ```http
-GET /api/v1/operations/{id}/stream
+GET /api/v1/backup-operations/{id}/stream
 ```
 
 SSE 只传 progress/status/redacted log，不传 secret。断线用 event ID 恢复。

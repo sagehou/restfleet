@@ -20,6 +20,11 @@ const RepositoryCredentialsCapability = "repository_credentials_v1"
 // or second Agent identity are needed; GatewayPassword is absent in this mode.
 const RepositoryIdentityCapability = "repository_identity_v1"
 
+// Incremental M6 control features. Agents without these capabilities keep the
+// previous at-least-once behavior and must not receive the new messages.
+const JobResultAckCapability = "job_result_ack_v1"
+const JobCancelCapability = "job_cancel_v1"
+
 var ErrRepositoryCredential = errors.New("repository credential is unavailable or invalid")
 
 // RepositoryCredential is borrowed secret material, never an API/trace DTO.

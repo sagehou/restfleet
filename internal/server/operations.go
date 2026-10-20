@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/sagehou/restfleet/internal/domain"
@@ -95,4 +96,90 @@ func (c *ControlPlane) NextQueuedJob(ctx context.Context, agentID uuid.UUID) (do
 
 func (c *ControlPlane) MarkJobDispatched(ctx context.Context, id uuid.UUID) error {
 	return c.store.MarkOperationDispatched(ctx, id)
+}
+
+// CancelBackupOperation closes a queued operation immediately or asks the
+// Agent to stop a running one. Only a terminal Agent result proves completion.
+func (c *ControlPlane) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason string,
+	actor domain.User, meta RequestMeta,
+) (domain.BackupOperation, error) {
+	if actor.Role != domain.RoleAdmin {
+		if err := c.RecordDenied(ctx, "BACKUP_OPERATION_CANCEL", "BACKUP_OPERATION", "ROLE_DENIED", meta); err != nil {
+			return domain.BackupOperation{}, err
+		}
+		return domain.BackupOperation{}, ErrForbidden
+	}
+	reason = strings.TrimSpace(reason)
+	if len(reason) > 512 {
+		return domain.BackupOperation{}, &ValidationError{Field: "reason", Code: "INVALID_REASON"}
+	}
+	audit, err := c.userAudit("BACKUP_OPERATION_CANCEL", "BACKUP_OPERATION", id, actor.ID, meta, "CANCEL_REQUESTED")
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	operation, err := c.store.CancelBackupOperation(ctx, id, reason, c.clock().UTC())
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if err := c.store.RecordAudit(ctx, audit); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	return operation, nil
+}
+
+// RetryBackupOperation creates a new manual run linked to the failed operation.
+func (c *ControlPlane) RetryBackupOperation(ctx context.Context, id uuid.UUID,
+	actor domain.User, meta RequestMeta,
+) (domain.BackupOperation, error) {
+	if actor.Role != domain.RoleAdmin {
+		if err := c.RecordDenied(ctx, "BACKUP_OPERATION_RETRY", "BACKUP_OPERATION", "ROLE_DENIED", meta); err != nil {
+			return domain.BackupOperation{}, err
+		}
+		return domain.BackupOperation{}, ErrForbidden
+	}
+	source, err := c.store.BackupOperation(ctx, id)
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if !domain.OperationTerminal(source.Status) {
+		return domain.BackupOperation{}, domain.ErrOperationNotTerminal
+	}
+	plan, err := c.store.Plan(ctx, source.PlanID)
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if plan.Status != "ACTIVE" {
+		return domain.BackupOperation{}, domain.ErrPlanStateInvalid
+	}
+	newID, err := uuid.NewV7()
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	now := c.clock().UTC()
+	root := source.RootOperationID
+	if root == nil {
+		root = &source.ID
+	}
+	operation := domain.BackupOperation{
+		ID: newID, PlanID: plan.ID, AgentID: plan.AgentID, Type: "BACKUP", Source: "MANUAL",
+		Status: "QUEUED", PlanRevision: plan.DesiredRevision, ConfigHash: plan.ConfigHash,
+		ScheduledAt: &now, CreatedAt: now, UpdatedAt: now,
+		ParentOperationID: &source.ID, RootOperationID: root,
+	}
+	audit, err := c.userAudit("BACKUP_OPERATION_RETRY", "BACKUP_OPERATION", newID, actor.ID, meta, "QUEUED")
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	audit.Changes = json.RawMessage(`{"parent_operation_id":"` + source.ID.String() + `"}`)
+	if err := c.store.CreateManualOperation(ctx, operation); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if err := c.store.RecordAudit(ctx, audit); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	return operation, nil
+}
+
+func (c *ControlPlane) PendingCancellations(ctx context.Context, agentID uuid.UUID) ([]domain.BackupOperation, error) {
+	return c.store.PendingCancelOperations(ctx, agentID)
 }

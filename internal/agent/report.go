@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"sort"
 	"time"
 
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
@@ -11,12 +12,17 @@ import (
 // at-least-once; the terminal record is only marked uploaded after the stream
 // accepted the message, so a disconnect simply replays it.
 func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence *uint64,
-	protocol string, state *State, progressInterval time.Duration,
+	protocol string, state *State, progressInterval time.Duration, resultAck bool,
 ) error {
 	records, err := state.ReportableOperations(time.Now().UTC(), progressInterval)
 	if err != nil {
 		return err
 	}
+	// Replay terminal results before progress, preserving creation order inside
+	// each group. A terminal record stays pending until the Server acknowledges.
+	sort.SliceStable(records, func(i, j int) bool {
+		return records[i].Terminal() && !records[j].Terminal()
+	})
 	for _, record := range records {
 		scheduled := timestamppb.New(record.ScheduledAt)
 		if record.Terminal() {
@@ -32,9 +38,11 @@ func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence
 			if err := sendAgentMessage(stream, sequence, protocol, payload); err != nil {
 				return err
 			}
-			record.Uploaded = true
-			if err := state.PutOperation(record); err != nil {
-				return err
+			if !resultAck {
+				record.Uploaded = true
+				if err := state.PutOperation(record); err != nil {
+					return err
+				}
 			}
 			continue
 		}

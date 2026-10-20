@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -59,6 +60,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 			AcceptedConfigRevision:    acceptedRevision,
 			Capabilities: []string{
 				"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability, domain.RepositoryIdentityCapability,
+				domain.JobResultAckCapability, domain.JobCancelCapability,
 			},
 			LocalTime: timestamppb.Now(),
 		}},
@@ -76,6 +78,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	protocol := welcome.GetSelectedProtocolVersion()
 	serverSequence := response.GetSequence()
 	clockOffset := welcome.GetServerTime().AsTime().Sub(time.Now().UTC())
+	resultAck := slices.Contains(welcome.GetServerCapabilities(), domain.JobResultAckCapability)
 
 	if pending, ok, err := state.PendingConfigResult(); err != nil {
 		return true, err
@@ -126,7 +129,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 				return true, err
 			}
 		case <-reports.C:
-			if err := reportOperations(stream, &agentSequence, protocol, state, 5*time.Second); err != nil {
+			if err := reportOperations(stream, &agentSequence, protocol, state, 5*time.Second, resultAck); err != nil {
 				return true, err
 			}
 		case <-rotationTimer.C:
@@ -179,10 +182,31 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 				if err := handleJobDispatch(ctx, stream, state, config, message.GetJobDispatch(), &agentSequence, protocol); err != nil {
 					return true, err
 				}
+			case message.GetJobCancel() != nil:
+				operationID, err := uuid.Parse(message.GetJobCancel().GetOperationId())
+				if err != nil {
+					return true, errors.New("job cancel has an invalid operation id")
+				}
+				state.CancelOperation(operationID)
+				if err := sendAgentMessage(stream, &agentSequence, protocol, &agentv1.AgentToServer{
+					Payload: &agentv1.AgentToServer_JobCancelAccepted{JobCancelAccepted: &agentv1.JobCancelAccepted{
+						OperationId: operationID.String(),
+					}},
+				}); err != nil {
+					return true, err
+				}
+			case message.GetJobResultAccepted() != nil:
+				operationID, err := uuid.Parse(message.GetJobResultAccepted().GetOperationId())
+				if err != nil {
+					return true, errors.New("job result ack has an invalid operation id")
+				}
+				if err := state.MarkOperationUploaded(operationID); err != nil {
+					return true, err
+				}
 			case message.GetCertificateRotationResponse() != nil && rotationPending:
 				return true, saveRotation(state, identity, message)
 			default:
-				return true, errors.New("unsupported Server message")
+				// Unknown server payloads are forward-compatible and ignored.
 			}
 		}
 	}
@@ -374,8 +398,10 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 		binary = "restic"
 	}
 	executor := BackupExecutor{State: state, Binary: binary}
+	runCtx, endRun := state.BeginOperation(ctx, operationID)
 	go func() {
-		outcome := executor.Execute(ctx, plan, operationID, scheduled, deadline)
+		defer endRun()
+		outcome := executor.Execute(runCtx, plan, operationID, scheduled, deadline)
 		record.Status = outcome.Status
 		record.ExitCode = outcome.ExitCode
 		record.ErrorCode = outcome.ErrorCode

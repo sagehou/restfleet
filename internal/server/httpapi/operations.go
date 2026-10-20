@@ -17,6 +17,8 @@ func backupOperationResponse(o domain.BackupOperation) BackupOperation {
 		FinishedAt: o.FinishedAt, ExitCode: o.ExitCode, ErrorCode: &o.ErrorCode, SnapshotId: &o.SnapshotID,
 		FilesDone: &filesDone, TotalFiles: &totalFiles, BytesDone: &bytesDone, TotalBytes: &totalBytes,
 		CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
+		ParentOperationId: o.ParentOperationID, RootOperationId: o.RootOperationID,
+		CancelRequestedAt: o.CancelRequestedAt, CancelReason: &o.CancelReason,
 	}
 }
 
@@ -60,6 +62,47 @@ func (a *API) GetBackupOperation(w http.ResponseWriter, r *http.Request, operati
 		return
 	}
 	a.json(w, http.StatusOK, backupOperationResponse(operation))
+}
+
+func (a *API) CancelBackupOperation(w http.ResponseWriter, r *http.Request, operationID openapi_types.UUID, params CancelBackupOperationParams) {
+	actor, ok := a.authorizeMutation(w, r, params.XCSRFToken, "BACKUP_OPERATION_CANCEL", "BACKUP_OPERATION")
+	if !ok {
+		return
+	}
+	var body BackupOperationCancel
+	if r.ContentLength != 0 {
+		if err := decodeJSON(w, r, &body); err != nil {
+			a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request body is invalid.", nil)
+			return
+		}
+	}
+	reason := ""
+	if body.Reason != nil {
+		reason = *body.Reason
+	}
+	operation, err := a.control.CancelBackupOperation(r.Context(), operationID, reason, actor.User, requestMeta(r))
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	a.json(w, http.StatusOK, backupOperationResponse(operation))
+}
+
+func (a *API) RetryBackupOperation(w http.ResponseWriter, r *http.Request, operationID openapi_types.UUID, params RetryBackupOperationParams) {
+	actor, ok := a.authorizeMutation(w, r, params.XCSRFToken, "BACKUP_OPERATION_RETRY", "BACKUP_OPERATION")
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
+		return
+	}
+	operation, err := a.control.RetryBackupOperation(r.Context(), operationID, actor.User, requestMeta(r))
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	a.json(w, http.StatusAccepted, backupOperationResponse(operation))
 }
 
 func snapshotResponse(s domain.Snapshot) Snapshot {
