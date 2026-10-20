@@ -817,7 +817,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 128 }
         host_id: { type: string, format: uuid }
         storage_credential_id: { type: string, format: uuid }
-        status: { type: string, enum: [PROVISIONING, READY, DEGRADED, LOCKED, DISABLED, ERROR] }
+        status: { type: string, enum: [PROVISIONING, READY, DEGRADED, LOCKED, DISABLED, ERROR], description: "Availability view. READY requires initialization, current Agent ACK, live matching authorization and a verified Gateway backend observation less than ten minutes old; revision tracks configuration only." }
         format_version: { type: integer, minimum: 2, maximum: 2, description: Absent until verified by the central initialization worker. }
         initialized_at: { type: string, format: date-time }
         last_initialize_operation_id: { type: string, format: uuid }

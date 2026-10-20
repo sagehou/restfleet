@@ -88,8 +88,9 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 	}
 
 	credentialCapable := slices.Contains(hello.GetCapabilities(), domain.RepositoryCredentialsCapability)
+	identityCapable := slices.Contains(hello.GetCapabilities(), domain.RepositoryIdentityCapability)
 	if credentialCapable {
-		if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, true); err != nil {
+		if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, true, identityCapable); err != nil {
 			return err
 		}
 	}
@@ -132,7 +133,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			}
 			s.observeHeartbeatResult("accepted")
 			if credentialCapable {
-				if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, false); err != nil {
+				if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, false, identityCapable); err != nil {
 					return err
 				}
 			}

@@ -43,7 +43,7 @@
 | AGT-002 | P0 | 证书 agent A，payload 自报 agent B；Server 仍只按 A 授权。 |
 | AGT-003 | P1 | Plan revision 42；Agent 原子保存后 ACK 42，Server 显示 accepted。 |
 | AGT-004 | P0 | 新配置非法；Agent 拒绝并继续使用 last-known-good，不部分应用。 |
-| AGT-005 | P0 | 中心控制 API/DB 离线 12h，但 Gateway 在线；Agent 按本地计划成功备份。 |
+| AGT-005 | P0 | 离线窗口可配置、默认 72h，从最后中心签发起计算并受原占用限制；控制 API/DB 不可用但 Gateway 在线时，Agent 在剩余窗口内按 last-known-good 计划成功备份。Gateway 不可达或授权不足时暂停并报错；普通断线和备份失败保留身份/私钥及配置，不重新 enrollment。中心恢复后重新核验并经可信清理恢复，明确吊销、过期授权和失败 owner 不得复活；V1 不要求 Gateway 离线冷启动恢复。 |
 | AGT-006 | P1 | Agent 离线产生 Operation；重连后幂等补报，Server 无重复 Operation。 |
 | AGT-007 | P0 | 同一 JobDispatch 重复 3 次；Restic 仅执行一次，重复请求得到同一结果。 |
 | AGT-008 | P1 | 日志消息乱序/重复；Server 以 sequence 去重并正确显示。 |
@@ -75,7 +75,7 @@
 | REP-008 | P0 | 错误 master key 启动；Server fail closed，危险操作不可执行。 |
 | REP-009 | P0 | Gateway rclone config materialize；位于 tmpfs、0600、重启后重新生成。 |
 | REP-010 | P0 | rclone 自动刷新 OAuth token；新 revision 加密回 DB，重启后仍可访问。 |
-| REP-011 | P1 | Gateway password rotation；Agent ACK 新 revision 后旧 secret 在 overlap 后失效，备份不中断。 |
+| REP-011 | P1 | Gateway 复用 Agent 本机密钥；自动续证后继续连接，管理员吊销经中心授权分发生效，旧会话不能访问新会话；普通故障不要求重新配对。此要求按 ADR-0033 替代原 Gateway 密码轮换，原 ID 保留。 |
 | REP-012 | P0 | 请求 Shared Repository；V1 API 返回明确不支持。 |
 
 多后端扩展验收：
@@ -85,7 +85,7 @@
 | REP-013 | P0 | OneDrive/Google Drive/WebDAV 导入与独立仓库记录创建；provider 自动识别，metadata 无目标或秘密回显，旧 OneDrive 数据兼容。 |
 | REP-014 | P0 | Google Drive token 更新加密 CAS 回写；folder/team/scope/client 改写被 watcher 拒绝，WebDAV 静态秘密不能伪装成 OAuth refresh。 |
 | REP-015 | P0 | WebDAV 内网、metadata、混合 DNS、重绑定、socket 注入和不可信 TLS 被拒绝；重定向不能选择非固定网络目的地。 |
-| REP-016 | P0 MANUAL_INTEGRATION | 三种后端分别完成真实云端写入、备份、索引和恢复；OAuth 两种后端完成刷新/重启验收，WebDAV 完成认证失效/替换与服务兼容性验收。 |
+| REP-016 | P0 MANUAL_INTEGRATION | 部署后在 GitHub Actions 安全环境验证三种后端的真实云端写入、备份、索引和恢复；OAuth 后端验证刷新/重启，WebDAV 验证认证失效/替换与兼容性。此项为部署验收，不阻塞前续源码功能交付；完成前不得声称相应后端生产验证通过。 |
 
 初始化任务验收（不替代 REP-016）：
 
@@ -99,7 +99,7 @@ Gateway 临时锁例外验收（用户确认的安全模型变更，见 ADR-0014
 
 | ID | P | Given / When / Then |
 |---|---:|---|
-| REP-020 | P0 | 锁归属绑定可信 Host/Repository/Operation 与独立会话能力；上传失败不授权，取消/过期/重启及删除响应丢失不恢复删除权，旧会话凭据不能删除新会话对象。 |
+| REP-020 | P0 | 锁归属绑定证书认证及中心授权的 Host/Repository 与 Gateway 生成的独立会话路径；上传失败不授权，取消/过期/重启及删除响应丢失不恢复删除权，旧会话路径不能删除新会话对象。 |
 | REP-021 | P0 | 公共写入先验证完整内容 SHA-256、大小和规范路径，config/keys 只读；并发重复/畸形/跨 Host/未知方法/错误 TLS/后端非 404 探测均 fail closed，审计失败不执行锁删除。 |
 
 Gateway supervisor 生命周期验收：
@@ -220,6 +220,9 @@ Gateway 单次启动生命周期验收（ADR-0031）：
 | REP-058 | P0 | 保护版本 metadata/source/pin/TLS 文件严格装载，明确上限、完整绑定/独立来源/路径分离/UID；拒绝非规范配置、tmpfs/ramfs Queue、权限、坏 TLS/来源、旧 Queue/socket 和生产 root。全部单次初始化完成前不绑定公网，部分取消/错误 recipient 清理并保留已创建 Queue，不能接管旧来源。 |
 | REP-059 | P0 | 一个 Service 支持两个隔离仓库、连续会话和 verified TLS；控制面失联保留两类加密审计，恢复后丢 ACK 精确 wire 重试。非法 ACK、全局容量与 RFGA 吊销停止全部 owner，取消/join 活动 callback/请求/后端进程组，清零来源及云端材料，重复 Close 等待同一退出。原 Queue 可恢复回放，运行失败或排空不复活，不封存/释放 fence。 |
 | REP-060 | P0 | 跨非 root UID 的 protected production config→Service→材料/RFGA/TLS/两类回写→活动吊销与清理；Gateway 本地产生独立来源/TLS 私钥，中心秘密仅匿名 stdin 到中心，第三 UID/私钥读取/socket 替换拒绝且无 effect。固定 Restic/rclone 保留 online/signed-local 并增加 Service，连续两次备份及读回、各 session 锁清理、wrong CA、删除/覆盖/预存锁拒绝全部通过；不据此宣称 Agent 会话协议、READY、真实云或 AGT-005 完成。 |
+
+ADR-0034 对 REP-052/053、REP-059/060 增加生产终结流程要求：普通记录、tail、排空、到期及公钥恢复 MUST NOT 生成清理证明或释放占用；只有生产 `RunService` 在完整 join、最后刷新同步和材料检查后生成的已注册来源终结记录，经连续序列验证后，才 MAY 原子封存/撤回 runtime/释放原占用。全局终结只封存自身来源。普通 Append、伪造/错来源/跳序、未完成清理、刷新不确定、满/坏队列 MUST 不触发释放；确认丢失 MUST 精确重放并幂等。原嵌入式 `StartService` 的显式收尾要求和所有既有负向边界保留。按用户指示暂不新增或改写测试用例，这些新增行为的专门验收保持待验证。
+
 
 ## 7. Backup 与 Restic 解析
 

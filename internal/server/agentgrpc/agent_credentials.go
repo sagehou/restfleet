@@ -10,14 +10,14 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
-func (s *Service) sendAgentCredential(stream agentv1.AgentControlService_ConnectServer, agentID uuid.UUID, protocol string, sequence *uint64, force bool) error {
+func (s *Service) sendAgentCredential(stream agentv1.AgentControlService_ConnectServer, agentID uuid.UUID, protocol string, sequence *uint64, force bool, identityAuth bool) error {
 	err := s.control.WithAgentCredential(stream.Context(), agentID, force, func(c domain.RepositoryCredential) error {
 		return sendServerMessage(stream, sequence, protocol, &agentv1.ServerToAgent{Payload: &agentv1.ServerToAgent_CredentialRevision{
 			CredentialRevision: &agentv1.CredentialRevision{DeliveryId: c.DeliveryID.String(), Revision: c.Revision, AgentId: c.AgentID.String(), HostId: c.HostID.String(),
 				RepositoryId: c.RepositoryID.String(), GatewayId: c.GatewayID.String(), GatewayRevision: c.GatewayRevision, ResticRevision: c.ResticRevision,
 				Endpoint: c.Endpoint, CaBundlePem: c.CABundlePEM, GatewayPassword: c.GatewayPassword, ResticPassword: c.ResticPassword, ValidFrom: timestamppb.New(c.ValidFrom)},
 		}})
-	})
+	}, identityAuth)
 	if err != nil {
 		return status.Error(codes.Unavailable, "repository credential delivery unavailable")
 	}

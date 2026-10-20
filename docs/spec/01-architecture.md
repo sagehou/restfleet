@@ -132,8 +132,8 @@ V1 使用 RestFleet Gateway 安全层包装 `rclone serve restic`，不得把原
 - 外部 reverse proxy MUST 保留端到端 TLS 校验，安全层不信任客户端提供的 Forwarded/X-Forwarded-* 身份或 TLS 声明；
 - 必须启用 `--append-only`；
 - 必须启用 `--private-repos` 或实现等价且测试覆盖的 repo path 隔离；
-- 每个 Agent 使用独立用户名与高熵密码；
-- htpasswd 可热更新，但轮换必须支持短暂双凭据过渡或原子替换；
+- 每个 Agent MUST 复用本机配对生成的独立密钥和 mTLS 证书；Gateway MUST 匹配本 Host 的中心授权 owner；
+- 续证与吊销 MUST 复用现有 PKI/中心授权，不新增 Gateway 密码或单次 bearer 生命周期，见 ADR-0033；
 - public gateway 不得暴露 rclone RC、配置文件或管理接口；
 - 仅当前授权会话成功新建的临时锁 MAY 清理，其他对象不可删除/覆盖；语义及有界资源限制见 ADR-0014；
 - 最低 TLS 1.2，推荐 1.3；
@@ -142,10 +142,10 @@ V1 使用 RestFleet Gateway 安全层包装 `rclone serve restic`，不得把原
 公开 URL 示例：
 
 ```text
-rest:https://<agent-user>:<gateway-secret>@backup.example.com/restic/<agent-user>/<repo-id>/
+rest:https://backup.example.com/restic/<gateway-id>/<repo-id>/<session-id>/
 ```
 
-Server 下发时 MUST 分开传 endpoint、username 与 secret，不持久化带凭据 URL，不在日志中输出拼接后的 URL。
+Server MUST 下发无 userinfo 的 endpoint、CA 与本 Host Restic 加密密码。Agent 使用本机身份直接向 Gateway 开启会话，由 Gateway 生成非秘密 session-id。私钥与 Restic 密码 MUST 通过受保护文件供 Restic 使用，不出现在 argv。
 
 ### 6.1 管理访问
 
@@ -211,7 +211,7 @@ V1 不使用 Redis。Job Dispatcher 使用 `jobs` 表、`FOR UPDATE SKIP LOCKED`
 - 不执行无法审计的维护操作；
 - gateway 可在有效的中心预签发授权内独立继续接受备份流量；目标离线模型见 ADR-0017 与部署规范 09 §7.10，现有在线适配器尚未实现该能力。
 
-独立 Gateway MUST 留在中心信任区域，通过受保护本地通道交付授权、短期运行材料与待回写记录，不新增公网管理接口、网络化内部微服务或必需消息服务。PostgreSQL 仍是权威；Gateway 本地记录只是待验证输入，不直接更新中心状态。控制面失联时撤销/禁用最多延迟 12h，Gateway 整体停止或丢失材料不承诺离线恢复。此限制不取消 AGT-005，续期边界与完整离线实验仍须独立验收。
+独立 Gateway MUST 留在中心信任区域，通过受保护本地通道交付授权、短期运行材料与待回写记录，不新增公网管理接口、网络化内部微服务或必需消息服务。PostgreSQL 仍是权威；Gateway 本地记录只是待验证输入，不直接更新中心状态。控制面失联时使用配置的剩余授权窗口，默认从最后中心签发起 72h，撤销/禁用最多延迟该窗口。Gateway 不可达、停止或丢失材料时 MUST 暂停备份并报错，保留配对和配置；V1 不实现离线冷启动恢复。具体配置和验收见 ADR-0032。
 
 ### 云后端/rclone 故障
 
