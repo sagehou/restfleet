@@ -93,7 +93,7 @@ func templateConfigRequest(request TemplateConfig) domain.TemplateConfig {
 
 func templateResponse(t domain.Template) Template {
 	return Template{Id: t.ID, Name: t.Name, Description: t.Description, Revision: t.CurrentRevision,
-		Config: templateConfigResponse(t.Config), CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}
+		Config: templateConfigResponse(t.Config), ArchivedAt: t.ArchivedAt, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}
 }
 
 func (a *API) ListTemplates(w http.ResponseWriter, r *http.Request, params ListTemplatesParams) {
@@ -207,4 +207,47 @@ func (a *API) invalidTemplateRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The template request is invalid.", nil)
+}
+
+func (a *API) ArchiveTemplate(w http.ResponseWriter, r *http.Request, templateID openapi_types.UUID, params ArchiveTemplateParams) {
+	actor, ok := a.authorizeMutation(w, r, params.XCSRFToken, "TEMPLATE_ARCHIVE", "TEMPLATE")
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		a.invalidTemplateRequest(w, r)
+		return
+	}
+	revision, err := parseETag(params.IfMatch)
+	if err != nil {
+		a.problem(w, r, http.StatusBadRequest, "INVALID_REVISION", "Invalid request", "If-Match must contain a positive revision.", nil)
+		return
+	}
+	template, err := a.control.ArchiveTemplate(r.Context(), templateID, revision, actor.User, requestMeta(r))
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	setETag(w, template.CurrentRevision)
+	a.json(w, http.StatusOK, templateResponse(template))
+}
+
+func (a *API) ListTemplateDependentPlans(w http.ResponseWriter, r *http.Request, templateID openapi_types.UUID) {
+	if _, ok := a.authorizeRead(w, r); !ok {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		a.invalidTemplateRequest(w, r)
+		return
+	}
+	items, err := a.control.DependentPlans(r.Context(), templateID)
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	response := PlanList{Items: make([]Plan, 0, len(items))}
+	for _, plan := range items {
+		response.Items = append(response.Items, planResponse(plan))
+	}
+	a.json(w, http.StatusOK, response)
 }

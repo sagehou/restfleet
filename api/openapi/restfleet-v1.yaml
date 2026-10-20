@@ -873,6 +873,55 @@ paths:
         "422": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/templates/{template_id}/archive:
+    parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: archiveTemplate
+      description: Archives a template. Refused with 409 TEMPLATE_IN_USE while non-archived plans still reference it.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Template archived.
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Template" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/templates/{template_id}/dependent-plans:
+    parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listTemplateDependentPlans
+      description: Lists non-archived plans that still reference this template.
+      responses:
+        "200":
+          description: Dependent plans.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanList" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/storage-credentials:
     get:
       operationId: listStorageCredentials
@@ -1214,6 +1263,8 @@ components:
         description: { type: string, maxLength: 1024 }
         revision: { type: integer, format: int64, minimum: 1, description: Current immutable revision. Plans apply it explicitly. }
         config: { $ref: "#/components/schemas/TemplateConfig" }
+        archived_at: { type: string, format: date-time, description: Set once the template is archived; archived templates cannot receive revisions.
+        }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     TemplateList:

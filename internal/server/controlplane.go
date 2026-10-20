@@ -76,6 +76,8 @@ type Store interface {
 	Template(context.Context, uuid.UUID) (domain.Template, error)
 	CreateTemplate(context.Context, domain.Template, domain.AuditEvent) (domain.Template, error)
 	TemplateRevisionConfig(context.Context, uuid.UUID, int64) (domain.TemplateConfig, error)
+	ArchiveTemplate(context.Context, uuid.UUID, int64, time.Time, domain.AuditEvent) (domain.Template, error)
+	DependentPlans(context.Context, uuid.UUID) ([]domain.Plan, error)
 	Plans(context.Context, uuid.UUID, int) ([]domain.Plan, error)
 	Plan(context.Context, uuid.UUID) (domain.Plan, error)
 	CreatePlan(context.Context, domain.Plan, domain.AuditEvent) (domain.Plan, error)

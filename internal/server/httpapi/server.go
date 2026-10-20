@@ -558,6 +558,12 @@ func routeLabel(path string) string {
 		if strings.HasSuffix(path, "/apply-to-plans") {
 			return "/api/v1/templates/{template_id}/apply-to-plans"
 		}
+		if strings.HasSuffix(path, "/archive") {
+			return "/api/v1/templates/{template_id}/archive"
+		}
+		if strings.HasSuffix(path, "/dependent-plans") {
+			return "/api/v1/templates/{template_id}/dependent-plans"
+		}
 		return "/api/v1/templates/{template_id}"
 	}
 	if strings.HasPrefix(path, "/api/v1/operations/") {
