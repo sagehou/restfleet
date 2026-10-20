@@ -213,7 +213,7 @@
 
 ## M5 — Templates, Plans and Local Scheduler
 
-**Status: IN PROGRESS** — 模板建表、不可变 revision 与读取/创建/修订 API 已接入；Plan、调度与 Web 页面待完成。
+**Status: IN PROGRESS** — 模板与 Plan 的建表、不可变 revision、读取/创建/修订 API 已接入（Plan 绑定 Host/Agent/Repository，effective config 由中心合并并存档）；调度、apply 与 Web 页面待完成。
 
 ### Goal
 

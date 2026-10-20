@@ -638,6 +638,124 @@ paths:
         "422": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/plans:
+    get:
+      operationId: listPlans
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: Active plans with their stored effective config snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanList" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createPlan
+      description: Binds one Host, Agent, Repository and template revision. The plan starts in DRAFT and is never activated by creation.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlanCreate" }
+      responses:
+        "201":
+          description: Plan created; ETag carries the desired revision.
+          headers:
+            ETag: { schema: { type: string } }
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/plans/{plan_id}:
+    parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getPlan
+      responses:
+        "200":
+          description: Plan with its stored effective config snapshot.
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    patch:
+      operationId: updatePlan
+      description: Appends a desired revision. Config or template changes move an ACTIVE plan to PENDING_APPLY.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlanUpdate" }
+      responses:
+        "200":
+          description: Desired revision appended; ETag carries the new revision.
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/plans/{plan_id}/effective-config:
+    parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getPlanEffectiveConfig
+      description: Returns the stored normalized snapshot; the server does not re-merge the template on read.
+      responses:
+        "200":
+          description: Effective config at the current desired revision.
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/storage-credentials:
     get:
       operationId: listStorageCredentials
@@ -1004,6 +1122,54 @@ components:
       properties:
         description: { type: string, maxLength: 1024 }
         config: { $ref: "#/components/schemas/TemplateConfig" }
+    Plan:
+      type: object
+      additionalProperties: false
+      required: [id, name, host_id, agent_id, repository_id, template_id, template_revision, status, desired_revision, accepted_revision, backup_health, effective_config, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        host_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        repository_id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        template_revision: { type: integer, format: int64, minimum: 1 }
+        status: { type: string, enum: [DRAFT, PENDING_APPLY, ACTIVE, PAUSED, INVALID, ARCHIVED] }
+        desired_revision: { type: integer, format: int64, minimum: 1 }
+        accepted_revision: { type: integer, format: int64, minimum: 0, description: Last revision acknowledged by the Agent. }
+        backup_health: { type: string, enum: [UNKNOWN, HEALTHY, OVERDUE, FAILED] }
+        overrides: { type: object, additionalProperties: true, description: Allowed JSON merge-patch subset stored with the plan. }
+        effective_config: { $ref: "#/components/schemas/TemplateConfig" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PlanList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Plan" }
+        next_cursor: { type: string }
+    PlanCreate:
+      type: object
+      additionalProperties: false
+      required: [name, host_id, agent_id, repository_id, template_id, template_revision]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        host_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        repository_id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        template_revision: { type: integer, format: int64, minimum: 1 }
+        overrides: { type: object, additionalProperties: true, description: Allowed JSON merge-patch subset applied over the template revision. }
+    PlanUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        template_revision: { type: integer, format: int64, minimum: 1 }
+        overrides: { type: object, additionalProperties: true }
     Operation:
       type: object
       additionalProperties: false
