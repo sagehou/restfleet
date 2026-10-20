@@ -87,6 +87,7 @@ type Store interface {
 	UpsertOperationResult(context.Context, domain.BackupOperationResult) error
 	BackupOperations(context.Context, uuid.UUID, int) ([]domain.BackupOperation, error)
 	BackupOperation(context.Context, uuid.UUID) (domain.BackupOperation, error)
+	FleetBackupCounts(context.Context) (plans, operations, running, failed24h, unhealthy int64, err error)
 	SaveTemplateRevision(context.Context, domain.Template, int64, domain.AuditEvent) (domain.Template, error)
 	Repository(context.Context, uuid.UUID) (domain.Repository, error)
 	RepositoryCount(context.Context) (int64, error)

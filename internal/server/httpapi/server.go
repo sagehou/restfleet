@@ -267,11 +267,18 @@ func (a *API) DashboardSummary(w http.ResponseWriter, r *http.Request) {
 		a.internalProblem(w, r)
 		return
 	}
+	plans, operations, running, failed24h, unhealthy, err := a.control.FleetBackupCounts(r.Context())
+	if err != nil {
+		a.internalProblem(w, r)
+		return
+	}
+	runningCount, failedCount, unhealthyCount := running, failed24h, unhealthy
 	a.json(w, http.StatusOK, DashboardSummary{
 		CollectedAt: time.Now().UTC(), Hosts: int64(len(hosts)),
 		AgentsOnline: int64(health.Online), AgentsDegraded: int64(health.Degraded),
 		AgentsOffline: int64(health.Offline),
-		Plans:         0, Repositories: repositories, Operations: 0,
+		Plans:         plans, Repositories: repositories, Operations: operations,
+		OperationsRunning: &runningCount, OperationsFailed24h: &failedCount, PlansUnhealthy: &unhealthyCount,
 	})
 }
 

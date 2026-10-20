@@ -110,7 +110,31 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 		finished, result.ExitCode, result.ErrorCode, result.SnapshotID, result.FilesDone, result.BytesDone); err != nil {
 		return persistenceError(err)
 	}
+	health := ""
+	switch result.Status {
+	case "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS":
+		health = "HEALTHY"
+	case "FAILED":
+		health = "FAILED"
+	}
+	if health != "" {
+		if _, err = tx.Exec(ctx, "update plans set backup_health=$2,updated_at=$3 where id=$1", result.PlanID, health, finished); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 
 var _ = time.Now
+
+// FleetBackupCounts feeds the dashboard without loading individual rows.
+func (s *Store) FleetBackupCounts(ctx context.Context) (plans, operations, running, failed24h, unhealthy int64, err error) {
+	err = s.pool.QueryRow(ctx, `select
+		(select count(*) from plans where archived_at is null),
+		(select count(*) from backup_operations),
+		(select count(*) from backup_operations where status='RUNNING'),
+		(select count(*) from backup_operations where status='FAILED' and finished_at > now() - interval '24 hours'),
+		(select count(*) from plans where archived_at is null and backup_health='FAILED')`).
+		Scan(&plans, &operations, &running, &failed24h, &unhealthy)
+	return
+}

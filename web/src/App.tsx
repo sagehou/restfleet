@@ -393,6 +393,9 @@ function Overview({
         <Metric label="Plans" value={summary.plans} />
         <Metric label="Repositories" value={summary.repositories} />
         <Metric label="Operations" value={summary.operations} />
+        <Metric label="运行中" value={summary.operations_running ?? 0} />
+        <Metric label="24h 失败" value={summary.operations_failed_24h ?? 0} />
+        <Metric label="不健康计划" value={summary.plans_unhealthy ?? 0} />
       </dl>
       {isEmpty && (
         <div className="empty-state">

@@ -1617,6 +1617,18 @@ components:
           type: integer
           format: int64
           minimum: 0
+        operations_running:
+          type: integer
+          format: int64
+          minimum: 0
+        operations_failed_24h:
+          type: integer
+          format: int64
+          minimum: 0
+        plans_unhealthy:
+          type: integer
+          format: int64
+          minimum: 0
     Version:
       type: object
       additionalProperties: false

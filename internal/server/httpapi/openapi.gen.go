@@ -722,14 +722,17 @@ type BootstrapStatus struct {
 
 // DashboardSummary defines model for DashboardSummary.
 type DashboardSummary struct {
-	AgentsDegraded int64     `json:"agents_degraded"`
-	AgentsOffline  int64     `json:"agents_offline"`
-	AgentsOnline   int64     `json:"agents_online"`
-	CollectedAt    time.Time `json:"collected_at"`
-	Hosts          int64     `json:"hosts"`
-	Operations     int64     `json:"operations"`
-	Plans          int64     `json:"plans"`
-	Repositories   int64     `json:"repositories"`
+	AgentsDegraded      int64     `json:"agents_degraded"`
+	AgentsOffline       int64     `json:"agents_offline"`
+	AgentsOnline        int64     `json:"agents_online"`
+	CollectedAt         time.Time `json:"collected_at"`
+	Hosts               int64     `json:"hosts"`
+	Operations          int64     `json:"operations"`
+	OperationsFailed24h *int64    `json:"operations_failed_24h,omitempty"`
+	OperationsRunning   *int64    `json:"operations_running,omitempty"`
+	Plans               int64     `json:"plans"`
+	PlansUnhealthy      *int64    `json:"plans_unhealthy,omitempty"`
+	Repositories        int64     `json:"repositories"`
 }
 
 // EnrollmentInstall defines model for EnrollmentInstall.
