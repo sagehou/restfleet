@@ -23,6 +23,10 @@ message AgentToServer {
     ConfigAccepted config_accepted = 14;
     ConfigRejected config_rejected = 15;
     CredentialRevisionAccepted credential_revision_accepted = 16;
+    JobAccepted job_accepted = 17;
+    JobRejected job_rejected = 18;
+    JobProgress job_progress = 19;
+    JobResult job_result = 20;
   }
 }
 
@@ -36,6 +40,7 @@ message ServerToAgent {
     CertificateRotationResponse certificate_rotation_response = 11;
     DesiredStateSnapshot desired_state_snapshot = 12;
     CredentialRevision credential_revision = 13;
+    JobDispatch job_dispatch = 14;
   }
 }
 
@@ -180,4 +185,56 @@ message CredentialRevision {
 message CredentialRevisionAccepted {
   string delivery_id = 1;
   int64 revision = 2;
+}
+
+// JobDispatch asks the Agent to run one Operation. Delivery is at-least-once;
+// the Agent de-duplicates by job_id and replays the stored result.
+message JobDispatch {
+  string job_id = 1;
+  string operation_id = 2;
+  string type = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp not_before = 5;
+  google.protobuf.Timestamp deadline = 6;
+  string plan_id = 7;
+  int64 plan_revision = 8;
+  string config_hash = 9;
+  // payload is type-specific and must not contain secrets.
+  bytes payload = 10;
+}
+
+message JobAccepted {
+  string job_id = 1;
+  string operation_id = 2;
+}
+
+message JobRejected {
+  string job_id = 1;
+  string operation_id = 2;
+  string error_code = 3;
+}
+
+// JobProgress mirrors Restic status messages; sequence is monotonic per
+// operation and may be coalesced when the connection is slow.
+message JobProgress {
+  string operation_id = 1;
+  uint64 sequence = 2;
+  string stage = 3;
+  int64 files_done = 4;
+  int64 total_files = 5;
+  int64 bytes_done = 6;
+  int64 total_bytes = 7;
+  google.protobuf.Timestamp observed_at = 8;
+}
+
+message JobResult {
+  string operation_id = 1;
+  string status = 2;
+  string error_code = 3;
+  int64 exit_code = 4;
+  string snapshot_id = 5;
+  int64 files_new = 6;
+  int64 data_added = 7;
+  google.protobuf.Timestamp finished_at = 8;
+  repeated string warnings = 9;
 }

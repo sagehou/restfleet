@@ -37,6 +37,10 @@ type AgentToServer struct {
 	//	*AgentToServer_ConfigAccepted
 	//	*AgentToServer_ConfigRejected
 	//	*AgentToServer_CredentialRevisionAccepted
+	//	*AgentToServer_JobAccepted
+	//	*AgentToServer_JobRejected
+	//	*AgentToServer_JobProgress
+	//	*AgentToServer_JobResult
 	Payload       isAgentToServer_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -170,6 +174,42 @@ func (x *AgentToServer) GetCredentialRevisionAccepted() *CredentialRevisionAccep
 	return nil
 }
 
+func (x *AgentToServer) GetJobAccepted() *JobAccepted {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_JobAccepted); ok {
+			return x.JobAccepted
+		}
+	}
+	return nil
+}
+
+func (x *AgentToServer) GetJobRejected() *JobRejected {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_JobRejected); ok {
+			return x.JobRejected
+		}
+	}
+	return nil
+}
+
+func (x *AgentToServer) GetJobProgress() *JobProgress {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_JobProgress); ok {
+			return x.JobProgress
+		}
+	}
+	return nil
+}
+
+func (x *AgentToServer) GetJobResult() *JobResult {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentToServer_JobResult); ok {
+			return x.JobResult
+		}
+	}
+	return nil
+}
+
 type isAgentToServer_Payload interface {
 	isAgentToServer_Payload()
 }
@@ -202,6 +242,22 @@ type AgentToServer_CredentialRevisionAccepted struct {
 	CredentialRevisionAccepted *CredentialRevisionAccepted `protobuf:"bytes,16,opt,name=credential_revision_accepted,json=credentialRevisionAccepted,proto3,oneof"`
 }
 
+type AgentToServer_JobAccepted struct {
+	JobAccepted *JobAccepted `protobuf:"bytes,17,opt,name=job_accepted,json=jobAccepted,proto3,oneof"`
+}
+
+type AgentToServer_JobRejected struct {
+	JobRejected *JobRejected `protobuf:"bytes,18,opt,name=job_rejected,json=jobRejected,proto3,oneof"`
+}
+
+type AgentToServer_JobProgress struct {
+	JobProgress *JobProgress `protobuf:"bytes,19,opt,name=job_progress,json=jobProgress,proto3,oneof"`
+}
+
+type AgentToServer_JobResult struct {
+	JobResult *JobResult `protobuf:"bytes,20,opt,name=job_result,json=jobResult,proto3,oneof"`
+}
+
 func (*AgentToServer_Hello) isAgentToServer_Payload() {}
 
 func (*AgentToServer_CertificateRotationRequest) isAgentToServer_Payload() {}
@@ -216,6 +272,14 @@ func (*AgentToServer_ConfigRejected) isAgentToServer_Payload() {}
 
 func (*AgentToServer_CredentialRevisionAccepted) isAgentToServer_Payload() {}
 
+func (*AgentToServer_JobAccepted) isAgentToServer_Payload() {}
+
+func (*AgentToServer_JobRejected) isAgentToServer_Payload() {}
+
+func (*AgentToServer_JobProgress) isAgentToServer_Payload() {}
+
+func (*AgentToServer_JobResult) isAgentToServer_Payload() {}
+
 type ServerToAgent struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	MessageId       string                 `protobuf:"bytes,1,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
@@ -228,6 +292,7 @@ type ServerToAgent struct {
 	//	*ServerToAgent_CertificateRotationResponse
 	//	*ServerToAgent_DesiredStateSnapshot
 	//	*ServerToAgent_CredentialRevision
+	//	*ServerToAgent_JobDispatch
 	Payload       isServerToAgent_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -334,6 +399,15 @@ func (x *ServerToAgent) GetCredentialRevision() *CredentialRevision {
 	return nil
 }
 
+func (x *ServerToAgent) GetJobDispatch() *JobDispatch {
+	if x != nil {
+		if x, ok := x.Payload.(*ServerToAgent_JobDispatch); ok {
+			return x.JobDispatch
+		}
+	}
+	return nil
+}
+
 type isServerToAgent_Payload interface {
 	isServerToAgent_Payload()
 }
@@ -354,6 +428,10 @@ type ServerToAgent_CredentialRevision struct {
 	CredentialRevision *CredentialRevision `protobuf:"bytes,13,opt,name=credential_revision,json=credentialRevision,proto3,oneof"`
 }
 
+type ServerToAgent_JobDispatch struct {
+	JobDispatch *JobDispatch `protobuf:"bytes,14,opt,name=job_dispatch,json=jobDispatch,proto3,oneof"`
+}
+
 func (*ServerToAgent_Welcome) isServerToAgent_Payload() {}
 
 func (*ServerToAgent_CertificateRotationResponse) isServerToAgent_Payload() {}
@@ -361,6 +439,8 @@ func (*ServerToAgent_CertificateRotationResponse) isServerToAgent_Payload() {}
 func (*ServerToAgent_DesiredStateSnapshot) isServerToAgent_Payload() {}
 
 func (*ServerToAgent_CredentialRevision) isServerToAgent_Payload() {}
+
+func (*ServerToAgent_JobDispatch) isServerToAgent_Payload() {}
 
 type Hello struct {
 	state                     protoimpl.MessageState `protogen:"open.v1"`
@@ -1662,11 +1742,452 @@ func (x *CredentialRevisionAccepted) GetRevision() int64 {
 	return 0
 }
 
+// JobDispatch asks the Agent to run one Operation. Delivery is at-least-once;
+// the Agent de-duplicates by job_id and replays the stored result.
+type JobDispatch struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	JobId        string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	OperationId  string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Type         string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	CreatedAt    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	NotBefore    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=not_before,json=notBefore,proto3" json:"not_before,omitempty"`
+	Deadline     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	PlanId       string                 `protobuf:"bytes,7,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	PlanRevision int64                  `protobuf:"varint,8,opt,name=plan_revision,json=planRevision,proto3" json:"plan_revision,omitempty"`
+	ConfigHash   string                 `protobuf:"bytes,9,opt,name=config_hash,json=configHash,proto3" json:"config_hash,omitempty"`
+	// payload is type-specific and must not contain secrets.
+	Payload       []byte `protobuf:"bytes,10,opt,name=payload,proto3" json:"payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobDispatch) Reset() {
+	*x = JobDispatch{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobDispatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobDispatch) ProtoMessage() {}
+
+func (x *JobDispatch) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobDispatch.ProtoReflect.Descriptor instead.
+func (*JobDispatch) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *JobDispatch) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobDispatch) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *JobDispatch) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *JobDispatch) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *JobDispatch) GetNotBefore() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NotBefore
+	}
+	return nil
+}
+
+func (x *JobDispatch) GetDeadline() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Deadline
+	}
+	return nil
+}
+
+func (x *JobDispatch) GetPlanId() string {
+	if x != nil {
+		return x.PlanId
+	}
+	return ""
+}
+
+func (x *JobDispatch) GetPlanRevision() int64 {
+	if x != nil {
+		return x.PlanRevision
+	}
+	return 0
+}
+
+func (x *JobDispatch) GetConfigHash() string {
+	if x != nil {
+		return x.ConfigHash
+	}
+	return ""
+}
+
+func (x *JobDispatch) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+type JobAccepted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	OperationId   string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobAccepted) Reset() {
+	*x = JobAccepted{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobAccepted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobAccepted) ProtoMessage() {}
+
+func (x *JobAccepted) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobAccepted.ProtoReflect.Descriptor instead.
+func (*JobAccepted) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *JobAccepted) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobAccepted) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+type JobRejected struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	OperationId   string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobRejected) Reset() {
+	*x = JobRejected{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobRejected) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobRejected) ProtoMessage() {}
+
+func (x *JobRejected) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobRejected.ProtoReflect.Descriptor instead.
+func (*JobRejected) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *JobRejected) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobRejected) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *JobRejected) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+// JobProgress mirrors Restic status messages; sequence is monotonic per
+// operation and may be coalesced when the connection is slow.
+type JobProgress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Sequence      uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Stage         string                 `protobuf:"bytes,3,opt,name=stage,proto3" json:"stage,omitempty"`
+	FilesDone     int64                  `protobuf:"varint,4,opt,name=files_done,json=filesDone,proto3" json:"files_done,omitempty"`
+	TotalFiles    int64                  `protobuf:"varint,5,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`
+	BytesDone     int64                  `protobuf:"varint,6,opt,name=bytes_done,json=bytesDone,proto3" json:"bytes_done,omitempty"`
+	TotalBytes    int64                  `protobuf:"varint,7,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`
+	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobProgress) Reset() {
+	*x = JobProgress{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobProgress) ProtoMessage() {}
+
+func (x *JobProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobProgress.ProtoReflect.Descriptor instead.
+func (*JobProgress) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *JobProgress) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *JobProgress) GetSequence() uint64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+func (x *JobProgress) GetStage() string {
+	if x != nil {
+		return x.Stage
+	}
+	return ""
+}
+
+func (x *JobProgress) GetFilesDone() int64 {
+	if x != nil {
+		return x.FilesDone
+	}
+	return 0
+}
+
+func (x *JobProgress) GetTotalFiles() int64 {
+	if x != nil {
+		return x.TotalFiles
+	}
+	return 0
+}
+
+func (x *JobProgress) GetBytesDone() int64 {
+	if x != nil {
+		return x.BytesDone
+	}
+	return 0
+}
+
+func (x *JobProgress) GetTotalBytes() int64 {
+	if x != nil {
+		return x.TotalBytes
+	}
+	return 0
+}
+
+func (x *JobProgress) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+type JobResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	ExitCode      int64                  `protobuf:"varint,4,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	SnapshotId    string                 `protobuf:"bytes,5,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	FilesNew      int64                  `protobuf:"varint,6,opt,name=files_new,json=filesNew,proto3" json:"files_new,omitempty"`
+	DataAdded     int64                  `protobuf:"varint,7,opt,name=data_added,json=dataAdded,proto3" json:"data_added,omitempty"`
+	FinishedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	Warnings      []string               `protobuf:"bytes,9,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobResult) Reset() {
+	*x = JobResult{}
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobResult) ProtoMessage() {}
+
+func (x *JobResult) ProtoReflect() protoreflect.Message {
+	mi := &file_restfleet_agent_v1_agent_control_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobResult.ProtoReflect.Descriptor instead.
+func (*JobResult) Descriptor() ([]byte, []int) {
+	return file_restfleet_agent_v1_agent_control_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *JobResult) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *JobResult) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *JobResult) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *JobResult) GetExitCode() int64 {
+	if x != nil {
+		return x.ExitCode
+	}
+	return 0
+}
+
+func (x *JobResult) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *JobResult) GetFilesNew() int64 {
+	if x != nil {
+		return x.FilesNew
+	}
+	return 0
+}
+
+func (x *JobResult) GetDataAdded() int64 {
+	if x != nil {
+		return x.DataAdded
+	}
+	return 0
+}
+
+func (x *JobResult) GetFinishedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FinishedAt
+	}
+	return nil
+}
+
+func (x *JobResult) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
+	}
+	return nil
+}
+
 var File_restfleet_agent_v1_agent_control_proto protoreflect.FileDescriptor
 
 const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\n" +
-	"&restfleet/agent/v1/agent_control.proto\x12\x12restfleet.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xff\x05\n" +
+	"&restfleet/agent/v1/agent_control.proto\x12\x12restfleet.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x91\b\n" +
 	"\rAgentToServer\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12)\n" +
@@ -1680,8 +2201,13 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x10inventory_report\x18\r \x01(\v2#.restfleet.agent.v1.InventoryReportH\x00R\x0finventoryReport\x12M\n" +
 	"\x0fconfig_accepted\x18\x0e \x01(\v2\".restfleet.agent.v1.ConfigAcceptedH\x00R\x0econfigAccepted\x12M\n" +
 	"\x0fconfig_rejected\x18\x0f \x01(\v2\".restfleet.agent.v1.ConfigRejectedH\x00R\x0econfigRejected\x12r\n" +
-	"\x1ccredential_revision_accepted\x18\x10 \x01(\v2..restfleet.agent.v1.CredentialRevisionAcceptedH\x00R\x1acredentialRevisionAcceptedB\t\n" +
-	"\apayload\"\xa2\x04\n" +
+	"\x1ccredential_revision_accepted\x18\x10 \x01(\v2..restfleet.agent.v1.CredentialRevisionAcceptedH\x00R\x1acredentialRevisionAccepted\x12D\n" +
+	"\fjob_accepted\x18\x11 \x01(\v2\x1f.restfleet.agent.v1.JobAcceptedH\x00R\vjobAccepted\x12D\n" +
+	"\fjob_rejected\x18\x12 \x01(\v2\x1f.restfleet.agent.v1.JobRejectedH\x00R\vjobRejected\x12D\n" +
+	"\fjob_progress\x18\x13 \x01(\v2\x1f.restfleet.agent.v1.JobProgressH\x00R\vjobProgress\x12>\n" +
+	"\n" +
+	"job_result\x18\x14 \x01(\v2\x1d.restfleet.agent.v1.JobResultH\x00R\tjobResultB\t\n" +
+	"\apayload\"\xe8\x04\n" +
 	"\rServerToAgent\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12)\n" +
@@ -1692,7 +2218,8 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	" \x01(\v2\x1b.restfleet.agent.v1.WelcomeH\x00R\awelcome\x12u\n" +
 	"\x1dcertificate_rotation_response\x18\v \x01(\v2/.restfleet.agent.v1.CertificateRotationResponseH\x00R\x1bcertificateRotationResponse\x12`\n" +
 	"\x16desired_state_snapshot\x18\f \x01(\v2(.restfleet.agent.v1.DesiredStateSnapshotH\x00R\x14desiredStateSnapshot\x12Y\n" +
-	"\x13credential_revision\x18\r \x01(\v2&.restfleet.agent.v1.CredentialRevisionH\x00R\x12credentialRevisionB\t\n" +
+	"\x13credential_revision\x18\r \x01(\v2&.restfleet.agent.v1.CredentialRevisionH\x00R\x12credentialRevision\x12D\n" +
+	"\fjob_dispatch\x18\x0e \x01(\v2\x1f.restfleet.agent.v1.JobDispatchH\x00R\vjobDispatchB\t\n" +
 	"\apayload\"\xcf\x03\n" +
 	"\x05Hello\x12\x1d\n" +
 	"\n" +
@@ -1823,7 +2350,58 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x1aCredentialRevisionAccepted\x12\x1f\n" +
 	"\vdelivery_id\x18\x01 \x01(\tR\n" +
 	"deliveryId\x12\x1a\n" +
-	"\brevision\x18\x02 \x01(\x03R\brevision2j\n" +
+	"\brevision\x18\x02 \x01(\x03R\brevision\"\x82\x03\n" +
+	"\vJobDispatch\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12!\n" +
+	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type\x129\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"not_before\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tnotBefore\x126\n" +
+	"\bdeadline\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\x12\x17\n" +
+	"\aplan_id\x18\a \x01(\tR\x06planId\x12#\n" +
+	"\rplan_revision\x18\b \x01(\x03R\fplanRevision\x12\x1f\n" +
+	"\vconfig_hash\x18\t \x01(\tR\n" +
+	"configHash\x12\x18\n" +
+	"\apayload\x18\n" +
+	" \x01(\fR\apayload\"G\n" +
+	"\vJobAccepted\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12!\n" +
+	"\foperation_id\x18\x02 \x01(\tR\voperationId\"f\n" +
+	"\vJobRejected\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12!\n" +
+	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x03 \x01(\tR\terrorCode\"\x9f\x02\n" +
+	"\vJobProgress\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1a\n" +
+	"\bsequence\x18\x02 \x01(\x04R\bsequence\x12\x14\n" +
+	"\x05stage\x18\x03 \x01(\tR\x05stage\x12\x1d\n" +
+	"\n" +
+	"files_done\x18\x04 \x01(\x03R\tfilesDone\x12\x1f\n" +
+	"\vtotal_files\x18\x05 \x01(\x03R\n" +
+	"totalFiles\x12\x1d\n" +
+	"\n" +
+	"bytes_done\x18\x06 \x01(\x03R\tbytesDone\x12\x1f\n" +
+	"\vtotal_bytes\x18\a \x01(\x03R\n" +
+	"totalBytes\x12;\n" +
+	"\vobserved_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\"\xb8\x02\n" +
+	"\tJobResult\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x03 \x01(\tR\terrorCode\x12\x1b\n" +
+	"\texit_code\x18\x04 \x01(\x03R\bexitCode\x12\x1f\n" +
+	"\vsnapshot_id\x18\x05 \x01(\tR\n" +
+	"snapshotId\x12\x1b\n" +
+	"\tfiles_new\x18\x06 \x01(\x03R\bfilesNew\x12\x1d\n" +
+	"\n" +
+	"data_added\x18\a \x01(\x03R\tdataAdded\x12;\n" +
+	"\vfinished_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"finishedAt\x12\x1a\n" +
+	"\bwarnings\x18\t \x03(\tR\bwarnings2j\n" +
 	"\x13AgentControlService\x12S\n" +
 	"\aConnect\x12!.restfleet.agent.v1.AgentToServer\x1a!.restfleet.agent.v1.ServerToAgent(\x010\x01BJZHgithub.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1;agentv1b\x06proto3"
 
@@ -1839,7 +2417,7 @@ func file_restfleet_agent_v1_agent_control_proto_rawDescGZIP() []byte {
 	return file_restfleet_agent_v1_agent_control_proto_rawDescData
 }
 
-var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_restfleet_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_restfleet_agent_v1_agent_control_proto_goTypes = []any{
 	(*AgentToServer)(nil),               // 0: restfleet.agent.v1.AgentToServer
 	(*ServerToAgent)(nil),               // 1: restfleet.agent.v1.ServerToAgent
@@ -1859,11 +2437,16 @@ var file_restfleet_agent_v1_agent_control_proto_goTypes = []any{
 	(*RuntimePolicy)(nil),               // 15: restfleet.agent.v1.RuntimePolicy
 	(*CredentialRevision)(nil),          // 16: restfleet.agent.v1.CredentialRevision
 	(*CredentialRevisionAccepted)(nil),  // 17: restfleet.agent.v1.CredentialRevisionAccepted
-	nil,                                 // 18: restfleet.agent.v1.InventoryReport.AvailableBytesEntry
-	(*timestamppb.Timestamp)(nil),       // 19: google.protobuf.Timestamp
+	(*JobDispatch)(nil),                 // 18: restfleet.agent.v1.JobDispatch
+	(*JobAccepted)(nil),                 // 19: restfleet.agent.v1.JobAccepted
+	(*JobRejected)(nil),                 // 20: restfleet.agent.v1.JobRejected
+	(*JobProgress)(nil),                 // 21: restfleet.agent.v1.JobProgress
+	(*JobResult)(nil),                   // 22: restfleet.agent.v1.JobResult
+	nil,                                 // 23: restfleet.agent.v1.InventoryReport.AvailableBytesEntry
+	(*timestamppb.Timestamp)(nil),       // 24: google.protobuf.Timestamp
 }
 var file_restfleet_agent_v1_agent_control_proto_depIdxs = []int32{
-	19, // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
+	24, // 0: restfleet.agent.v1.AgentToServer.sent_at:type_name -> google.protobuf.Timestamp
 	2,  // 1: restfleet.agent.v1.AgentToServer.hello:type_name -> restfleet.agent.v1.Hello
 	4,  // 2: restfleet.agent.v1.AgentToServer.certificate_rotation_request:type_name -> restfleet.agent.v1.CertificateRotationRequest
 	6,  // 3: restfleet.agent.v1.AgentToServer.heartbeat:type_name -> restfleet.agent.v1.Heartbeat
@@ -1871,33 +2454,43 @@ var file_restfleet_agent_v1_agent_control_proto_depIdxs = []int32{
 	11, // 5: restfleet.agent.v1.AgentToServer.config_accepted:type_name -> restfleet.agent.v1.ConfigAccepted
 	12, // 6: restfleet.agent.v1.AgentToServer.config_rejected:type_name -> restfleet.agent.v1.ConfigRejected
 	17, // 7: restfleet.agent.v1.AgentToServer.credential_revision_accepted:type_name -> restfleet.agent.v1.CredentialRevisionAccepted
-	19, // 8: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
-	3,  // 9: restfleet.agent.v1.ServerToAgent.welcome:type_name -> restfleet.agent.v1.Welcome
-	5,  // 10: restfleet.agent.v1.ServerToAgent.certificate_rotation_response:type_name -> restfleet.agent.v1.CertificateRotationResponse
-	13, // 11: restfleet.agent.v1.ServerToAgent.desired_state_snapshot:type_name -> restfleet.agent.v1.DesiredStateSnapshot
-	16, // 12: restfleet.agent.v1.ServerToAgent.credential_revision:type_name -> restfleet.agent.v1.CredentialRevision
-	19, // 13: restfleet.agent.v1.Hello.local_time:type_name -> google.protobuf.Timestamp
-	19, // 14: restfleet.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
-	19, // 15: restfleet.agent.v1.Welcome.drain_deadline:type_name -> google.protobuf.Timestamp
-	19, // 16: restfleet.agent.v1.CertificateRotationResponse.not_after:type_name -> google.protobuf.Timestamp
-	7,  // 17: restfleet.agent.v1.Heartbeat.active_operations:type_name -> restfleet.agent.v1.ActiveOperation
-	8,  // 18: restfleet.agent.v1.Heartbeat.next_runs:type_name -> restfleet.agent.v1.NextRun
-	9,  // 19: restfleet.agent.v1.Heartbeat.health_checks:type_name -> restfleet.agent.v1.HealthCheck
-	19, // 20: restfleet.agent.v1.Heartbeat.local_time:type_name -> google.protobuf.Timestamp
-	19, // 21: restfleet.agent.v1.NextRun.scheduled_at:type_name -> google.protobuf.Timestamp
-	19, // 22: restfleet.agent.v1.InventoryReport.captured_at:type_name -> google.protobuf.Timestamp
-	18, // 23: restfleet.agent.v1.InventoryReport.available_bytes:type_name -> restfleet.agent.v1.InventoryReport.AvailableBytesEntry
-	19, // 24: restfleet.agent.v1.DesiredStateSnapshot.generated_at:type_name -> google.protobuf.Timestamp
-	15, // 25: restfleet.agent.v1.DesiredStateSnapshot.runtime_policy:type_name -> restfleet.agent.v1.RuntimePolicy
-	14, // 26: restfleet.agent.v1.DesiredStateSnapshot.plans:type_name -> restfleet.agent.v1.PlanSchedule
-	19, // 27: restfleet.agent.v1.CredentialRevision.valid_from:type_name -> google.protobuf.Timestamp
-	0,  // 28: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
-	1,  // 29: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
-	29, // [29:30] is the sub-list for method output_type
-	28, // [28:29] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	19, // 8: restfleet.agent.v1.AgentToServer.job_accepted:type_name -> restfleet.agent.v1.JobAccepted
+	20, // 9: restfleet.agent.v1.AgentToServer.job_rejected:type_name -> restfleet.agent.v1.JobRejected
+	21, // 10: restfleet.agent.v1.AgentToServer.job_progress:type_name -> restfleet.agent.v1.JobProgress
+	22, // 11: restfleet.agent.v1.AgentToServer.job_result:type_name -> restfleet.agent.v1.JobResult
+	24, // 12: restfleet.agent.v1.ServerToAgent.sent_at:type_name -> google.protobuf.Timestamp
+	3,  // 13: restfleet.agent.v1.ServerToAgent.welcome:type_name -> restfleet.agent.v1.Welcome
+	5,  // 14: restfleet.agent.v1.ServerToAgent.certificate_rotation_response:type_name -> restfleet.agent.v1.CertificateRotationResponse
+	13, // 15: restfleet.agent.v1.ServerToAgent.desired_state_snapshot:type_name -> restfleet.agent.v1.DesiredStateSnapshot
+	16, // 16: restfleet.agent.v1.ServerToAgent.credential_revision:type_name -> restfleet.agent.v1.CredentialRevision
+	18, // 17: restfleet.agent.v1.ServerToAgent.job_dispatch:type_name -> restfleet.agent.v1.JobDispatch
+	24, // 18: restfleet.agent.v1.Hello.local_time:type_name -> google.protobuf.Timestamp
+	24, // 19: restfleet.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
+	24, // 20: restfleet.agent.v1.Welcome.drain_deadline:type_name -> google.protobuf.Timestamp
+	24, // 21: restfleet.agent.v1.CertificateRotationResponse.not_after:type_name -> google.protobuf.Timestamp
+	7,  // 22: restfleet.agent.v1.Heartbeat.active_operations:type_name -> restfleet.agent.v1.ActiveOperation
+	8,  // 23: restfleet.agent.v1.Heartbeat.next_runs:type_name -> restfleet.agent.v1.NextRun
+	9,  // 24: restfleet.agent.v1.Heartbeat.health_checks:type_name -> restfleet.agent.v1.HealthCheck
+	24, // 25: restfleet.agent.v1.Heartbeat.local_time:type_name -> google.protobuf.Timestamp
+	24, // 26: restfleet.agent.v1.NextRun.scheduled_at:type_name -> google.protobuf.Timestamp
+	24, // 27: restfleet.agent.v1.InventoryReport.captured_at:type_name -> google.protobuf.Timestamp
+	23, // 28: restfleet.agent.v1.InventoryReport.available_bytes:type_name -> restfleet.agent.v1.InventoryReport.AvailableBytesEntry
+	24, // 29: restfleet.agent.v1.DesiredStateSnapshot.generated_at:type_name -> google.protobuf.Timestamp
+	15, // 30: restfleet.agent.v1.DesiredStateSnapshot.runtime_policy:type_name -> restfleet.agent.v1.RuntimePolicy
+	14, // 31: restfleet.agent.v1.DesiredStateSnapshot.plans:type_name -> restfleet.agent.v1.PlanSchedule
+	24, // 32: restfleet.agent.v1.CredentialRevision.valid_from:type_name -> google.protobuf.Timestamp
+	24, // 33: restfleet.agent.v1.JobDispatch.created_at:type_name -> google.protobuf.Timestamp
+	24, // 34: restfleet.agent.v1.JobDispatch.not_before:type_name -> google.protobuf.Timestamp
+	24, // 35: restfleet.agent.v1.JobDispatch.deadline:type_name -> google.protobuf.Timestamp
+	24, // 36: restfleet.agent.v1.JobProgress.observed_at:type_name -> google.protobuf.Timestamp
+	24, // 37: restfleet.agent.v1.JobResult.finished_at:type_name -> google.protobuf.Timestamp
+	0,  // 38: restfleet.agent.v1.AgentControlService.Connect:input_type -> restfleet.agent.v1.AgentToServer
+	1,  // 39: restfleet.agent.v1.AgentControlService.Connect:output_type -> restfleet.agent.v1.ServerToAgent
+	39, // [39:40] is the sub-list for method output_type
+	38, // [38:39] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_restfleet_agent_v1_agent_control_proto_init() }
@@ -1913,12 +2506,17 @@ func file_restfleet_agent_v1_agent_control_proto_init() {
 		(*AgentToServer_ConfigAccepted)(nil),
 		(*AgentToServer_ConfigRejected)(nil),
 		(*AgentToServer_CredentialRevisionAccepted)(nil),
+		(*AgentToServer_JobAccepted)(nil),
+		(*AgentToServer_JobRejected)(nil),
+		(*AgentToServer_JobProgress)(nil),
+		(*AgentToServer_JobResult)(nil),
 	}
 	file_restfleet_agent_v1_agent_control_proto_msgTypes[1].OneofWrappers = []any{
 		(*ServerToAgent_Welcome)(nil),
 		(*ServerToAgent_CertificateRotationResponse)(nil),
 		(*ServerToAgent_DesiredStateSnapshot)(nil),
 		(*ServerToAgent_CredentialRevision)(nil),
+		(*ServerToAgent_JobDispatch)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1926,7 +2524,7 @@ func file_restfleet_agent_v1_agent_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_restfleet_agent_v1_agent_control_proto_rawDesc), len(file_restfleet_agent_v1_agent_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
