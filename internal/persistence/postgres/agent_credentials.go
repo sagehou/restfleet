@@ -60,6 +60,31 @@ func scanAgentDelivery(ctx context.Context, tx pgx.Tx, agentID uuid.UUID) (domai
 	return d, err
 }
 
+// AcceptedAgentCredential reads only current acknowledged metadata for trusted
+// central provisioning. It neither creates a delivery nor reads secret payloads.
+// ReserveBackupAdmission revalidates these bindings under its own transaction.
+func (s *Store) AcceptedAgentCredential(ctx context.Context, agentID uuid.UUID, configurationHash string) (domain.AgentCredentialDelivery, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.AgentCredentialDelivery{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	r, err := lockAgentRepository(ctx, tx, agentID, false)
+	if err != nil {
+		return domain.AgentCredentialDelivery{}, err
+	}
+	d, err := scanAgentDelivery(ctx, tx, agentID)
+	if err != nil {
+		return domain.AgentCredentialDelivery{}, err
+	}
+	if r.Status == "LOCKED" || d.AcceptedAt == nil || d.ConfigurationHash != configurationHash ||
+		d.Repository.ID != r.ID || d.Gateway.ID != r.GatewaySecretRef || d.Restic.ID != r.ResticSecretRef {
+		return domain.AgentCredentialDelivery{}, domain.ErrBackupAdmission
+	}
+	d.Repository = r
+	return d, tx.Commit(ctx)
+}
+
 func agentCredentialAudit(ctx context.Context, tx pgx.Tx, d domain.AgentCredentialDelivery, action string) error {
 	id, err := uuid.NewV7()
 	if err != nil {

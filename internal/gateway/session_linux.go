@@ -52,6 +52,7 @@ type Event = domain.GatewayEvent
 type BackupSession struct {
 	binding   Binding
 	prefix    string
+	agentID   uuid.UUID
 	verifier  [sha256.Size]byte
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -72,6 +73,14 @@ type BackupSession struct {
 func NewBackupSession(ctx context.Context, binding Binding, socket string,
 	audit func(context.Context, Event) error,
 ) (*BackupSession, []byte, error) {
+	return newBackupSession(ctx, binding, socket, audit, uuid.Nil)
+}
+
+// The production service uses the enrolled Agent identity. The Basic-auth
+// constructor remains for existing isolated adapter/conformance fixtures only.
+func newBackupSession(ctx context.Context, binding Binding, socket string,
+	audit func(context.Context, Event) error, agentID uuid.UUID,
+) (*BackupSession, []byte, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok || !deadline.After(time.Now()) || ctx.Err() != nil || audit == nil {
 		return nil, nil, ErrInvalidSession
@@ -84,15 +93,20 @@ func NewBackupSession(ctx context.Context, binding Binding, socket string,
 	if !privateSocket(socket) {
 		return nil, nil, ErrInvalidSession
 	}
-	token, err := security.NewOpaqueToken()
-	if err != nil {
+	var secret []byte
+	if agentID == uuid.Nil {
+		token, err := security.NewOpaqueToken()
+		if err != nil {
+			return nil, nil, ErrInvalidSession
+		}
+		secret = []byte(token)
+	} else if agentID.Version() != 7 || agentID.Variant() != uuid.RFC4122 {
 		return nil, nil, ErrInvalidSession
 	}
-	secret := []byte(token)
 	ctx, cancel := context.WithCancel(ctx)
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	s := &BackupSession{
-		binding: binding, prefix: "/restic/" + binding.GatewayID.String() + "/" + binding.RepositoryID.String() + "/",
+		binding: binding, agentID: agentID, prefix: "/restic/" + binding.GatewayID.String() + "/" + binding.RepositoryID.String() + "/",
 		verifier: sha256.Sum256(secret), ctx: ctx, cancel: cancel, audit: audit,
 		requests: make(chan struct{}, 8), writes: make(chan struct{}, 1), locks: make(map[string]bool),
 		transport: &http.Transport{
@@ -105,7 +119,25 @@ func NewBackupSession(ctx context.Context, binding Binding, socket string,
 			DisableCompression: true,
 		},
 	}
+	if agentID != uuid.Nil {
+		s.prefix += binding.OperationID.String() + "/"
+	}
 	return s, secret, nil
+}
+
+// Use only the verified TLS leaf; headers and request bodies cannot name an
+// Agent. Recheck expiry on keep-alive connections as well as at the handshake.
+func authenticatedAgent(r *http.Request) (uuid.UUID, bool) {
+	if r.TLS == nil || r.TLS.Version < tls.VersionTLS12 || len(r.TLS.VerifiedChains) == 0 ||
+		len(r.TLS.PeerCertificates) == 0 || len(r.TLS.VerifiedChains[0]) == 0 {
+		return uuid.Nil, false
+	}
+	leaf := r.TLS.PeerCertificates[0]
+	if !bytes.Equal(leaf.Raw, r.TLS.VerifiedChains[0][0].Raw) || time.Now().Before(leaf.NotBefore) || !time.Now().Before(leaf.NotAfter) {
+		return uuid.Nil, false
+	}
+	id, err := security.AgentIDFromCertificate(leaf)
+	return id, err == nil && id.Version() == 7 && id.Variant() == uuid.RFC4122
 }
 
 func privateSocket(socket string) bool {
@@ -159,11 +191,20 @@ func (s *BackupSession) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.deny(w, r, false, "tls_required", http.StatusForbidden)
 		return
 	}
-	username, password, ok := r.BasicAuth()
-	hash := sha256.Sum256([]byte(password))
-	if !ok || len(r.Header.Values("Authorization")) != 1 || username != s.binding.GatewayID.String() ||
-		subtle.ConstantTimeCompare(hash[:], s.verifier[:]) != 1 {
-		w.Header().Set("WWW-Authenticate", `Basic realm="restfleet"`)
+	authenticated := false
+	if s.agentID != uuid.Nil {
+		id, ok := authenticatedAgent(r)
+		authenticated = ok && id == s.agentID
+	} else {
+		username, password, ok := r.BasicAuth()
+		hash := sha256.Sum256([]byte(password))
+		authenticated = ok && len(r.Header.Values("Authorization")) == 1 && username == s.binding.GatewayID.String() &&
+			subtle.ConstantTimeCompare(hash[:], s.verifier[:]) == 1
+		if !authenticated {
+			w.Header().Set("WWW-Authenticate", `Basic realm="restfleet"`)
+		}
+	}
+	if !authenticated {
 		s.deny(w, r, false, "authentication_failed", http.StatusUnauthorized)
 		return
 	}

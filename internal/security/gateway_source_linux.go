@@ -1,6 +1,7 @@
 package security
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
@@ -11,6 +12,58 @@ import (
 )
 
 var ErrGatewaySource = errors.New("gateway source identity unavailable or inconsistent")
+
+// PersistProtectedGatewayFile durably publishes or confirms exact existing
+// central metadata without replacement. A failed publication retains pending
+// evidence; callers must not perform authoritative mutations until success.
+func PersistProtectedGatewayFile(path string, raw []byte) error {
+	if len(raw) == 0 || len(raw) > 64<<10 {
+		return ErrGatewaySource
+	}
+	root, dir, err := gatewayKeyDirectory(path)
+	if err != nil {
+		return ErrGatewaySource
+	}
+	defer root.Close()
+	defer dir.Close()
+	name := filepath.Base(path)
+	pending := name + ".pending"
+	if _, err := root.Lstat(pending); !errors.Is(err, os.ErrNotExist) {
+		return ErrGatewaySource
+	}
+	if _, err := root.Lstat(name); err == nil {
+		f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+		if err != nil {
+			return ErrGatewaySource
+		}
+		defer f.Close()
+		existing, err := readProtectedFile(f, int64(len(raw)))
+		defer clear(existing)
+		// Re-sync even on retry: the previous directory fsync may have failed
+		// after publication became visible but before it became durable.
+		if err != nil || !bytes.Equal(existing, raw) || f.Sync() != nil || dir.Sync() != nil {
+			return ErrGatewaySource
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return ErrGatewaySource
+	}
+	f, err := root.OpenFile(pending, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		return ErrGatewaySource
+	}
+	defer f.Close()
+	if f.Chmod(0600) != nil {
+		return ErrGatewaySource
+	}
+	if n, err := f.Write(raw); err != nil || n != len(raw) || f.Sync() != nil || f.Close() != nil || dir.Sync() != nil {
+		return ErrGatewaySource
+	}
+	if root.Link(pending, name) != nil || root.Remove(pending) != nil || dir.Sync() != nil {
+		return ErrGatewaySource
+	}
+	return nil
+}
 
 // CreateGatewaySource creates a NEW local source seed and returns ONLY its
 // public key after file and directory fsync. It never replaces an old identity.

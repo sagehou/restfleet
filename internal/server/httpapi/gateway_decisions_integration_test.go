@@ -24,6 +24,7 @@ func gatewayDecisionFixture(t *testing.T, backend string) (*postgres.Store, *pgx
 	s, pool, b, enrolled, repo, c := deliveryFixture(t, backend)
 	initializeDeliveryRepository(t, s, b, repo)
 	a := acceptedAdmissionRequest(t, pool, c, enrolled.AgentId)
+	a.Lifetime = domain.DefaultGatewayOfflineWindow
 	if _, err := s.ReserveBackupAdmission(context.Background(), a); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestGatewayDecisionProvidersRenewalReplayAndWithdrawal(t *testing.T) {
 			renew := r
 			renew.ID = uuid.Must(uuid.NewV7())
 			renew.ExpectedRevision = 1
-			renew.Lifetime = 12 * time.Hour
+			renew.Lifetime = 0 // Use the configured default, persisted as 72h.
 			nextWire, err := c.DecideGatewayAuthorization(ctx, renew)
 			if err != nil {
 				t.Fatal(err)
@@ -88,6 +89,9 @@ func TestGatewayDecisionProvidersRenewalReplayAndWithdrawal(t *testing.T) {
 			var released *time.Time
 			if err = pool.QueryRow(ctx, "select expires_at,released_at from gateway_backup_admissions where id=$1", r.AdmissionID).Scan(&expires, &released); err != nil || released != nil || next.ExpiresAt != expires.Truncate(time.Second).Unix() {
 				t.Fatal("renewal escaped original fence horizon")
+			}
+			if err = pool.QueryRow(ctx, "select count(*) from gateway_authorization_decisions where revision=2 and lifetime_seconds=259200").Scan(&count); err != nil || count != 1 {
+				t.Fatal("default offline window was not persisted")
 			}
 			if local.Accept(nextWire) != nil || local.Accept(wire) == nil {
 				t.Fatal("revision rollback accepted")

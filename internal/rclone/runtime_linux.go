@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unicode"
@@ -41,12 +42,13 @@ var errConfigReplacing = errors.New("credential config replacement in progress")
 // Runtime is a central-only owner of a private tmpfs directory. Close waits for
 // active commands; cancel their contexts before closing during server shutdown.
 type Runtime struct {
-	mu           sync.RWMutex
-	root         string
-	binary       string
-	lock         *os.File
-	lookupWebDAV func(context.Context, string) ([]netip.Addr, error)
-	dialWebDAV   func(context.Context, string) (net.Conn, error)
+	mu            sync.RWMutex
+	root          string
+	binary        string
+	lock          *os.File
+	cleanupFailed atomic.Bool
+	lookupWebDAV  func(context.Context, string) ([]netip.Addr, error)
+	dialWebDAV    func(context.Context, string) (net.Conn, error)
 }
 
 // NewRuntime requires an existing, canonical 0700 tmpfs directory owned by this
@@ -133,6 +135,22 @@ func (r *Runtime) Close() error {
 	return nil
 }
 
+// CheckCleanup waits for callbacks and verifies material removal under the
+// runtime lock. The caller must first stop admission and join all child work.
+// A failed final refresh remains uncertain even if its tmpfs file was removed.
+func (r *Runtime) CheckCleanup() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.lock == nil || r.cleanupFailed.Load() {
+		return ErrUnsafeRuntime
+	}
+	entries, err := os.ReadDir(r.root)
+	if err != nil || len(entries) != 1 || entries[0].Name() != ".lock" {
+		return ErrUnsafeRuntime
+	}
+	return nil
+}
+
 // Test only stats the crypt root; it does not create repository objects.
 func (r *Runtime) Test(ctx context.Context, raw []byte, remote string, persist func(context.Context, []byte) error) error {
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
@@ -183,6 +201,11 @@ func (r *Runtime) withConfig(ctx context.Context, raw []byte, remote string,
 ) (resultErr error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	defer func() {
+		if errors.Is(resultErr, ErrUnsafeRuntime) || errors.Is(resultErr, ErrRefreshPersist) || errors.Is(resultErr, ErrConfigChanged) {
+			r.cleanupFailed.Store(true)
+		}
+	}()
 	if r.lock == nil {
 		return ErrRuntimeClosed
 	}
@@ -231,7 +254,7 @@ func (r *Runtime) withConfig(ctx context.Context, raw []byte, remote string,
 		return ErrUnsafeRuntime
 	}
 
-	syncConfig := func() error {
+	syncConfig := func(ctx context.Context) error {
 		next, err := readUpdatedConfig(ctx, filename, remote, socket)
 		if err != nil {
 			return err
@@ -254,6 +277,17 @@ func (r *Runtime) withConfig(ctx context.Context, raw []byte, remote string,
 
 	finished := make(chan error, 1)
 	go func() { finished <- run(ctx, filename, r.binary) }()
+	finalSync := func() error {
+		// The engine has joined; cancellation must not discard its last token
+		// update. The validator still enforces token-only changes/authorization.
+		flush, stop := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		defer stop()
+		err := syncConfig(flush)
+		if err != nil {
+			r.cleanupFailed.Store(true)
+		}
+		return err
+	}
 	ticker := time.NewTicker(watchInterval)
 	defer ticker.Stop()
 	for {
@@ -261,20 +295,23 @@ func (r *Runtime) withConfig(ctx context.Context, raw []byte, remote string,
 		case <-ctx.Done():
 			cancel()
 			<-finished
+			if err := finalSync(); err != nil {
+				return err
+			}
 			return ctx.Err()
 		case <-ticker.C:
-			if err := syncConfig(); err != nil {
+			if err := syncConfig(ctx); err != nil {
 				cancel()
 				<-finished
+				r.cleanupFailed.Store(true)
 				return err
 			}
 		case err := <-finished:
+			if syncErr := finalSync(); syncErr != nil {
+				return syncErr
+			}
 			if ctx.Err() != nil {
 				return ctx.Err()
-			}
-			// Persist a refresh even when the central command subsequently fails.
-			if syncErr := syncConfig(); syncErr != nil {
-				return syncErr
 			}
 			if err != nil {
 				return ErrCommandFailed
