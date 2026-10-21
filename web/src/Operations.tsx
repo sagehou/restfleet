@@ -28,7 +28,7 @@ function percent(operation: BackupOperation): string {
   return `${Math.min(100, Math.round((done / total) * 100))}%`
 }
 
-export function Operations({ onUnauthorized }: Props) {
+export function Operations({ canManage, onUnauthorized }: Props) {
   const [items, setItems] = useState<BackupOperation[]>([])
   const [nextCursor, setNextCursor] = useState<string>()
   const [selected, setSelected] = useState<BackupOperation | null>(null)

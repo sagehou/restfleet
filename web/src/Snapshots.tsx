@@ -45,14 +45,19 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
     setMessage(errorMessage(error))
   }, [onUnauthorized])
 
-  useEffect(() => {
-    let active = true
-    let timer: number | undefined
-    const controller = new AbortController()
+  const goTo = (next: string) => {
+    if (next === path) return
     setLoading(true)
     setWaiting(false)
     setMessage('')
     setEntries(null)
+    setPath(next)
+  }
+
+  useEffect(() => {
+    let active = true
+    let timer: number | undefined
+    const controller = new AbortController()
     const endpoint = `/api/v1/snapshots/${encodeURIComponent(snapshot.snapshot_id)}/entries?path=${encodeURIComponent(path)}&repository_id=${encodeURIComponent(snapshot.repository_id)}`
     async function pollOperation(operationID: string, remaining: number) {
       try {
@@ -115,7 +120,7 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
   }, [snapshot.snapshot_id, snapshot.repository_id, path, handleError])
 
   const navigate = (entry: SnapshotEntry) => {
-    if (entry.type === 'dir') setPath(entry.path)
+    if (entry.type === 'dir') goTo(entry.path)
   }
 
   return (
@@ -132,7 +137,7 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
       </div>
       <nav aria-label="目录路径">
         {breadcrumbs(path).map((crumb) => (
-          <button key={crumb.path} className="table-link" onClick={() => setPath(crumb.path)}>{crumb.label}</button>
+          <button key={crumb.path} className="table-link" onClick={() => goTo(crumb.path)}>{crumb.label}</button>
         ))}
       </nav>
       {message && <p className="error-message" role="alert">{message}</p>}
@@ -194,7 +199,7 @@ export function Snapshots({ onUnauthorized }: Props) {
         </div>
       </div>
       {message && <p className="error-message" role="alert">{message}</p>}
-      {selected && <SnapshotBrowser snapshot={selected} onClose={() => setSelected(null)} onUnauthorized={onUnauthorized} />}
+      {selected && <SnapshotBrowser key={`${selected.repository_id}-${selected.snapshot_id}`} snapshot={selected} onClose={() => setSelected(null)} onUnauthorized={onUnauthorized} />}
       {loading && <p aria-live="polite">正在加载快照…</p>}
       {!loading && !message && !items.length && <p className="muted">还没有快照。计划成功执行一次备份后会出现在这里。</p>}
       {items.length > 0 && <div className="table-wrap"><table>
