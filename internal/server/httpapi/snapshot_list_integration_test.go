@@ -72,4 +72,11 @@ func TestSnapshotListCompletesForInitializedRepository(t *testing.T) {
 	if cached != 1 {
 		t.Fatalf("cached snapshot pages = %d", cached)
 	}
+	if _, err := pool.Exec(ctx, "update snapshot_list_results set expires_at=now()-interval '1 second' where operation_id=$1", operation.ID); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := store.DeleteExpiredSnapshotListResults(ctx, time.Now().UTC())
+	if err != nil || removed != 1 {
+		t.Fatalf("expired cache cleanup = %d, %v", removed, err)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -142,8 +143,7 @@ func (s *Store) ActiveSnapshotListOperation(ctx context.Context, repositoryID uu
 
 // SnapshotListResult returns a cached page only while it is fresh. Expired rows
 // are never served and may be removed by the next scan.
-func (s *Store) SnapshotListResult(ctx context.Context, repositoryID uuid.UUID, snapshotID, path string, now time.Time) (domain.SnapshotListResult, bool, error) {
-	var result domain.SnapshotListResult
+func (s *Store) SnapshotListResult(ctx context.Context, repositoryID uuid.UUID, snapshotID, path string, now time.Time) (domain.SnapshotListResult, bool, error) {	var result domain.SnapshotListResult
 	var entries []byte
 	err := s.pool.QueryRow(ctx, `select operation_id,repository_id,snapshot_id,tree_id,path,truncated,scanned,entries,collected_at
 		from snapshot_list_results where repository_id=$1 and snapshot_id=$2 and path=$3 and expires_at>$4
@@ -171,6 +171,16 @@ func validSnapshotListCode(code string) bool {
 		return true
 	}
 	return false
+}
+
+// DeleteExpiredSnapshotListResults removes cache pages that are no longer
+// servable. It is safe to run while scans insert new pages.
+func (s *Store) DeleteExpiredSnapshotListResults(ctx context.Context, now time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx, "delete from snapshot_list_results where expires_at <= $1", now)
+	if err != nil {
+		return 0, persistenceError(err)
+	}
+	return tag.RowsAffected(), nil
 }
 
 // FinishSnapshotListJob persists the bounded page and completes the operation in
@@ -209,6 +219,13 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 		if len(result.SnapshotID) != 64 || len(result.TreeID) != 64 || len(result.Path) == 0 ||
 			len(result.Path) > 4096 || len(result.Entries) > 5000 || result.Scanned < 0 {
 			return domain.ErrOperationTransition
+		}
+		for _, entry := range result.Entries {
+			if entry.Name == "" || len(entry.Name) > 255 || len(entry.Path) == 0 || len(entry.Path) > 4096 ||
+				!strings.HasPrefix(entry.Path, "/") || entry.Type == "" ||
+				strings.IndexFunc(entry.Name+entry.Path, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+				return domain.ErrOperationTransition
+			}
 		}
 		result.RepositoryID = job.Repository.ID
 		result.CollectedAt = now

@@ -94,6 +94,7 @@ type Store interface {
 	CloseUnstartedCancellations(context.Context, time.Time, time.Time) (int64, error)
 	ReconcileLostOperations(context.Context, time.Time, time.Time) (int64, error)
 	ReconcilePlanHealth(context.Context, time.Time) (int64, error)
+	DeleteExpiredSnapshotListResults(context.Context, time.Time) (int64, error)
 	MarkOperationDispatched(context.Context, uuid.UUID) error
 	CancelBackupOperation(context.Context, uuid.UUID, string, time.Time) (domain.BackupOperation, error)
 	PendingCancelOperations(context.Context, uuid.UUID) ([]domain.BackupOperation, error)

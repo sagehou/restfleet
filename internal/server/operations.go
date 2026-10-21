@@ -223,7 +223,11 @@ func (c *ControlPlane) ReconcileOperations(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return closed + lost + overdue, nil
+	expired, err := c.store.DeleteExpiredSnapshotListResults(ctx, now)
+	if err != nil {
+		return 0, err
+	}
+	return closed + lost + overdue + expired, nil
 }
 
 // RunOperationReconciler runs the closure loop until ctx ends. Persistence
