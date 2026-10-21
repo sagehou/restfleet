@@ -277,10 +277,10 @@ const (
 	CREDENTIALCHANGED     OperationErrorCode = "CREDENTIAL_CHANGED"
 	CREDENTIALDISABLED    OperationErrorCode = "CREDENTIAL_DISABLED"
 	Empty                 OperationErrorCode = ""
-	INITIALIZEFAILED      OperationErrorCode = "INITIALIZE_FAILED"
-	INITIALIZETIMEDOUT    OperationErrorCode = "INITIALIZE_TIMED_OUT"
 	INDEXFAILED           OperationErrorCode = "INDEX_FAILED"
 	INDEXTIMEDOUT         OperationErrorCode = "INDEX_TIMED_OUT"
+	INITIALIZEFAILED      OperationErrorCode = "INITIALIZE_FAILED"
+	INITIALIZETIMEDOUT    OperationErrorCode = "INITIALIZE_TIMED_OUT"
 	PASSWORDREJECTED      OperationErrorCode = "PASSWORD_REJECTED"
 	PATHINVALID           OperationErrorCode = "PATH_INVALID"
 	REFRESHFAILED         OperationErrorCode = "REFRESH_FAILED"
@@ -309,13 +309,13 @@ func (e OperationErrorCode) Valid() bool {
 		return true
 	case Empty:
 		return true
-	case INITIALIZEFAILED:
-		return true
-	case INITIALIZETIMEDOUT:
-		return true
 	case INDEXFAILED:
 		return true
 	case INDEXTIMEDOUT:
+		return true
+	case INITIALIZEFAILED:
+		return true
+	case INITIALIZETIMEDOUT:
 		return true
 	case PASSWORDREJECTED:
 		return true
