@@ -247,14 +247,15 @@ loop:
 				result.Truncated = true
 				break loop
 			}
-			if event.Name == "" || event.Type == "" || event.MTime == "" {
+			if event.Name == "" || len(event.Name) > 255 || event.Type == "" || event.MTime == "" {
 				return ErrInvalidOutput
 			}
 			nodePath := strings.TrimSuffix(event.Path, "/")
 			if nodePath == "" {
 				nodePath = "/"
 			}
-			if !strings.HasPrefix(nodePath, "/") {
+			if !strings.HasPrefix(nodePath, "/") || len(nodePath) > 4096 ||
+				strings.IndexFunc(nodePath, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
 				return ErrInvalidOutput
 			}
 			mtime, err := time.Parse(time.RFC3339Nano, event.MTime)

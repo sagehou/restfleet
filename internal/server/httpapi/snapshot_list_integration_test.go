@@ -72,4 +72,8 @@ func TestSnapshotListCompletesForInitializedRepository(t *testing.T) {
 	if cached != 1 {
 		t.Fatalf("cached snapshot pages = %d", cached)
 	}
+	removed, err := store.DeleteExpiredSnapshotListResults(ctx, time.Now().UTC().Add(10*time.Minute))
+	if err != nil || removed != 1 {
+		t.Fatalf("expired cache cleanup = %d, %v", removed, err)
+	}
 }
