@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -74,6 +75,69 @@ func (s *State) PutOperation(record OperationRecord) error {
 			return err
 		}
 		return bucket.Put(record.ID[:], payload)
+	})
+}
+
+// BeginOperation creates a cancellable context for one running Restic job. A
+// cancel that arrived before the goroutine registered is applied immediately.
+func (s *State) BeginOperation(parent context.Context, id uuid.UUID) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(parent)
+	s.runMu.Lock()
+	if s.running == nil {
+		s.running = make(map[uuid.UUID]context.CancelFunc)
+	}
+	if _, canceled := s.canceled[id]; canceled {
+		cancel()
+	}
+	s.running[id] = cancel
+	s.runMu.Unlock()
+	return ctx, func() {
+		cancel()
+		s.runMu.Lock()
+		delete(s.running, id)
+		delete(s.canceled, id)
+		s.runMu.Unlock()
+	}
+}
+
+func (s *State) CancelOperation(id uuid.UUID) bool {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if cancel, ok := s.running[id]; ok {
+		cancel()
+		return true
+	}
+	// A cancel may race with dispatch. Keep a small bounded set so the next
+	// registration starts canceled instead of losing the request.
+	if s.canceled == nil {
+		s.canceled = make(map[uuid.UUID]struct{})
+	}
+	if len(s.canceled) < 256 {
+		s.canceled[id] = struct{}{}
+	}
+	return false
+}
+
+func (s *State) MarkOperationUploaded(id uuid.UUID) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(operationsBucket))
+		if bucket == nil {
+			return nil
+		}
+		value := bucket.Get(id[:])
+		if value == nil {
+			return nil
+		}
+		var record OperationRecord
+		if err := json.Unmarshal(value, &record); err != nil {
+			return err
+		}
+		record.Uploaded = true
+		payload, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		return bucket.Put(id[:], payload)
 	})
 }
 

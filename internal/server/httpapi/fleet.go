@@ -492,6 +492,14 @@ func (a *API) fleetProblem(w http.ResponseWriter, r *http.Request, err error) {
 		a.problem(w, r, http.StatusConflict, "STORAGE_TARGET_CHANGED", "Storage target changed", "Replacement must preserve the storage target and Crypt settings.", nil)
 	case errors.Is(err, domain.ErrNotFound):
 		a.problem(w, r, http.StatusNotFound, "NOT_FOUND", "Not found", "The requested resource was not found.", nil)
+	case errors.Is(err, domain.ErrSnapshotAmbiguous):
+		a.problem(w, r, http.StatusConflict, "SNAPSHOT_REPOSITORY_AMBIGUOUS", "Conflict", "Specify repository_id; the snapshot exists in more than one repository.", nil)
+	case errors.Is(err, domain.ErrSnapshotUnavailable):
+		a.problem(w, r, http.StatusConflict, "SNAPSHOT_UNAVAILABLE", "Snapshot unavailable", "The snapshot repository is not initialized for browsing.", nil)
+	case errors.Is(err, domain.ErrOperationTerminal):
+		a.problem(w, r, http.StatusConflict, "OPERATION_ALREADY_TERMINAL", "Conflict", "The operation is already terminal.", nil)
+	case errors.Is(err, domain.ErrOperationNotTerminal):
+		a.problem(w, r, http.StatusConflict, "OPERATION_NOT_TERMINAL", "Conflict", "Only a terminal operation can be retried.", nil)
 	case errors.Is(err, domain.ErrAlreadyExists):
 		a.problem(w, r, http.StatusConflict, "ALREADY_EXISTS", "Conflict", "A resource with the same identity already exists.", nil)
 	case errors.Is(err, domain.ErrTemplateNameTaken):

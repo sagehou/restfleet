@@ -17,6 +17,8 @@ func backupOperationResponse(o domain.BackupOperation) BackupOperation {
 		FinishedAt: o.FinishedAt, ExitCode: o.ExitCode, ErrorCode: &o.ErrorCode, SnapshotId: &o.SnapshotID,
 		FilesDone: &filesDone, TotalFiles: &totalFiles, BytesDone: &bytesDone, TotalBytes: &totalBytes,
 		CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
+		ParentOperationId: o.ParentOperationID, RootOperationId: o.RootOperationID,
+		CancelRequestedAt: o.CancelRequestedAt, CancelReason: &o.CancelReason,
 	}
 }
 
@@ -62,6 +64,47 @@ func (a *API) GetBackupOperation(w http.ResponseWriter, r *http.Request, operati
 	a.json(w, http.StatusOK, backupOperationResponse(operation))
 }
 
+func (a *API) CancelBackupOperation(w http.ResponseWriter, r *http.Request, operationID openapi_types.UUID, params CancelBackupOperationParams) {
+	actor, ok := a.authorizeMutation(w, r, params.XCSRFToken, "BACKUP_OPERATION_CANCEL", "BACKUP_OPERATION")
+	if !ok {
+		return
+	}
+	var body BackupOperationCancel
+	if r.ContentLength != 0 {
+		if err := decodeJSON(w, r, &body); err != nil {
+			a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request body is invalid.", nil)
+			return
+		}
+	}
+	reason := ""
+	if body.Reason != nil {
+		reason = *body.Reason
+	}
+	operation, err := a.control.CancelBackupOperation(r.Context(), operationID, reason, actor.User, requestMeta(r))
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	a.json(w, http.StatusOK, backupOperationResponse(operation))
+}
+
+func (a *API) RetryBackupOperation(w http.ResponseWriter, r *http.Request, operationID openapi_types.UUID, params RetryBackupOperationParams) {
+	actor, ok := a.authorizeMutation(w, r, params.XCSRFToken, "BACKUP_OPERATION_RETRY", "BACKUP_OPERATION")
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
+		return
+	}
+	operation, err := a.control.RetryBackupOperation(r.Context(), operationID, actor.User, requestMeta(r))
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	a.json(w, http.StatusAccepted, backupOperationResponse(operation))
+}
+
 func snapshotResponse(s domain.Snapshot) Snapshot {
 	return Snapshot{SnapshotId: s.SnapshotID, PlanId: s.PlanID, AgentId: s.AgentID, HostId: s.HostID,
 		RepositoryId: s.RepositoryID, OperationId: s.OperationID, CapturedAt: s.CapturedAt,
@@ -90,4 +133,60 @@ func (a *API) ListSnapshots(w http.ResponseWriter, r *http.Request, params ListS
 		response.Items = append(response.Items, snapshotResponse(item))
 	}
 	a.json(w, http.StatusOK, response)
+}
+
+func (a *API) ListSnapshotEntries(w http.ResponseWriter, r *http.Request, snapshotID string, params ListSnapshotEntriesParams) {
+	authenticated, ok := a.authorizeRead(w, r)
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" && params.Path == nil && params.RepositoryId == nil {
+		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
+		return
+	}
+	path := "/"
+	if params.Path != nil {
+		path = *params.Path
+	}
+	result, pending, err := a.control.SnapshotEntries(r.Context(), snapshotID, params.RepositoryId, path, authenticated.User.ID)
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	if pending {
+		w.Header().Set("Retry-After", "1")
+		a.json(w, http.StatusAccepted, SnapshotScanPending{
+			Status: SnapshotScanPendingStatusPENDING, OperationId: result.OperationID,
+		})
+		return
+	}
+	response := SnapshotEntries{
+		SnapshotId: result.SnapshotID, RepositoryId: result.RepositoryID, Path: result.Path,
+		Items: make([]SnapshotEntry, 0, len(result.Entries)), Source: Cache,
+		CollectedAt: result.CollectedAt, Truncated: result.Truncated,
+	}
+	for _, entry := range result.Entries {
+		response.Items = append(response.Items, SnapshotEntry{
+			Name: entry.Name, Path: entry.Path, Type: entry.Type, Size: entry.Size,
+			Mode: entry.Mode, Uid: entry.UID, Gid: entry.GID, Mtime: entry.ModTime,
+		})
+	}
+	a.json(w, http.StatusOK, response)
+}
+
+func (a *API) BackupPlanNow(w http.ResponseWriter, r *http.Request, planID openapi_types.UUID, params BackupPlanNowParams) {
+	actor, ok := a.authorizeMutation(w, r, params.XCSRFToken, "PLAN_BACKUP_TRIGGER", "PLAN")
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
+		return
+	}
+	operation, err := a.control.QueueBackupNow(r.Context(), planID, actor.User, requestMeta(r))
+	if err != nil {
+		a.fleetProblem(w, r, err)
+		return
+	}
+	a.json(w, http.StatusAccepted, backupOperationResponse(operation))
 }

@@ -961,6 +961,60 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/backup-operations/{operation_id}/cancel:
+    parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: cancelBackupOperation
+      description: Closes a queued run immediately or asks the Agent to stop a running one.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BackupOperationCancel" }
+      responses:
+        "200":
+          description: Cancellation recorded; a running Agent will report CANCELED.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupOperation" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/backup-operations/{operation_id}/retry:
+    parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: retryBackupOperation
+      description: Creates a new manual operation linked to the terminal operation.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "202":
+          description: Retry queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupOperation" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/snapshots:
     get:
       operationId: listSnapshots
@@ -976,6 +1030,71 @@ paths:
               schema: { $ref: "#/components/schemas/SnapshotList" }
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/snapshots/{snapshot_id}/entries:
+    parameters:
+      - name: snapshot_id
+        in: path
+        required: true
+        schema: { type: string, minLength: 64, maxLength: 64 }
+    get:
+      operationId: listSnapshotEntries
+      description: >-
+        Returns a fresh bounded page of direct children, or 202 with a pending
+        SNAPSHOT_LIST operation. Browsing never runs Restic inside the request.
+      parameters:
+        - name: path
+          in: query
+          schema: { type: string, maxLength: 4096, default: "/" }
+        - name: repository_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Fresh bounded directory page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SnapshotEntries" }
+        "202":
+          description: A bounded scan is queued or running; poll the operation and retry.
+          headers:
+            Retry-After:
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SnapshotScanPending" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/plans/{plan_id}/backup:
+    parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: backupPlanNow
+      description: Queues one manual backup for the Agent to pick up on its next heartbeat. Requires an ACTIVE plan.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Manual operation queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupOperation" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
   /api/v1/storage-credentials:
@@ -1438,7 +1557,7 @@ components:
         agent_id: { type: string, format: uuid }
         type: { type: string, enum: [BACKUP, RESTORE, SNAPSHOT_INDEX, DOWNLOAD, CHECK, FORGET, PRUNE, MAINTENANCE] }
         source: { type: string, enum: [SCHEDULED, MANUAL] }
-        status: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCELED, MISSED, CONCURRENCY_SKIPPED] }
+        status: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCEL_REQUESTED, CANCELED, MISSED, CONCURRENCY_SKIPPED] }
         plan_revision: { type: integer, format: int64, minimum: 1 }
         scheduled_at: { type: string, format: date-time }
         started_at: { type: string, format: date-time }
@@ -1452,6 +1571,15 @@ components:
         total_bytes: { type: integer, format: int64, minimum: 0 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        parent_operation_id: { type: string, format: uuid }
+        root_operation_id: { type: string, format: uuid }
+        cancel_requested_at: { type: string, format: date-time }
+        cancel_reason: { type: string }
+    BackupOperationCancel:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: { type: string, maxLength: 512 }
     BackupOperationList:
       type: object
       additionalProperties: false
@@ -1484,6 +1612,43 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/Snapshot" }
+    SnapshotEntry:
+      type: object
+      additionalProperties: false
+      required: [name, path, type, size, mode, uid, gid, mtime]
+      properties:
+        name: { type: string }
+        path: { type: string }
+        type: { type: string }
+        size: { type: integer, format: int64, minimum: 0 }
+        mode: { type: string }
+        uid: { type: integer, format: int64, minimum: 0 }
+        gid: { type: integer, format: int64, minimum: 0 }
+        mtime: { type: string, format: date-time }
+    SnapshotEntries:
+      type: object
+      additionalProperties: false
+      required: [snapshot_id, repository_id, path, items, source, collected_at, truncated]
+      properties:
+        snapshot_id: { type: string }
+        repository_id: { type: string, format: uuid }
+        path: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SnapshotEntry" }
+        next_cursor:
+          type: string
+          nullable: true
+        source: { type: string, enum: [cache] }
+        collected_at: { type: string, format: date-time }
+        truncated: { type: boolean }
+    SnapshotScanPending:
+      type: object
+      additionalProperties: false
+      required: [status, operation_id]
+      properties:
+        status: { type: string, enum: [PENDING] }
+        operation_id: { type: string, format: uuid }
     Operation:
       type: object
       additionalProperties: false
@@ -1491,7 +1656,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         repository_id: { type: string, format: uuid }
-        type: { type: string, enum: [CREDENTIAL_TEST, REPOSITORY_INITIALIZE] }
+        type: { type: string, enum: [CREDENTIAL_TEST, REPOSITORY_INITIALIZE, SNAPSHOT_LIST] }
         status: { type: string, enum: [QUEUED, DISPATCHED, ACKNOWLEDGED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCEL_REQUESTED, CANCELED, TIMED_OUT, LOST, REJECTED] }
         source: { type: string, enum: [USER] }
         storage_credential_id: { type: string, format: uuid }
@@ -1503,7 +1668,7 @@ components:
         acknowledged_at: { type: string, format: date-time }
         started_at: { type: string, format: date-time }
         finished_at: { type: string, format: date-time }
-        error_code: { type: string, enum: ["", CONNECTION_FAILED, TEST_TIMED_OUT, CONFIG_UNSAFE, REFRESH_FAILED, CREDENTIAL_CHANGED, CREDENTIAL_DISABLED, SECRET_UNAVAILABLE, WORKER_LOST, INITIALIZE_FAILED, INITIALIZE_TIMED_OUT, REPOSITORY_LOCKED, REPOSITORY_MISMATCH, REPOSITORY_NOT_EMPTY, PASSWORD_REJECTED, REPOSITORY_UNAVAILABLE] }
+        error_code: { type: string, enum: ["", CONNECTION_FAILED, TEST_TIMED_OUT, CONFIG_UNSAFE, REFRESH_FAILED, CREDENTIAL_CHANGED, CREDENTIAL_DISABLED, SECRET_UNAVAILABLE, WORKER_LOST, INITIALIZE_FAILED, INITIALIZE_TIMED_OUT, REPOSITORY_LOCKED, REPOSITORY_MISMATCH, REPOSITORY_NOT_EMPTY, PASSWORD_REJECTED, REPOSITORY_UNAVAILABLE, SNAPSHOT_NOT_FOUND, PATH_INVALID, SCAN_FAILED, SCAN_TIMED_OUT] }
     StorageCredential:
       type: object
       additionalProperties: false

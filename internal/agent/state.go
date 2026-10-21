@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -22,6 +23,9 @@ type State struct {
 	directory    string
 	db           *bolt.DB
 	credentialMu sync.Mutex
+	runMu        sync.Mutex
+	running      map[uuid.UUID]context.CancelFunc
+	canceled     map[uuid.UUID]struct{}
 }
 
 func OpenState(directory string) (*State, error) {
@@ -44,7 +48,8 @@ func OpenState(directory string) (*State, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	state := &State{directory: directory, db: db}
+	state := &State{directory: directory, db: db,
+		running: make(map[uuid.UUID]context.CancelFunc), canceled: make(map[uuid.UUID]struct{})}
 	if err := db.Update(func(tx *bolt.Tx) error {
 		for _, name := range []string{
 			metadataBucket, desiredActiveBucket, desiredStagingBucket, outboundBucket,

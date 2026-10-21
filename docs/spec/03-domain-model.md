@@ -487,7 +487,7 @@ cached_at
 expires_at
 ```
 
-缓存可清除，不参与恢复正确性。
+V1 按 `(repository, snapshot, requested path)` 保存一个有界的直接子项页面（JSON 数组）；同一页面内的条目携带上述字段。缓存可清除，不参与恢复正确性。
 
 ## 14. RestoreJob
 

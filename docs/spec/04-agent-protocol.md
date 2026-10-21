@@ -268,6 +268,8 @@ Agent 必须：
 
 Delivery 是 at-least-once。不得假设单次消息只到达一次。
 
+Server 在 `Welcome.server_capabilities[]` 宣告增量能力。Agent 只有同时声明 `job_result_ack_v1` 且 Server 宣告该能力时，才在收到 `JobResultAccepted{operation_id}` 后把本地终态标记为已上传；否则保持旧的“发送成功即标记”行为。未宣告 `job_cancel_v1` 的 Agent 不接收 `JobCancel`。
+
 ## 10. Backup Operation 报告
 
 Agent 将 Restic `--json` JSONL 映射为：
@@ -380,8 +382,8 @@ Server 重启或网络断开：
 
 ## 16. Cancel
 
-- Server 发 `JobCancel{job_id,reason,deadline}`；
-- Agent 幂等记录 cancel request；
+- Server 发 `JobCancel{job_id, operation_id, reason, deadline}`；
+- Agent 幂等记录 cancel request，返回 `JobCancelAccepted`；
 - 对 Restic process group 先 SIGINT，grace 后 SIGTERM，再 SIGKILL；
 - pre-hook 未结束时同样取消整个 process group；
 - 生成 CANCELED 或 FAILED_CANCEL_TIMEOUT；

@@ -251,7 +251,7 @@
 
 ## M6 — Backup Execution
 
-**Status: IN PROGRESS** — Restic argv、JSONL 解析、进程组控制已接入；Agent 本地调度循环、Operation 持久化（bbolt）与 Gateway 会话内执行已接线；中心 `backup_operations` 表、进度/结果接收与 Operations 页面已接入；取消/重试与离线补报保序待完成。
+**Status: IN PROGRESS** — Restic argv、JSONL 解析、进程组控制已接入；Agent 本地调度循环、Operation 持久化（bbolt）与 Gateway 会话内执行已接线；中心 `backup_operations` 表、进度/结果接收与 Operations 页面已接入；手动「立即备份」经心跳下发 `JobDispatch` 并由 Agent 执行；取消经 `JobCancel` 幂等下发、重试创建关联新 Operation、终态先补报并等待 `JobResultAccepted` 后才标记上传已接入；Actions 验收待完成。
 
 ### Goal
 
@@ -321,7 +321,7 @@
 
 ## M8 — Snapshot Index and Browser
 
-**Status: IN PROGRESS** — 成功备份的终态结果已写入快照索引，快照页面可列出元数据；`restic ls` 文件树浏览与大规模虚拟化待完成。
+**Status: IN PROGRESS** — 快照索引与列表已合入（#91）；`restic ls --json` 有界扫描、`SNAPSHOT_LIST` 后台任务、目录 API 与浏览页面已接入；大规模虚拟化与 Actions 验收待完成。
 
 ### Goal
 

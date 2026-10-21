@@ -616,6 +616,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backup-operations/{operation_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Closes a queued run immediately or asks the Agent to stop a running one. */
+        post: operations["cancelBackupOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backup-operations/{operation_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Creates a new manual operation linked to the terminal operation. */
+        post: operations["retryBackupOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/snapshots": {
         parameters: {
             query?: never;
@@ -626,6 +664,44 @@ export interface paths {
         get: operations["listSnapshots"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snapshots/{snapshot_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Returns a fresh bounded page of direct children, or 202 with a pending SNAPSHOT_LIST operation. Browsing never runs Restic inside the request. */
+        get: operations["listSnapshotEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plans/{plan_id}/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Queues one manual backup for the Agent to pick up on its next heartbeat. Requires an ACTIVE plan. */
+        post: operations["backupPlanNow"];
         delete?: never;
         options?: never;
         head?: never;
@@ -980,7 +1056,7 @@ export interface components {
             /** @enum {string} */
             source: "SCHEDULED" | "MANUAL";
             /** @enum {string} */
-            status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCELED" | "MISSED" | "CONCURRENCY_SKIPPED";
+            status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCEL_REQUESTED" | "CANCELED" | "MISSED" | "CONCURRENCY_SKIPPED";
             /** Format: int64 */
             plan_revision: number;
             /** Format: date-time */
@@ -1004,6 +1080,16 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /** Format: uuid */
+            parent_operation_id?: string;
+            /** Format: uuid */
+            root_operation_id?: string;
+            /** Format: date-time */
+            cancel_requested_at?: string;
+            cancel_reason?: string;
+        };
+        BackupOperationCancel: {
+            reason?: string;
         };
         BackupOperationList: {
             items: components["schemas"]["BackupOperation"][];
@@ -1033,13 +1119,46 @@ export interface components {
         SnapshotList: {
             items: components["schemas"]["Snapshot"][];
         };
+        SnapshotEntry: {
+            name: string;
+            path: string;
+            type: string;
+            /** Format: int64 */
+            size: number;
+            mode: string;
+            /** Format: int64 */
+            uid: number;
+            /** Format: int64 */
+            gid: number;
+            /** Format: date-time */
+            mtime: string;
+        };
+        SnapshotEntries: {
+            snapshot_id: string;
+            /** Format: uuid */
+            repository_id: string;
+            path: string;
+            items: components["schemas"]["SnapshotEntry"][];
+            next_cursor?: string | null;
+            /** @enum {string} */
+            source: "cache";
+            /** Format: date-time */
+            collected_at: string;
+            truncated: boolean;
+        };
+        SnapshotScanPending: {
+            /** @enum {string} */
+            status: "PENDING";
+            /** Format: uuid */
+            operation_id: string;
+        };
         Operation: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             repository_id?: string;
             /** @enum {string} */
-            type: "CREDENTIAL_TEST" | "REPOSITORY_INITIALIZE";
+            type: "CREDENTIAL_TEST" | "REPOSITORY_INITIALIZE" | "SNAPSHOT_LIST";
             /** @enum {string} */
             status: "QUEUED" | "DISPATCHED" | "ACKNOWLEDGED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCEL_REQUESTED" | "CANCELED" | "TIMED_OUT" | "LOST" | "REJECTED";
             /** @enum {string} */
@@ -1062,7 +1181,7 @@ export interface components {
             /** Format: date-time */
             finished_at?: string;
             /** @enum {string} */
-            error_code: "" | "CONNECTION_FAILED" | "TEST_TIMED_OUT" | "CONFIG_UNSAFE" | "REFRESH_FAILED" | "CREDENTIAL_CHANGED" | "CREDENTIAL_DISABLED" | "SECRET_UNAVAILABLE" | "WORKER_LOST" | "INITIALIZE_FAILED" | "INITIALIZE_TIMED_OUT" | "REPOSITORY_LOCKED" | "REPOSITORY_MISMATCH" | "REPOSITORY_NOT_EMPTY" | "PASSWORD_REJECTED" | "REPOSITORY_UNAVAILABLE";
+            error_code: "" | "CONNECTION_FAILED" | "TEST_TIMED_OUT" | "CONFIG_UNSAFE" | "REFRESH_FAILED" | "CREDENTIAL_CHANGED" | "CREDENTIAL_DISABLED" | "SECRET_UNAVAILABLE" | "WORKER_LOST" | "INITIALIZE_FAILED" | "INITIALIZE_TIMED_OUT" | "REPOSITORY_LOCKED" | "REPOSITORY_MISMATCH" | "REPOSITORY_NOT_EMPTY" | "PASSWORD_REJECTED" | "REPOSITORY_UNAVAILABLE" | "SNAPSHOT_NOT_FOUND" | "PATH_INVALID" | "SCAN_FAILED" | "SCAN_TIMED_OUT";
         };
         StorageCredential: {
             /** Format: uuid */
@@ -2653,6 +2772,73 @@ export interface operations {
             503: components["responses"]["Problem"];
         };
     };
+    cancelBackupOperation: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BackupOperationCancel"];
+            };
+        };
+        responses: {
+            /** @description Cancellation recorded; a running Agent will report CANCELED. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupOperation"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    retryBackupOperation: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Retry queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupOperation"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
     listSnapshots: {
         parameters: {
             query?: {
@@ -2675,6 +2861,81 @@ export interface operations {
             };
             400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    listSnapshotEntries: {
+        parameters: {
+            query?: {
+                path?: string;
+                repository_id?: string;
+            };
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fresh bounded directory page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotEntries"];
+                };
+            };
+            /** @description A bounded scan is queued or running; poll the operation and retry. */
+            202: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotScanPending"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    backupPlanNow: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Manual operation queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupOperation"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
             503: components["responses"]["Problem"];
         };

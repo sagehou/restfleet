@@ -129,8 +129,10 @@ func (s *State) advancePlan(ctx context.Context, plan domain.PlanSchedule, now t
 	runtime.LastOperationID = operationID
 	_ = s.PutPlanRuntime(runtime)
 	runningByPlan[plan.PlanID] = true
+	runCtx, endRun := s.BeginOperation(ctx, operationID)
 	go func() {
-		outcome := executor.Execute(ctx, plan, operationID, scheduled, deadline)
+		defer endRun()
+		outcome := executor.Execute(runCtx, plan, operationID, scheduled, deadline)
 		record.Status = outcome.Status
 		record.ExitCode = outcome.ExitCode
 		record.ErrorCode = outcome.ErrorCode

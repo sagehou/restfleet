@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/sagehou/restfleet/internal/domain"
@@ -16,7 +18,9 @@ func (c *ControlPlane) RecordOperationProgress(ctx context.Context, progress dom
 	return c.store.UpsertOperationProgress(ctx, progress)
 }
 
-// RecordOperationResult writes the terminal state. Duplicate delivery is safe.
+// RecordOperationResult writes the terminal state and indexes the produced
+// snapshot in the same transaction. A failed index write therefore fails the
+// whole result so the Agent replays it; it is never silently lost.
 func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.BackupOperationResult) error {
 	if result.OperationID.Version() != 7 || result.PlanID.Version() != 7 || result.AgentID.Version() != 7 {
 		return domain.ErrNotFound
@@ -26,20 +30,7 @@ func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.
 	default:
 		return &ValidationError{Field: "status", Code: "INVALID_OPERATION_STATUS"}
 	}
-	if err := c.store.UpsertOperationResult(ctx, result); err != nil {
-		return err
-	}
-	if result.SnapshotID != "" {
-		if plan, err := c.store.Plan(ctx, result.PlanID); err == nil {
-			_ = c.store.RecordSnapshot(ctx, domain.Snapshot{
-				PlanID: plan.ID, SnapshotID: result.SnapshotID, AgentID: result.AgentID,
-				HostID: plan.HostID, RepositoryID: plan.RepositoryID, OperationID: result.OperationID,
-				CapturedAt: result.FinishedAt, RecordedAt: c.clock().UTC(),
-				FilesNew: result.FilesDone, BytesAdded: result.BytesDone,
-			})
-		}
-	}
-	return nil
+	return c.store.UpsertOperationResult(ctx, result)
 }
 
 func (c *ControlPlane) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, error) {
@@ -57,4 +48,143 @@ func (c *ControlPlane) BackupOperation(ctx context.Context, id uuid.UUID) (domai
 // FleetBackupCounts aggregates dashboard counters without loading rows.
 func (c *ControlPlane) FleetBackupCounts(ctx context.Context) (plans, operations, running, failed24h, unhealthy int64, err error) {
 	return c.store.FleetBackupCounts(ctx)
+}
+
+// QueueBackupNow creates a manual backup operation for the Agent to pick up on
+// its next heartbeat. The plan must already be ACTIVE.
+func (c *ControlPlane) QueueBackupNow(ctx context.Context, planID uuid.UUID, actor domain.User, meta RequestMeta) (domain.BackupOperation, error) {
+	if actor.Role != domain.RoleAdmin {
+		if err := c.RecordDenied(ctx, "PLAN_BACKUP_TRIGGER", "PLAN", "ROLE_DENIED", meta); err != nil {
+			return domain.BackupOperation{}, err
+		}
+		return domain.BackupOperation{}, ErrForbidden
+	}
+	plan, err := c.store.Plan(ctx, planID)
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if plan.Status != "ACTIVE" {
+		return domain.BackupOperation{}, domain.ErrPlanStateInvalid
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	now := c.clock().UTC()
+	operation := domain.BackupOperation{
+		ID: id, PlanID: plan.ID, AgentID: plan.AgentID, Type: "BACKUP", Source: "MANUAL",
+		Status: "QUEUED", PlanRevision: plan.DesiredRevision, ConfigHash: plan.ConfigHash,
+		ScheduledAt: &now, CreatedAt: now, UpdatedAt: now,
+	}
+	audit, err := c.userAudit("PLAN_BACKUP_TRIGGER", "PLAN", plan.ID, actor.ID, meta, "QUEUED")
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	audit.Changes = json.RawMessage(`{"source":"MANUAL"}`)
+	if err := c.store.CreateManualOperation(ctx, operation); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if err := c.store.RecordAudit(ctx, audit); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	return operation, nil
+}
+
+func (c *ControlPlane) NextQueuedJob(ctx context.Context, agentID uuid.UUID) (domain.BackupOperation, bool, error) {
+	return c.store.NextQueuedManualOperation(ctx, agentID)
+}
+
+func (c *ControlPlane) MarkJobDispatched(ctx context.Context, id uuid.UUID) error {
+	return c.store.MarkOperationDispatched(ctx, id)
+}
+
+// CancelBackupOperation closes a queued operation immediately or asks the
+// Agent to stop a running one. Only a terminal Agent result proves completion.
+func (c *ControlPlane) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason string,
+	actor domain.User, meta RequestMeta,
+) (domain.BackupOperation, error) {
+	if actor.Role != domain.RoleAdmin {
+		if err := c.RecordDenied(ctx, "BACKUP_OPERATION_CANCEL", "BACKUP_OPERATION", "ROLE_DENIED", meta); err != nil {
+			return domain.BackupOperation{}, err
+		}
+		return domain.BackupOperation{}, ErrForbidden
+	}
+	reason = strings.TrimSpace(reason)
+	if len(reason) > 512 {
+		return domain.BackupOperation{}, &ValidationError{Field: "reason", Code: "INVALID_REASON"}
+	}
+	audit, err := c.userAudit("BACKUP_OPERATION_CANCEL", "BACKUP_OPERATION", id, actor.ID, meta, "CANCEL_REQUESTED")
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	operation, err := c.store.CancelBackupOperation(ctx, id, reason, c.clock().UTC())
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if err := c.store.RecordAudit(ctx, audit); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	return operation, nil
+}
+
+// RetryBackupOperation creates a new manual run linked to the failed operation.
+func (c *ControlPlane) RetryBackupOperation(ctx context.Context, id uuid.UUID,
+	actor domain.User, meta RequestMeta,
+) (domain.BackupOperation, error) {
+	if actor.Role != domain.RoleAdmin {
+		if err := c.RecordDenied(ctx, "BACKUP_OPERATION_RETRY", "BACKUP_OPERATION", "ROLE_DENIED", meta); err != nil {
+			return domain.BackupOperation{}, err
+		}
+		return domain.BackupOperation{}, ErrForbidden
+	}
+	source, err := c.store.BackupOperation(ctx, id)
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if !domain.OperationTerminal(source.Status) {
+		return domain.BackupOperation{}, domain.ErrOperationNotTerminal
+	}
+	plan, err := c.store.Plan(ctx, source.PlanID)
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if plan.Status != "ACTIVE" {
+		return domain.BackupOperation{}, domain.ErrPlanStateInvalid
+	}
+	newID, err := uuid.NewV7()
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	now := c.clock().UTC()
+	root := source.RootOperationID
+	if root == nil {
+		root = &source.ID
+	}
+	operation := domain.BackupOperation{
+		ID: newID, PlanID: plan.ID, AgentID: plan.AgentID, Type: "BACKUP", Source: "MANUAL",
+		Status: "QUEUED", PlanRevision: plan.DesiredRevision, ConfigHash: plan.ConfigHash,
+		ScheduledAt: &now, CreatedAt: now, UpdatedAt: now,
+		ParentOperationID: &source.ID, RootOperationID: root,
+	}
+	audit, err := c.userAudit("BACKUP_OPERATION_RETRY", "BACKUP_OPERATION", newID, actor.ID, meta, "QUEUED")
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	audit.Changes = json.RawMessage(`{"parent_operation_id":"` + source.ID.String() + `"}`)
+	if err := c.store.CreateManualOperation(ctx, operation); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if err := c.store.RecordAudit(ctx, audit); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	return operation, nil
+}
+
+func (c *ControlPlane) PendingCancellations(ctx context.Context, agentID uuid.UUID) ([]domain.BackupOperation, error) {
+	return c.store.PendingCancelOperations(ctx, agentID)
+}
+
+// RejectManualOperation closes a dispatched manual run the Agent refused.
+func (c *ControlPlane) RejectManualOperation(ctx context.Context, id uuid.UUID) error {
+	return c.store.RejectManualOperation(ctx, id, c.clock().UTC())
 }

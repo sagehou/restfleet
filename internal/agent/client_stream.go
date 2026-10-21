@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -59,6 +60,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 			AcceptedConfigRevision:    acceptedRevision,
 			Capabilities: []string{
 				"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability, domain.RepositoryIdentityCapability,
+				domain.JobResultAckCapability, domain.JobCancelCapability,
 			},
 			LocalTime: timestamppb.Now(),
 		}},
@@ -76,6 +78,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	protocol := welcome.GetSelectedProtocolVersion()
 	serverSequence := response.GetSequence()
 	clockOffset := welcome.GetServerTime().AsTime().Sub(time.Now().UTC())
+	resultAck := slices.Contains(welcome.GetServerCapabilities(), domain.JobResultAckCapability)
 
 	if pending, ok, err := state.PendingConfigResult(); err != nil {
 		return true, err
@@ -126,7 +129,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 				return true, err
 			}
 		case <-reports.C:
-			if err := reportOperations(stream, &agentSequence, protocol, state, 5*time.Second); err != nil {
+			if err := reportOperations(stream, &agentSequence, protocol, state, 5*time.Second, resultAck); err != nil {
 				return true, err
 			}
 		case <-rotationTimer.C:
@@ -175,10 +178,35 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 				if err := state.ClearPendingConfigResult(result.Revision); err != nil {
 					return true, err
 				}
+			case message.GetJobDispatch() != nil:
+				if err := handleJobDispatch(ctx, stream, state, config, message.GetJobDispatch(), &agentSequence, protocol); err != nil {
+					return true, err
+				}
+			case message.GetJobCancel() != nil:
+				operationID, err := uuid.Parse(message.GetJobCancel().GetOperationId())
+				if err != nil {
+					return true, errors.New("job cancel has an invalid operation id")
+				}
+				state.CancelOperation(operationID)
+				if err := sendAgentMessage(stream, &agentSequence, protocol, &agentv1.AgentToServer{
+					Payload: &agentv1.AgentToServer_JobCancelAccepted{JobCancelAccepted: &agentv1.JobCancelAccepted{
+						OperationId: operationID.String(),
+					}},
+				}); err != nil {
+					return true, err
+				}
+			case message.GetJobResultAccepted() != nil:
+				operationID, err := uuid.Parse(message.GetJobResultAccepted().GetOperationId())
+				if err != nil {
+					return true, errors.New("job result ack has an invalid operation id")
+				}
+				if err := state.MarkOperationUploaded(operationID); err != nil {
+					return true, err
+				}
 			case message.GetCertificateRotationResponse() != nil && rotationPending:
 				return true, saveRotation(state, identity, message)
 			default:
-				return true, errors.New("unsupported Server message")
+				// Unknown server payloads are forward-compatible and ignored.
 			}
 		}
 	}
@@ -300,5 +328,88 @@ func validateServerEnvelope(message *agentv1.ServerToAgent, protocol string) err
 	if err != nil || id.Version() != 7 {
 		return errors.New("invalid Server message envelope")
 	}
+	return nil
+}
+
+// handleJobDispatch accepts one manual job, persists it before acknowledging
+// and runs it in the background. Duplicate deliveries replay the stored result.
+func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_ConnectClient, state *State,
+	config RunConfig, job *agentv1.JobDispatch, sequence *uint64, protocol string,
+) error {
+	operationID, err := uuid.Parse(job.GetOperationId())
+	if err != nil {
+		return errors.New("job dispatch has an invalid operation id")
+	}
+	planID, err := uuid.Parse(job.GetPlanId())
+	if err != nil {
+		return errors.New("job dispatch has an invalid plan id")
+	}
+	reject := func(code string) error {
+		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
+			Payload: &agentv1.AgentToServer_JobRejected{JobRejected: &agentv1.JobRejected{
+				JobId: job.GetJobId(), OperationId: job.GetOperationId(), ErrorCode: code,
+			}},
+		})
+	}
+	if job.GetType() != "BACKUP" {
+		return reject("TYPE_UNSUPPORTED")
+	}
+	desired, ok, err := state.ActiveDesiredState()
+	if err != nil || !ok {
+		return reject("PLAN_UNAVAILABLE")
+	}
+	var plan domain.PlanSchedule
+	found := false
+	for _, candidate := range desired.Plans {
+		if candidate.PlanID == planID {
+			plan, found = candidate, true
+			break
+		}
+	}
+	if !found {
+		return reject("PLAN_UNAVAILABLE")
+	}
+	deadline := job.GetDeadline().AsTime().UTC()
+	if !deadline.After(time.Now()) {
+		return reject("DEADLINE_EXCEEDED")
+	}
+	if _, exists, err := state.Operation(operationID); err == nil && exists {
+		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
+			Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
+				JobId: job.GetJobId(), OperationId: job.GetOperationId(),
+			}},
+		})
+	}
+	scheduled := job.GetNotBefore().AsTime().UTC()
+	record := OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
+		ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, StartedAt: time.Now().UTC(), Status: OperationRunning}
+	if err := state.PutOperation(record); err != nil {
+		return reject("PERSIST_FAILED")
+	}
+	if err := sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
+		Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
+			JobId: job.GetJobId(), OperationId: job.GetOperationId(),
+		}},
+	}); err != nil {
+		return err
+	}
+	binary := config.ResticBinary
+	if binary == "" {
+		binary = "restic"
+	}
+	executor := BackupExecutor{State: state, Binary: binary}
+	runCtx, endRun := state.BeginOperation(ctx, operationID)
+	go func() {
+		defer endRun()
+		outcome := executor.Execute(runCtx, plan, operationID, scheduled, deadline)
+		record.Status = outcome.Status
+		record.ExitCode = outcome.ExitCode
+		record.ErrorCode = outcome.ErrorCode
+		record.SnapshotID = outcome.SnapshotID
+		record.FilesDone, record.TotalFiles = outcome.FilesDone, outcome.TotalFiles
+		record.BytesDone, record.TotalBytes = outcome.BytesDone, outcome.TotalBytes
+		record.FinishedAt = time.Now().UTC()
+		_ = state.PutOperation(record)
+	}()
 	return nil
 }

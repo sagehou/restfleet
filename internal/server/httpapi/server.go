@@ -560,6 +560,8 @@ func routeLabel(path string) string {
 			return "/api/v1/plans/{plan_id}/resume"
 		case strings.HasSuffix(path, "/apply"):
 			return "/api/v1/plans/{plan_id}/apply"
+		case strings.HasSuffix(path, "/backup"):
+			return "/api/v1/plans/{plan_id}/backup"
 		default:
 			return "/api/v1/plans/{plan_id}"
 		}

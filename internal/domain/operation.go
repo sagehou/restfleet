@@ -70,6 +70,7 @@ type CredentialJob struct {
 	Repository          *Repository
 	RepositoryAvailable bool
 	LeaseExpiresAt      time.Time
+	Payload             []byte
 }
 
 // CredentialTestOutcome codes are a closed vocabulary; subprocess/database
@@ -106,6 +107,11 @@ type BackupOperation struct {
 	TotalBytes   int64
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+
+	ParentOperationID *uuid.UUID
+	RootOperationID   *uuid.UUID
+	CancelRequestedAt *time.Time
+	CancelReason      string
 }
 
 type BackupOperationProgress struct {
@@ -150,4 +156,31 @@ type Snapshot struct {
 	RecordedAt   time.Time
 	FilesNew     int64
 	BytesAdded   int64
+}
+
+// SnapshotEntry is one direct child of a snapshot path. Values come from a
+// bounded `restic ls` scan; unknown Restic fields are not persisted.
+type SnapshotEntry struct {
+	Name    string    `json:"name"`
+	Path    string    `json:"path"`
+	Type    string    `json:"type"`
+	Size    int64     `json:"size"`
+	Mode    string    `json:"mode"`
+	UID     int64     `json:"uid"`
+	GID     int64     `json:"gid"`
+	ModTime time.Time `json:"mtime"`
+}
+
+// SnapshotListResult is a cached directory page. It is not an authoritative
+// tree index and may be discarded at any time.
+type SnapshotListResult struct {
+	OperationID  uuid.UUID
+	RepositoryID uuid.UUID
+	SnapshotID   string
+	TreeID       string
+	Path         string
+	Truncated    bool
+	Scanned      int
+	Entries      []SnapshotEntry
+	CollectedAt  time.Time
 }
