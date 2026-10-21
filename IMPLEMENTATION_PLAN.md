@@ -21,7 +21,7 @@
 - 按用户当前指示，先实现功能，暂不新增或改写测试用例。编译、测试、认证及运行验证 MUST 仅在 GitHub Actions 执行；复用已有质量门禁，新增行为的验收保持待验证，不因源码完成而标记通过。
 - 2026-10-19 已完成 M4 第二项剩余功能的源码接入：`gateway-rotate`、`gateway-recover`、Gateway 侧 `provision`/`finalize` 与 ADR-0036 / 09 §7.27；测试策略按用户选择在里程碑结束后统一补齐，当前仅新增元数据/策略边界测试。验收证据、剩余项与接手入口见 [轮换与恢复交接](docs/development/handoff-2026-10-19-rotation.md)。
 
-2026-10-21 实际状态：M5–M8 已有部分实现合入 `main`，但均未达到退出条件；本轮不宣称任何里程碑完成。两个 P0 已由 #99 修复（定时 UUIDv5 operation ID、`SNAPSHOT_LIST` 读锁/事务提交）；#103 修复 M6 终态 guard/拒绝重投/summary 统计，#104 修复 M5 PENDING_APPLY/状态机/revision/accepted_revision，#105 修复路径、schema version 与 Operation 分页。剩余 P1：取消在途作业、调度器 jitter/DST、崩溃恢复/日志流、M8 缓存。下一步继续 P1 与 M8，再按依赖顺序推进 M9。详细证据见 [当前开发状态](docs/development/current-state.md) 与 [M4 运行验收记录](docs/development/m4-acceptance-2026-10-21.md)。
+2026-10-21 实际状态：M5–M8 已有部分实现合入 `main`，但均未达到退出条件；本轮不宣称任何里程碑完成。两个 P0 已由 #99 修复（定时 UUIDv5 operation ID、`SNAPSHOT_LIST` 读锁/事务提交）；#103 修复 M6 终态 guard/拒绝重投/summary 统计，#104 修复 M5 PENDING_APPLY/状态机/revision/accepted_revision，#105 修复路径、schema version 与 Operation 分页，#107 关闭取消与 dispatch 竞态，#108 补 `pending_result_ids`、Agent 崩溃恢复与 Server 旧 boot LOST 对账。剩余 P1：调度器 jitter/DST、结果/日志背压与 `JobLogChunk`、M8 缓存。下一步继续 P1 与 M8，再按依赖顺序推进 M9。详细证据见 [当前开发状态](docs/development/current-state.md) 与 [M4 运行验收记录](docs/development/m4-acceptance-2026-10-21.md)。
 
 ## M0 — Repository Scaffold
 
@@ -254,7 +254,7 @@
 
 ## M6 — Backup Execution
 
-**Status: IN PROGRESS** — 手动与定时上报链路已通（#99 对齐 UUIDv5 operation ID）；#103 增加终态 guard、关闭拒绝的 QUEUED 作业、避免旧 progress 覆盖终态，并把 summary `files_new/data_added` 写入快照索引。剩余：取消在途 QUEUED 作业仍可能执行、崩溃/LOST 对账、`pending_result_ids`、结果/日志背压与 `JobLogChunk`、M6 专项测试。
+**Status: IN PROGRESS** — 手动与定时上报链路已通（#99 对齐 UUIDv5 operation ID）；#103 增加终态 guard、关闭拒绝的 QUEUED 作业、避免旧 progress 覆盖终态，并把 summary `files_new/data_added` 写入快照索引；#107 以原子 dispatch claim 与 cancel-before-dispatch 集合关闭取消竞态；#108 补 Hello `pending_result_ids`、Agent 启动时 RUNNING→LOST 恢复、Server 旧 boot `LOST` 对账（含 grace 与 `LOCAL_OPERATION_RECOVERED`）。剩余：结果/日志背压与 `JobLogChunk`、M6 专项测试。
 
 ### Goal
 

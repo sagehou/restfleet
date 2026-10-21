@@ -4,9 +4,9 @@
 
 ## 仓库与验证
 
-- `main`：`671c121 fix: harden paths and correct version/pagination (#105)`。
-- 本地与远端只有 `main`，工作区干净；所有已合并/前缀分支已删除。
-- PR #99（P0 修复）、#100（session ID 保持 UUIDv7）、#101（READY 正向/降级测试）、#103（M6 终态/统计）、#104（M5 Plan 语义）、#105（路径/版本/分页）均通过 10 项检查并 squash 合并。
+- `main`：`109f9ea fix(m6): recover crash-left operations and report pending results (#108)`。
+- 本地与远端只有 `main`，工作区干净；批次分支 `fix/m6-crash-recovery` 已删除。
+- PR #99（P0 修复）、#100（session ID 保持 UUIDv7）、#101（READY 正向/降级测试）、#103（M6 终态/统计）、#104（M5 Plan 语义）、#105（路径/版本/分页）、#107（取消与 dispatch 竞态）、#108（崩溃恢复与 `pending_result_ids`）均通过 10 项检查并 squash 合并。
 - 编译、测试、认证及运行验证只在 GitHub Actions 执行；开发工作区只做源码/文档编辑和只读检查。
 
 ## 里程碑
@@ -16,7 +16,7 @@
 | M0–M3 | COMPLETE | 骨架、认证、Host/enrollment、心跳/库存/desired state |
 | M4 | IN PROGRESS | 三项交付源码已合入；READY 正/负向已有 CI 证据；真实三后端、部署态轮换/恢复与 DEP-005/006 按用户决定暂缓（不在 GitHub 保存凭据） |
 | M5 | IN PROGRESS | 模板、Plan、状态机、本地调度核心已接入；定时 operation ID、PENDING_APPLY 下发、状态机绕过与 accepted_revision 已修复；调度器 jitter/DST 与专项测试待补 |
-| M6 | IN PROGRESS | 手动与定时上报、终态 guard、拒绝闭环、summary 统计已修复；取消在途作业仍可能执行，崩溃恢复/日志流与专项测试待补 |
+| M6 | IN PROGRESS | 手动与定时上报、终态 guard、拒绝闭环、summary 统计、取消竞态与崩溃恢复（pending_result_ids/LOST）已修复；结果/日志背压、`JobLogChunk` 与专项测试待补 |
 | M7 | IN PROGRESS | 终态健康与仪表盘计数；OVERDUE/NEVER_RUN/PAUSED、Attention Queue 未实现 |
 | M8 | IN PROGRESS | 索引/列表/浏览 UI；扫描落库已修复；周期索引/UNMANAGED/缓存清理未实现 |
 | M9–M12 | NOT STARTED | 下载、恢复、保留/维护、通知与发布 |
@@ -30,6 +30,8 @@
 - `#103`：M6 终态 guard、拒绝 QUEUED 作业、报告竞态与 Restic summary 统计修复。
 - `#104`：M5 只调度 ACTIVE Plan、apply/pause/resume 不新增 revision、accepted_revision 落地。
 - `#105`：Restic 路径规范化/换行拒绝、`/version` schema 修复、Operation 分页 cursor 修复。
+- `#107`：dispatch 原子 claim、Agent cancel-before-dispatch 集合、`CANCEL_REQUESTED` 未启动 closure，关闭取消与执行竞态。
+- `#108`：Hello `pending_result_ids`、Agent 启动 RUNNING→LOST 恢复、Server `boot_changed_at` grace 后旧 boot LOST 对账；`JobAccepted` 记录 `started_at` 以保护已接收的取消作业。
 - M4 源码：`#51`–`#60`、`#67`、`#76`；历史批次与 CI 证据见 [M4 交付历史](m4-delivery-history.md)，运行验收矩阵见 [M4 运行验收记录](m4-acceptance-2026-10-21.md)。
 
 ## 已修复 P0（#99）
@@ -39,12 +41,11 @@
 
 ## P1：正确性与安全
 
-已修复（#103/#104/#105）：终态结果覆盖、拒绝 QUEUED 作业重投、结果统计字段错配、PENDING_APPLY 下发、DRAFT pause→resume 绕过、apply/pause/resume 新增 revision、accepted_revision 恒为 0、路径换行/非规范化、schema version 硬编码、Operation 分页重复。剩余：
+已修复（#103/#104/#105/#107/#108）：终态结果覆盖、拒绝 QUEUED 作业重投、结果统计字段错配、PENDING_APPLY 下发、DRAFT pause→resume 绕过、apply/pause/resume 新增 revision、accepted_revision 恒为 0、路径换行/非规范化、schema version 硬编码、Operation 分页重复、取消与 dispatch 竞态、`pending_result_ids`、Agent 崩溃后 RUNNING→LOST 与 Server 旧 boot LOST 对账。剩余：
 
-1. **取消在途 QUEUED 作业仍可能执行。** 终态 guard 已阻止迟到结果覆盖，但取消发生在 `JobDispatch` 已发出、`JobAccepted` 未到达的窗口时，Agent 仍可能启动 Restic。需要把 dispatch/cancel 的竞态在协议层闭合，而不是只靠终态保护。
-2. **调度器边界。** `NextRun` 从已加 jitter 的时刻继续计算（`internal/agent/scheduler.go:96-98`），jitter 大于 cron 间隔时会跳槽；分钟扫描未处理 DST（`internal/agent/schedule/schedule.go:82-91`）；持久化错误被丢弃（`scheduler.go:90,104,128,130,145`）；重试/永久失败语义未实现。
-3. **离线/崩溃恢复未闭合。** Agent `Hello` 未发送 `pending_result_ids`（`internal/agent/client_stream.go:56-67`）；没有 `LOST` 对账，崩溃后 `RUNNING` 记录会永久阻塞 `FORBID`；没有结果/日志背压，也没有 `JobLogChunk`。
-4. **M8 缓存与截断。** 缓存键缺少 `tree_id`，过期行不清理；条目名/路径无长度上限；截断按全部后代计数，深目录可能提前耗尽预算；截断页没有 continuation；`SnapshotList.next_cursor` 仍未赋值。
+1. **调度器边界。** `NextRun` 从已加 jitter 的时刻继续计算（`internal/agent/scheduler.go:96-98`），jitter 大于 cron 间隔时会跳槽；分钟扫描未处理 DST（`internal/agent/schedule/schedule.go:82-91`）；持久化错误被丢弃（`scheduler.go:90,104,128,130,145`）；重试/永久失败语义未实现。
+2. **结果与日志背压未实现。** 终态结果在重连后全量重放，缺少发送上限/背压；`JobLogChunk` 与每 Operation 10 MiB 限额、truncation marker、离线日志缓冲尚未接入。
+3. **M8 缓存与截断。** 缓存键缺少 `tree_id`，过期行不清理；条目名/路径无长度上限；截断按全部后代计数，深目录可能提前耗尽预算；截断页没有 continuation；`SnapshotList.next_cursor` 仍未赋值。
 
 ## M4 设计/安全不一致
 
