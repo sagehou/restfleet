@@ -183,7 +183,7 @@ func run(logger *slog.Logger) error {
 		agentv1.RegisterAgentControlServiceServer(grpcServer, agentService)
 	}
 
-	serverErrors := make(chan error, 6)
+	serverErrors := make(chan error, 8)
 	replayDone := make(chan struct{})
 	if config.GatewayReplaySocket != "" {
 		listener, err := gatewaypending.ListenReplay(config.GatewayReplaySocket, config.GatewayReplayGroup)
@@ -228,6 +228,16 @@ func run(logger *slog.Logger) error {
 		close(workerDone)
 	}
 	defer func() { stop(); <-workerDone }()
+	reconcileDone := make(chan struct{})
+	go func() {
+		defer close(reconcileDone)
+		if err := controlPlane.RunOperationReconciler(ctx, 30*time.Second, func() {
+			logger.Warn("operation reconciliation will retry", "component", "operation_reconciler", "event", "reconcile_retry", "error_code", "OPERATION_RECONCILE_RETRY")
+		}); err != nil {
+			serverErrors <- err
+		}
+	}()
+	defer func() { stop(); <-reconcileDone }()
 	go func() {
 		logger.Info("public listener started", "component", "server", "event", "listener_started", "address", config.HTTPAddress)
 		if config.EnrollmentEnabled {

@@ -103,6 +103,11 @@ func (s *State) BeginOperation(parent context.Context, id uuid.UUID) (context.Co
 }
 
 func (s *State) CancelOperation(id uuid.UUID) bool {
+	// A cancel for an already terminal operation must not create a phantom
+	// marker that could suppress a later, unrelated execution.
+	if record, found, err := s.Operation(id); err == nil && found && record.Terminal() {
+		return false
+	}
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	if cancel, ok := s.running[id]; ok {
@@ -118,6 +123,18 @@ func (s *State) CancelOperation(id uuid.UUID) bool {
 		s.canceled[id] = struct{}{}
 	}
 	return false
+}
+
+// ConsumeCancel reports and clears a cancel that arrived before its dispatch.
+// The caller must not start Restic when it returns true.
+func (s *State) ConsumeCancel(id uuid.UUID) bool {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if _, ok := s.canceled[id]; !ok {
+		return false
+	}
+	delete(s.canceled, id)
+	return true
 }
 
 func (s *State) MarkOperationUploaded(id uuid.UUID) error {

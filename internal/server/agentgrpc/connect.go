@@ -399,10 +399,19 @@ func (s *Service) observeHeartbeatResult(result string) {
 }
 
 // dispatchQueuedJob pushes at most one manual job per heartbeat. Delivery is
-// at-least-once; the Agent de-duplicates by operation id.
+// at-least-once; the Agent de-duplicates by operation id. The dispatch is
+// claimed atomically before writing to the stream so a concurrent cancel either
+// wins (no dispatch) or is sent as JobCancel right after this message.
 func (s *Service) dispatchQueuedJob(stream agentv1.AgentControlService_ConnectServer, agentID uuid.UUID, protocol string, sequence *uint64) error {
-	operation, ok, err := s.control.NextQueuedJob(stream.Context(), agentID)
+	operation, ok, err := s.control.ClaimQueuedJob(stream.Context(), agentID)
 	if err != nil || !ok {
+		return nil
+	}
+	// A cancel may have committed between the claim and this send. Re-check so
+	// a canceled operation is not knowingly dispatched; the pending
+	// cancellation path still broadcasts JobCancel for the Agent.
+	current, err := s.control.BackupOperation(stream.Context(), operation.ID)
+	if err != nil || current.Status != "QUEUED" {
 		return nil
 	}
 	scheduled := timestamppb.Now()

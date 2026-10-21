@@ -10,14 +10,14 @@ import (
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
-const backupOperationColumns = "id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,started_at,finished_at,exit_code,error_code,snapshot_id,files_done,total_files,bytes_done,total_bytes,created_at,updated_at,parent_operation_id,root_operation_id,cancel_requested_at,cancel_reason"
+const backupOperationColumns = "id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,started_at,finished_at,exit_code,error_code,snapshot_id,files_done,total_files,bytes_done,total_bytes,created_at,updated_at,parent_operation_id,root_operation_id,cancel_requested_at,cancel_reason,dispatched_at"
 
 func scanBackupOperation(row rowScanner) (domain.BackupOperation, error) {
 	var o domain.BackupOperation
 	err := row.Scan(&o.ID, &o.PlanID, &o.AgentID, &o.Type, &o.Source, &o.Status, &o.PlanRevision, &o.ConfigHash,
 		&o.ScheduledAt, &o.StartedAt, &o.FinishedAt, &o.ExitCode, &o.ErrorCode, &o.SnapshotID,
 		&o.FilesDone, &o.TotalFiles, &o.BytesDone, &o.TotalBytes, &o.CreatedAt, &o.UpdatedAt,
-		&o.ParentOperationID, &o.RootOperationID, &o.CancelRequestedAt, &o.CancelReason)
+		&o.ParentOperationID, &o.RootOperationID, &o.CancelRequestedAt, &o.CancelReason, &o.DispatchedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return o, domain.ErrNotFound
 	}
@@ -193,8 +193,11 @@ func (s *Store) CreateManualOperation(ctx context.Context, operation domain.Back
 	return persistenceError(err)
 }
 
-// CancelBackupOperation immediately closes a queued operation and asks the
-// Agent to stop a running one. The terminal result remains authoritative.
+// CancelBackupOperation closes an operation the dispatcher has not claimed and
+// asks the Agent to stop one that may already be on the wire. A never-dispatched
+// QUEUED row can be closed safely; a claimed row must stay non-terminal until
+// the Agent proves it stopped, so a concurrent dispatch can never execute
+// unnoticed. The terminal result remains authoritative.
 func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason string, now time.Time) (domain.BackupOperation, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -206,12 +209,16 @@ func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason 
 		return domain.BackupOperation{}, err
 	}
 	switch operation.Status {
-	case "CANCELED", "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS", "FAILED", "MISSED", "CONCURRENCY_SKIPPED":
+	case "CANCELED", "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS", "FAILED", "LOST", "MISSED", "CONCURRENCY_SKIPPED":
 		return domain.BackupOperation{}, domain.ErrOperationTerminal
 	case "CANCEL_REQUESTED":
 		return operation, tx.Commit(ctx)
 	case "QUEUED":
-		operation.Status, operation.FinishedAt = "CANCELED", &now
+		if operation.DispatchedAt == nil {
+			operation.Status, operation.FinishedAt = "CANCELED", &now
+			break
+		}
+		operation.Status = "CANCEL_REQUESTED"
 	default:
 		operation.Status = "CANCEL_REQUESTED"
 	}
@@ -220,11 +227,52 @@ func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason 
 	if operation.FinishedAt != nil {
 		finished = *operation.FinishedAt
 	}
-	if _, err = tx.Exec(ctx, `update backup_operations set status=$2,finished_at=$3,cancel_requested_at=$4,cancel_reason=$5,updated_at=$4
+	if _, err = tx.Exec(ctx, `update backup_operations set status=$2,finished_at=$3,cancel_requested_at=$4,cancel_reason=$5,updated_at=$4,error_code=case when $2='CANCELED' then 'CANCELED' else error_code end
 		where id=$1 and finished_at is null`, id, operation.Status, finished, now, reason); err != nil {
 		return domain.BackupOperation{}, err
 	}
 	return operation, tx.Commit(ctx)
+}
+
+// ClaimManualOperationDispatch atomically marks a QUEUED manual operation as
+// dispatched before the caller writes JobDispatch to the stream. A cancel that
+// commits first leaves the row CANCELED (or CANCEL_REQUESTED with no claim), so
+// the UPDATE matches nothing and no job reaches the Agent. The row stays QUEUED
+// so a lost dispatch is retried after retryAfter.
+func (s *Store) ClaimManualOperationDispatch(ctx context.Context, agentID uuid.UUID, now time.Time, retryAfter time.Duration) (domain.BackupOperation, bool, error) {
+	retryBefore := now.Add(-retryAfter)
+	operation, err := scanBackupOperation(s.pool.QueryRow(ctx, `update backup_operations set dispatched_at=$2,updated_at=$2
+		where id = (
+			select id from backup_operations
+			where agent_id=$1 and source='MANUAL' and status='QUEUED'
+			  and (dispatched_at is null or dispatched_at <= $3)
+			order by created_at
+			limit 1
+			for update skip locked
+		)
+		returning `+backupOperationColumns, agentID, now, retryBefore))
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.BackupOperation{}, false, nil
+	}
+	if err != nil {
+		return domain.BackupOperation{}, false, err
+	}
+	return operation, true, nil
+}
+
+// CloseUnstartedCancellations terminates a cancellation that the Agent never
+// acknowledged as started. Without this closure a cancel racing a claimed but
+// undelivered JobDispatch would leave the row CANCEL_REQUESTED forever and the
+// Agent could never prove a run that never existed.
+func (s *Store) CloseUnstartedCancellations(ctx context.Context, cutoff, now time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `update backup_operations
+		set status='CANCELED',error_code='CANCELED',finished_at=$2,updated_at=$2
+		where status='CANCEL_REQUESTED' and started_at is null and finished_at is null
+		  and cancel_requested_at is not null and cancel_requested_at <= $1`, cutoff, now)
+	if err != nil {
+		return 0, persistenceError(err)
+	}
+	return tag.RowsAffected(), nil
 }
 
 func (s *Store) PendingCancelOperations(ctx context.Context, agentID uuid.UUID) ([]domain.BackupOperation, error) {
@@ -253,20 +301,8 @@ func (s *Store) RejectManualOperation(ctx context.Context, id uuid.UUID, now tim
 	return err
 }
 
-// NextQueuedManualOperation returns the oldest queued manual job for an Agent.
-func (s *Store) NextQueuedManualOperation(ctx context.Context, agentID uuid.UUID) (domain.BackupOperation, bool, error) {
-	row := s.pool.QueryRow(ctx, "select "+backupOperationColumns+` from backup_operations
-		where agent_id=$1 and source='MANUAL' and status='QUEUED' order by created_at limit 1`, agentID)
-	operation, err := scanBackupOperation(row)
-	if errors.Is(err, domain.ErrNotFound) {
-		return domain.BackupOperation{}, false, nil
-	}
-	if err != nil {
-		return domain.BackupOperation{}, false, err
-	}
-	return operation, true, nil
-}
-
+// MarkOperationDispatched records JobAccepted. A cancel that arrived first
+// leaves the row CANCEL_REQUESTED, which this transition deliberately ignores.
 func (s *Store) MarkOperationDispatched(ctx context.Context, id uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, "update backup_operations set status='RUNNING',started_at=coalesce(started_at,now()),updated_at=now() where id=$1 and status='QUEUED'", id)
 	return err
