@@ -218,5 +218,9 @@ func (s *Store) FinishSnapshotIndexJob(ctx context.Context, id, owner uuid.UUID,
 	if err = finishJobRow(ctx, tx, &job, to, now); err != nil {
 		return err
 	}
+	if _, err = tx.Exec(ctx, "delete from repository_leases where repository_id=$1 and operation_id=$2",
+		job.Repository.ID, job.Operation.ID); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
