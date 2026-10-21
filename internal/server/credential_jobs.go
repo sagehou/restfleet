@@ -34,7 +34,7 @@ func (c *ControlPlane) TestStorageCredential(ctx context.Context, id uuid.UUID, 
 	if err != nil {
 		return domain.Operation{}, err
 	}
-	o := domain.Operation{ID: operationID, StorageCredentialID: id, RequestedByUserID: actor.ID}
+	o := domain.Operation{ID: operationID, StorageCredentialID: id, RequestedByUserID: &actor.ID}
 	audit, err := c.userAudit("STORAGE_CREDENTIAL_TEST", "STORAGE_CREDENTIAL", id, actor.ID, meta, "TEST_QUEUED")
 	if err != nil {
 		return o, err
@@ -50,7 +50,7 @@ func (c *ControlPlane) TestStorageCredential(ctx context.Context, id uuid.UUID, 
 // RunCredentialWorker uses PostgreSQL as the authoritative queue. A failed DB
 // attempt is retried; shutdown leaves any unfinished lease for crash recovery.
 func (c *ControlPlane) RunCredentialWorker(ctx context.Context, onError func()) error {
-	if (c.runCredentialTest == nil && c.initializeRepository == nil && c.listSnapshot == nil) || len(c.masterKey) != 32 {
+	if (c.runCredentialTest == nil && c.initializeRepository == nil && c.listSnapshot == nil && c.indexSnapshots == nil) || len(c.masterKey) != 32 {
 		return domain.ErrStorageUnavailable
 	}
 	owner, err := uuid.NewV7()
@@ -78,7 +78,7 @@ func (c *ControlPlane) RunCredentialWorker(ctx context.Context, onError func()) 
 // ProcessCredentialJob is also the integration-test entry point for restart,
 // duplicate delivery and lease fencing without a second in-memory queue.
 func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID) (bool, error) {
-	if (c.runCredentialTest == nil && c.initializeRepository == nil && c.listSnapshot == nil) || len(c.masterKey) != 32 {
+	if (c.runCredentialTest == nil && c.initializeRepository == nil && c.listSnapshot == nil && c.indexSnapshots == nil) || len(c.masterKey) != 32 {
 		return false, domain.ErrStorageUnavailable
 	}
 	job, err := c.store.ClaimCredentialJob(ctx, owner)
@@ -92,6 +92,9 @@ func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID
 	complete := func(code string) error {
 		if job.Operation.Type == "SNAPSHOT_LIST" {
 			return c.store.FinishSnapshotListJob(ctx, job.ID, owner, code, domain.SnapshotListResult{})
+		}
+		if job.Operation.Type == "SNAPSHOT_INDEX" {
+			return c.store.FinishSnapshotIndexJob(ctx, job.ID, owner, code, domain.SnapshotIndexResult{})
 		}
 		if job.Repository != nil {
 			return c.store.CompleteRepositoryJob(ctx, job.ID, owner, code, info.ID, info.FormatVersion)
@@ -169,6 +172,7 @@ func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID
 	}
 	var runErr error
 	var snapshotResult domain.SnapshotListResult
+	var snapshotIndexResult domain.SnapshotIndexResult
 	if job.Repository == nil {
 		if c.runCredentialTest == nil {
 			runErr = rclone.ErrCommandFailed
@@ -214,6 +218,30 @@ func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID
 				}
 			}
 		}
+	} else if job.Operation.Type == "SNAPSHOT_INDEX" {
+		if c.indexSnapshots == nil {
+			runErr = restic.ErrProcessFailed
+		} else if e, secretErr := c.store.RepositoryResticSecret(workCtx, job.Repository.ID); secretErr != nil {
+			runErr = domain.ErrStorageUnavailable
+		} else if password, secretErr := openRepositorySecret(c.masterKey, *job.Repository, "RESTIC_KEY", e); secretErr != nil {
+			runErr = domain.ErrStorageUnavailable
+		} else {
+			indexCtx, stop := context.WithTimeout(workCtx, 5*time.Minute)
+			indexed, indexErr := c.indexSnapshots(indexCtx, restic.SnapshotIndexRequest{
+				Config: raw, Remote: credential.RemoteName,
+				GatewayID: job.Repository.GatewayID, RepositoryID: job.Repository.ID,
+				Password: password,
+			}, persist)
+			stop()
+			clear(password)
+			runErr = indexErr
+			if indexErr == nil {
+				for i := range indexed.Entries {
+					indexed.Entries[i].PlanID = resolveSnapshotPlan(indexed.Entries[i].Tags)
+				}
+				snapshotIndexResult = indexed
+			}
+		}
 	} else if c.initializeRepository == nil {
 		runErr = restic.ErrProcessFailed
 	} else {
@@ -246,6 +274,9 @@ func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID
 	}
 	if job.Operation.Type == "SNAPSHOT_LIST" {
 		return true, c.store.FinishSnapshotListJob(ctx, job.ID, owner, snapshotListErrorCode(runErr), snapshotResult)
+	}
+	if job.Operation.Type == "SNAPSHOT_INDEX" {
+		return true, c.store.FinishSnapshotIndexJob(ctx, job.ID, owner, snapshotIndexErrorCode(runErr), snapshotIndexResult)
 	}
 	code := ""
 	switch {
@@ -293,6 +324,29 @@ func snapshotListErrorCode(err error) string {
 		return "CONFIG_UNSAFE"
 	default:
 		return "SCAN_FAILED"
+	}
+}
+
+func snapshotIndexErrorCode(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, context.DeadlineExceeded):
+		return "INDEX_TIMED_OUT"
+	case errors.Is(err, restic.ErrRepositoryLocked):
+		return "REPOSITORY_LOCKED"
+	case errors.Is(err, restic.ErrWrongPassword):
+		return "PASSWORD_REJECTED"
+	case errors.Is(err, restic.ErrRepositoryAbsent):
+		return "REPOSITORY_UNAVAILABLE"
+	case errors.Is(err, domain.ErrStorageUnavailable):
+		return "SECRET_UNAVAILABLE"
+	case errors.Is(err, rclone.ErrRefreshPersist):
+		return "REFRESH_FAILED"
+	case errors.Is(err, rclone.ErrInvalidConfig), errors.Is(err, rclone.ErrUnsafeRuntime), errors.Is(err, rclone.ErrConfigChanged):
+		return "CONFIG_UNSAFE"
+	default:
+		return "INDEX_FAILED"
 	}
 }
 

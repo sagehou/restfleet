@@ -144,11 +144,14 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 		return err
 	}
 	if result.SnapshotID != "" {
-		if _, err = tx.Exec(ctx, `insert into snapshots(plan_id,snapshot_id,agent_id,host_id,repository_id,
-			operation_id,captured_at,recorded_at,files_new,bytes_added)
-			values($1,$2,$3,$4,$5,$6,$7,now(),$8,$9)
-			on conflict (plan_id,snapshot_id) do nothing`,
-			result.PlanID, result.SnapshotID, result.AgentID, hostID, repositoryID,
+		if _, err = tx.Exec(ctx, `insert into snapshots(repository_id,snapshot_id,plan_id,agent_id,host_id,
+			operation_id,captured_at,recorded_at,files_new,bytes_added,managed,missing_at)
+			values($1,$2,$3,$4,$5,$6,$7,now(),$8,$9,true,null)
+			on conflict (repository_id,snapshot_id) do update set
+				plan_id=excluded.plan_id,agent_id=excluded.agent_id,host_id=excluded.host_id,
+				operation_id=excluded.operation_id,captured_at=excluded.captured_at,recorded_at=excluded.recorded_at,
+				files_new=excluded.files_new,bytes_added=excluded.bytes_added,managed=true,missing_at=null`,
+			repositoryID, result.SnapshotID, result.PlanID, result.AgentID, hostID,
 			result.OperationID, finished, result.FilesNew, result.DataAdded); err != nil {
 			return persistenceError(err)
 		}
@@ -171,17 +174,15 @@ func (s *Store) FleetBackupCounts(ctx context.Context) (plans, operations, runni
 }
 
 func (s *Store) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, error) {
-	rows, err := s.pool.Query(ctx, `select plan_id,snapshot_id,agent_id,host_id,repository_id,operation_id,captured_at,recorded_at,files_new,bytes_added
-		from snapshots order by recorded_at desc limit $1`, limit)
+	rows, err := s.pool.Query(ctx, "select "+snapshotColumns+" from snapshots order by recorded_at desc limit $1", limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := make([]domain.Snapshot, 0)
 	for rows.Next() {
-		var item domain.Snapshot
-		if err := rows.Scan(&item.PlanID, &item.SnapshotID, &item.AgentID, &item.HostID, &item.RepositoryID,
-			&item.OperationID, &item.CapturedAt, &item.RecordedAt, &item.FilesNew, &item.BytesAdded); err != nil {
+		item, err := scanSnapshot(rows)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)

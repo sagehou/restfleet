@@ -26,7 +26,7 @@ func (c *ControlPlane) InitializeRepository(ctx context.Context, id uuid.UUID, k
 	if err != nil {
 		return domain.Operation{}, err
 	}
-	o := domain.Operation{ID: operationID, RepositoryID: &id, RequestedByUserID: actor.ID}
+	o := domain.Operation{ID: operationID, RepositoryID: &id, RequestedByUserID: &actor.ID}
 	audit, err := c.userAudit("REPOSITORY_INITIALIZE", "REPOSITORY", id, actor.ID, meta, "INITIALIZE_QUEUED")
 	if err != nil {
 		return o, err

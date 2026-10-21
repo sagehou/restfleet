@@ -204,9 +204,9 @@ export function Snapshots({ onUnauthorized }: Props) {
       {!loading && !message && !items.length && <p className="muted">还没有快照。计划成功执行一次备份后会出现在这里。</p>}
       {items.length > 0 && <div className="table-wrap"><table>
         <thead><tr><th>快照</th><th>计划</th><th>采集时间</th><th>新增文件</th><th>新增数据</th><th></th></tr></thead>
-        <tbody>{items.map((item) => <tr key={`${item.plan_id}-${item.snapshot_id}`}>
+        <tbody>{items.map((item) => <tr key={`${item.repository_id}-${item.snapshot_id}`}>
           <td>{item.snapshot_id.slice(0, 8)}</td>
-          <td>{item.plan_id.slice(0, 8)}</td>
+          <td>{item.plan_id ? item.plan_id.slice(0, 8) : 'UNMANAGED'}</td>
           <td>{new Date(item.captured_at).toLocaleString()}</td>
           <td>{item.files_new}</td>
           <td>{size(item.bytes_added)}</td>
