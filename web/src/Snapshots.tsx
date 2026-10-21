@@ -63,8 +63,6 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
     let timer: number | undefined
     const controller = new AbortController()
     const endpoint = `/api/v1/snapshots/${encodeURIComponent(snapshot.snapshot_id)}/entries?path=${encodeURIComponent(path)}&repository_id=${encodeURIComponent(snapshot.repository_id)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
-    if (cursor) setLoadingMore(true)
-    else setLoading(true)
     async function pollOperation(operationID: string, remaining: number) {
       try {
         const operation = await requestJSON<Operation>(`/api/v1/operations/${encodeURIComponent(operationID)}`, { signal: controller.signal })
@@ -174,7 +172,7 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
         </table></div>}
         {entries.next_cursor && <div className="actions">
           <button className="secondary-button" disabled={loadingMore}
-            onClick={() => setCursor(entries.next_cursor ?? '')}>{loadingMore ? '加载中…' : '加载更多'}</button>
+            onClick={() => { setLoadingMore(true); setCursor(entries.next_cursor ?? '') }}>{loadingMore ? '加载中…' : '加载更多'}</button>
         </div>}
         <p className="muted">缓存于 {new Date(entries.collected_at).toLocaleString()}。</p>
       </>}
