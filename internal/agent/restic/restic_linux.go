@@ -21,6 +21,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 )
@@ -56,6 +57,17 @@ func Prepare(paths, excludes []string) (PreparedFiles, error) {
 	if len(paths) == 0 {
 		return PreparedFiles{}, errors.New("restic: at least one path is required")
 	}
+	for _, path := range paths {
+		if len(path) == 0 || len(path) > 4096 || !filepath.IsAbs(path) || filepath.Clean(path) != path ||
+			strings.IndexFunc(path, unicode.IsControl) >= 0 {
+			return PreparedFiles{}, errors.New("restic: path is not canonical")
+		}
+	}
+	for _, pattern := range excludes {
+		if len(pattern) > 4096 || strings.IndexFunc(pattern, unicode.IsControl) >= 0 {
+			return PreparedFiles{}, errors.New("restic: exclude pattern is invalid")
+		}
+	}
 	directory, err := os.MkdirTemp("", "restfleet-restic-")
 	if err != nil {
 		return PreparedFiles{}, err
@@ -86,9 +98,9 @@ func writeLines(path string, values []string) error {
 	}
 	writer := bufio.NewWriter(file)
 	for _, value := range values {
-		if strings.ContainsRune(value, 0) {
+		if strings.ContainsAny(value, "\x00\r\n") {
 			_ = file.Close()
-			return errors.New("restic: path contains NUL")
+			return errors.New("restic: path contains a line break or NUL")
 		}
 		if _, err := writer.WriteString(value + "\n"); err != nil {
 			_ = file.Close()

@@ -248,6 +248,9 @@ func (c *ControlPlane) BootstrapRequired(ctx context.Context) (bool, error) {
 	return c.store.BootstrapRequired(ctx)
 }
 
+// SchemaVersion returns the schema version this ControlPlane expects.
+func (c *ControlPlane) SchemaVersion() int { return c.expectedSchema }
+
 func (c *ControlPlane) Bootstrap(
 	ctx context.Context,
 	token string,

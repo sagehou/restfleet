@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 )
@@ -83,12 +85,13 @@ func (c TemplateConfig) Validate() error {
 		return &TemplateError{Field: "paths", Code: "REQUIRED"}
 	}
 	for i, path := range c.Paths {
-		if strings.TrimSpace(path) == "" || strings.ContainsRune(path, 0) {
+		if strings.TrimSpace(path) == "" || len(path) > 4096 || !filepath.IsAbs(path) ||
+			filepath.Clean(path) != path || strings.IndexFunc(path, unicode.IsControl) >= 0 {
 			return &TemplateError{Field: fmt.Sprintf("paths.%d", i), Code: "INVALID"}
 		}
 	}
 	for i, pattern := range c.ExcludePatterns {
-		if strings.ContainsRune(pattern, 0) {
+		if len(pattern) > 4096 || strings.IndexFunc(pattern, unicode.IsControl) >= 0 {
 			return &TemplateError{Field: fmt.Sprintf("exclude_patterns.%d", i), Code: "INVALID"}
 		}
 	}

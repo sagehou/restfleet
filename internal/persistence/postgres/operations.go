@@ -29,7 +29,13 @@ func (s *Store) BackupOperation(ctx context.Context, id uuid.UUID) (domain.Backu
 }
 
 func (s *Store) BackupOperations(ctx context.Context, after uuid.UUID, limit int) ([]domain.BackupOperation, error) {
-	rows, err := s.pool.Query(ctx, "select "+backupOperationColumns+" from backup_operations where id>$1 order by id desc limit $2", after, limit)
+	query := "select " + backupOperationColumns + " from backup_operations order by id desc limit $1"
+	args := []any{limit}
+	if after != uuid.Nil {
+		query = "select " + backupOperationColumns + " from backup_operations where id<$1 order by id desc limit $2"
+		args = []any{after, limit}
+	}
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
