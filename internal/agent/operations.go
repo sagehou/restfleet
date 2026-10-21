@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,8 +20,13 @@ const (
 	OperationSucceededWarnings  = "SUCCEEDED_WITH_WARNINGS"
 	OperationFailed             = "FAILED"
 	OperationCanceled           = "CANCELED"
+	OperationLost               = "LOST"
 	OperationMissed             = "MISSED"
 	OperationConcurrencySkipped = "CONCURRENCY_SKIPPED"
+
+	// maxPendingResultIDs mirrors the Server Hello bound. Extra results are
+	// still replayed after Welcome, so the cap never drops a result.
+	maxPendingResultIDs = 100
 )
 
 // OperationRecord is the durable local view of one scheduled run. It exists
@@ -51,7 +57,7 @@ type OperationRecord struct {
 func (r OperationRecord) Terminal() bool {
 	switch r.Status {
 	case OperationSucceeded, OperationSucceededWarnings, OperationFailed,
-		OperationCanceled, OperationMissed, OperationConcurrencySkipped:
+		OperationCanceled, OperationLost, OperationMissed, OperationConcurrencySkipped:
 		return true
 	}
 	return false
@@ -260,4 +266,81 @@ func (s *State) ReportableOperations(now time.Time, progressInterval time.Durati
 		})
 	})
 	return items, err
+}
+
+// PendingResultIDs lists stored terminal results the Server has not confirmed.
+// The Hello field is advisory and bounded; results beyond the cap are replayed
+// after Welcome until the Server acknowledges them.
+func (s *State) PendingResultIDs(limit int) ([]string, error) {
+	ids := make([]string, 0)
+	err := s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(operationsBucket))
+		if bucket == nil {
+			return nil
+		}
+		return bucket.ForEach(func(_, value []byte) error {
+			var record OperationRecord
+			if err := json.Unmarshal(value, &record); err != nil {
+				return err
+			}
+			if record.Terminal() && !record.Uploaded {
+				ids = append(ids, record.ID.String())
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(ids)
+	if limit > 0 && len(ids) > limit {
+		ids = ids[:limit]
+	}
+	return ids, nil
+}
+
+// RecoverRunningOperations closes records left RUNNING by a previous Agent
+// process. The new process owns no Restic child for them, so leaving them
+// RUNNING would block FORBID scheduling forever. Recovery never fabricates
+// success; the result is reported as LOST for Server-side reconciliation.
+func (s *State) RecoverRunningOperations(now time.Time) (int, error) {
+	recovered := 0
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(operationsBucket))
+		if bucket == nil {
+			return nil
+		}
+		keys := make([][]byte, 0)
+		records := make([]OperationRecord, 0)
+		if err := bucket.ForEach(func(key, value []byte) error {
+			var record OperationRecord
+			if err := json.Unmarshal(value, &record); err != nil {
+				return err
+			}
+			if record.Status != OperationRunning {
+				return nil
+			}
+			record.Status = OperationLost
+			record.ErrorCode = "LOCAL_OPERATION_RECOVERED"
+			record.FinishedAt = now
+			record.Uploaded = false
+			keys = append(keys, append([]byte(nil), key...))
+			records = append(records, record)
+			return nil
+		}); err != nil {
+			return err
+		}
+		for i, key := range keys {
+			payload, err := json.Marshal(records[i])
+			if err != nil {
+				return err
+			}
+			if err := bucket.Put(key, payload); err != nil {
+				return err
+			}
+		}
+		recovered = len(keys)
+		return nil
+	})
+	return recovered, err
 }

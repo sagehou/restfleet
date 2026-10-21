@@ -98,6 +98,12 @@ func (s *grpcTestStore) RecordAudit(_ context.Context, event domain.AuditEvent) 
 	return nil
 }
 
+func (s *grpcTestStore) ReconcileLostOperations(
+	context.Context, time.Time, time.Time,
+) (int64, error) {
+	return 0, nil
+}
+
 func TestMTLSHelloAndRevocationGate(t *testing.T) {
 	now := time.Now().UTC()
 	agentCA, caPrivatePEM, err := security.NewAgentCA(now)

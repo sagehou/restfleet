@@ -1056,7 +1056,7 @@ export interface components {
             /** @enum {string} */
             source: "SCHEDULED" | "MANUAL";
             /** @enum {string} */
-            status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCEL_REQUESTED" | "CANCELED" | "MISSED" | "CONCURRENCY_SKIPPED";
+            status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCEL_REQUESTED" | "CANCELED" | "LOST" | "MISSED" | "CONCURRENCY_SKIPPED";
             /** Format: int64 */
             plan_revision: number;
             /** Format: date-time */

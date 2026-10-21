@@ -84,12 +84,17 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 	if canceled.Status != "CANCEL_REQUESTED" {
 		t.Fatalf("cancel after claim = %s, want CANCEL_REQUESTED", canceled.Status)
 	}
-	// A late JobAccepted must not turn a canceled row back into RUNNING.
+	// A late JobAccepted must not turn a canceled row back into RUNNING, but it
+	// proves the Agent received the job, so the unstarted closure must skip it.
 	if err := store.MarkOperationDispatched(ctx, claimedID); err != nil {
 		t.Fatal(err)
 	}
 	if got := status(claimedID); got != "CANCEL_REQUESTED" {
 		t.Fatalf("late acceptance changed status to %s", got)
+	}
+	var started *time.Time
+	if err := pool.QueryRow(ctx, "select started_at from backup_operations where id=$1", claimedID).Scan(&started); err != nil || started == nil {
+		t.Fatalf("late acceptance was not recorded as started: %v, %v", started, err)
 	}
 	pending, err := store.PendingCancelOperations(ctx, enrolled.AgentId)
 	if err != nil {
@@ -98,14 +103,27 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 	if len(pending) != 1 || pending[0].ID != claimedID {
 		t.Fatal("pending cancellation was not delivered")
 	}
-	// The closure only applies after the grace window.
+	// The closure only applies after the grace window and never to a run the
+	// Agent proved it received.
 	if closed, err := store.CloseUnstartedCancellations(ctx, now.Add(-time.Second), now.Add(time.Minute)); err != nil || closed != 0 {
 		t.Fatalf("closure fired inside the grace window: %d, %v", closed, err)
+	}
+	if closed, err := store.CloseUnstartedCancellations(ctx, now.Add(time.Minute), now.Add(2*time.Minute)); err != nil || closed != 0 {
+		t.Fatalf("closure fired for an accepted run: %d, %v", closed, err)
+	}
+
+	// A claimed operation whose JobAccepted was lost is closed after grace.
+	undeliveredID := insertOperation()
+	if _, ok, err := store.ClaimManualOperationDispatch(ctx, enrolled.AgentId, now.Add(4*time.Second), 15*time.Second); err != nil || !ok {
+		t.Fatalf("second queued operation was not claimed: %v", err)
+	}
+	if _, err := store.CancelBackupOperation(ctx, undeliveredID, "stop undelivered", now.Add(5*time.Second)); err != nil {
+		t.Fatal(err)
 	}
 	if closed, err := store.CloseUnstartedCancellations(ctx, now.Add(time.Minute), now.Add(2*time.Minute)); err != nil || closed != 1 {
 		t.Fatalf("closure = %d, %v; want 1", closed, err)
 	}
-	if got := status(claimedID); got != "CANCELED" {
+	if got := status(undeliveredID); got != "CANCELED" {
 		t.Fatalf("unstarted cancellation closed as %s", got)
 	}
 }

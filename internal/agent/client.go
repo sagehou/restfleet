@@ -161,6 +161,12 @@ func Run(ctx context.Context, state *State, config RunConfig) error {
 	if binary == "" {
 		binary = "restic"
 	}
+	// A previous process may have died after persisting RUNNING but before or
+	// during Restic. This process owns no such child, so close those records as
+	// LOST before scheduling so FORBID cannot stay blocked forever.
+	if _, err := state.RecoverRunningOperations(time.Now().UTC()); err != nil {
+		return err
+	}
 	schedulerCtx, stopScheduler := context.WithCancel(ctx)
 	defer stopScheduler()
 	go func() {

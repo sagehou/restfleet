@@ -475,7 +475,9 @@ func (s *Store) MarkAgentConnected(
 ) (domain.Agent, error) {
 	tag, err := s.pool.Exec(ctx, `
 		update agents
-		set version = $3, protocol_version = $4, hostname = $5, boot_id = $6,
+		set version = $3, protocol_version = $4, hostname = $5,
+		    boot_changed_at = case when boot_id <> $6 and boot_id <> '' then $9 else boot_changed_at end,
+		    boot_id = $6,
 		    restic_version = $7,
 		    accepted_revision = greatest(accepted_revision, $8),
 		    last_connected_at = $9, updated_at = $9
