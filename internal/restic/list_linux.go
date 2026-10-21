@@ -43,6 +43,7 @@ type ListRequest struct {
 	Password     []byte
 	SnapshotID   string
 	Path         string
+	After        string
 	MaxNodes     int
 	MaxEntries   int
 }
@@ -62,10 +63,11 @@ type Node struct {
 // ListResult is bounded by MaxNodes and MaxEntries. Truncated means the scan
 // stopped before Restic finished; it is not an empty or complete directory.
 type ListResult struct {
-	TreeID    string
-	Entries   []Node
-	Scanned   int
-	Truncated bool
+	TreeID     string
+	Entries    []Node
+	Scanned    int
+	Truncated  bool
+	NextCursor string
 }
 
 func (r *ListRequest) normalize() error {
@@ -81,6 +83,16 @@ func (r *ListRequest) normalize() error {
 		return err
 	}
 	r.Path = cleaned
+	if r.After != "" {
+		cursor, err := normalizeListPath(r.After)
+		if err != nil {
+			return err
+		}
+		if cursor == "/" {
+			cursor = ""
+		}
+		r.After = cursor
+	}
 	if r.MaxNodes == 0 {
 		r.MaxNodes = defaultListNodes
 	}
@@ -170,7 +182,7 @@ func (p *Provisioner) list(ctx context.Context, dir, repository, passwordFile st
 	}
 	defer func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }()
 	result := ListResult{Entries: make([]Node, 0)}
-	if parseErr := parseListJSON(stdout, request.Path, request.MaxNodes, request.MaxEntries, &result); parseErr != nil {
+	if parseErr := parseListJSON(stdout, request.Path, request.MaxNodes, request.MaxEntries, request.After, &result); parseErr != nil {
 		cancel()
 		_ = cmd.Wait()
 		if ctx.Err() != nil {
@@ -210,7 +222,7 @@ func listExitError(err error) error {
 
 // parseListJSON reads Restic's JSONL stream without buffering the whole tree.
 // Unknown message types and fields are ignored; malformed node essentials fail.
-func parseListJSON(r io.Reader, root string, maxNodes, maxEntries int, result *ListResult) error {
+func parseListJSON(r io.Reader, root string, maxNodes, maxEntries int, after string, result *ListResult) error {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64<<10), maxListLine)
 	entries := make(map[string]Node)
@@ -272,10 +284,6 @@ loop:
 			if _, exists := entries[nodePath]; exists {
 				continue
 			}
-			if len(entries) >= maxEntries {
-				result.Truncated = true
-				break loop
-			}
 			entries[nodePath] = Node{
 				Name: name, Path: nodePath, Type: event.Type, Size: event.Size,
 				Mode: fmt.Sprintf("%04o", event.Mode&0o7777), UID: int64(event.UID), GID: int64(event.GID),
@@ -292,7 +300,24 @@ loop:
 	for _, node := range entries {
 		result.Entries = append(result.Entries, node)
 	}
-	sort.Slice(result.Entries, func(i, j int) bool { return result.Entries[i].Name < result.Entries[j].Name })
+	sort.Slice(result.Entries, func(i, j int) bool { return result.Entries[i].Path < result.Entries[j].Path })
+	if after != "" {
+		filtered := result.Entries[:0]
+		for _, node := range result.Entries {
+			if node.Path > after {
+				filtered = append(filtered, node)
+			}
+		}
+		result.Entries = filtered
+	}
+	if len(result.Entries) > maxEntries {
+		result.Entries = result.Entries[:maxEntries]
+		result.Truncated = true
+		result.NextCursor = result.Entries[len(result.Entries)-1].Path
+	}
+	if result.Truncated && result.NextCursor == "" && len(result.Entries) > 0 {
+		result.NextCursor = result.Entries[len(result.Entries)-1].Path
+	}
 	return nil
 }
 

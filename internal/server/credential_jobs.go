@@ -186,6 +186,7 @@ func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID
 			var payload struct {
 				SnapshotID string `json:"snapshot_id"`
 				Path       string `json:"path"`
+				Cursor     string `json:"cursor"`
 			}
 			if json.Unmarshal(job.Payload, &payload) != nil {
 				runErr = restic.ErrInvalidListRequest
@@ -198,7 +199,7 @@ func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID
 				list, listErr := c.listSnapshot(listCtx, restic.ListRequest{
 					Config: raw, Remote: credential.RemoteName,
 					GatewayID: job.Repository.GatewayID, RepositoryID: job.Repository.ID,
-					Password: password, SnapshotID: payload.SnapshotID, Path: payload.Path,
+					Password: password, SnapshotID: payload.SnapshotID, Path: payload.Path, After: payload.Cursor,
 				}, persist)
 				stop()
 				clear(password)
@@ -206,7 +207,7 @@ func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID
 				if listErr == nil {
 					snapshotResult = domain.SnapshotListResult{
 						SnapshotID: payload.SnapshotID, TreeID: list.TreeID, Path: payload.Path,
-						Truncated: list.Truncated, Scanned: list.Scanned,
+						Truncated: list.Truncated, NextCursor: list.NextCursor, Scanned: list.Scanned,
 						Entries: make([]domain.SnapshotEntry, 0, len(list.Entries)),
 					}
 					for _, node := range list.Entries {

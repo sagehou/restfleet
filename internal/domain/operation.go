@@ -217,6 +217,7 @@ type SnapshotListResult struct {
 	TreeID       string
 	Path         string
 	Truncated    bool
+	NextCursor   string
 	Scanned      int
 	Entries      []SnapshotEntry
 	CollectedAt  time.Time

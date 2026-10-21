@@ -51,12 +51,14 @@ func lockRepositoryForRead(ctx context.Context, tx pgx.Tx, id uuid.UUID) (domain
 // EnqueueSnapshotList creates one read-only scan job. It reuses the existing
 // repository serialization: no active operation, backup admission or live lease
 // may exist, so credential refresh remains safe.
-func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operation, snapshotID, path string) (domain.Operation, error) {
+func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operation, snapshotID, path, cursor string) (domain.Operation, error) {
 	if operation.RepositoryID == nil || operation.RequestedByUserID == nil || *operation.RequestedByUserID == uuid.Nil ||
-		operation.ID.Version() != 7 || len(path) == 0 || len(path) > 4096 {
+		operation.ID.Version() != 7 || len(path) == 0 || len(path) > 4096 ||
+		len(cursor) > 4096 || (cursor != "" && (!strings.HasPrefix(cursor, "/") ||
+			strings.IndexFunc(cursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
 		return operation, domain.ErrOperationTransition
 	}
-	payload, err := json.Marshal(map[string]string{"snapshot_id": snapshotID, "path": path})
+	payload, err := json.Marshal(map[string]string{"snapshot_id": snapshotID, "path": path, "cursor": cursor})
 	if err != nil {
 		return operation, err
 	}
@@ -143,13 +145,14 @@ func (s *Store) ActiveSnapshotListOperation(ctx context.Context, repositoryID uu
 
 // SnapshotListResult returns a cached page only while it is fresh. Expired rows
 // are never served and may be removed by the next scan.
-func (s *Store) SnapshotListResult(ctx context.Context, repositoryID uuid.UUID, snapshotID, path string, now time.Time) (domain.SnapshotListResult, bool, error) {	var result domain.SnapshotListResult
+func (s *Store) SnapshotListResult(ctx context.Context, repositoryID uuid.UUID, snapshotID, path, cursor string, now time.Time) (domain.SnapshotListResult, bool, error) {
+	var result domain.SnapshotListResult
 	var entries []byte
-	err := s.pool.QueryRow(ctx, `select operation_id,repository_id,snapshot_id,tree_id,path,truncated,scanned,entries,collected_at
-		from snapshot_list_results where repository_id=$1 and snapshot_id=$2 and path=$3 and expires_at>$4
-		order by collected_at desc limit 1`, repositoryID, snapshotID, path, now).
+	err := s.pool.QueryRow(ctx, `select operation_id,repository_id,snapshot_id,tree_id,path,truncated,next_cursor,scanned,entries,collected_at
+		from snapshot_list_results where repository_id=$1 and snapshot_id=$2 and path=$3 and cursor=$4 and expires_at>$5
+		order by collected_at desc limit 1`, repositoryID, snapshotID, path, cursor, now).
 		Scan(&result.OperationID, &result.RepositoryID, &result.SnapshotID, &result.TreeID, &result.Path,
-			&result.Truncated, &result.Scanned, &entries, &result.CollectedAt)
+			&result.Truncated, &result.NextCursor, &result.Scanned, &entries, &result.CollectedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.SnapshotListResult{}, false, nil
 	}
@@ -216,8 +219,16 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 	}
 	to := "FAILED"
 	if code == "" {
-		if len(result.SnapshotID) != 64 || len(result.TreeID) != 64 || len(result.Path) == 0 ||
-			len(result.Path) > 4096 || len(result.Entries) > 5000 || result.Scanned < 0 {
+		var request struct {
+			SnapshotID string `json:"snapshot_id"`
+			Path       string `json:"path"`
+			Cursor     string `json:"cursor"`
+		}
+		if json.Unmarshal(job.Payload, &request) != nil || request.SnapshotID != result.SnapshotID || request.Path != result.Path ||
+			len(result.SnapshotID) != 64 || len(result.TreeID) != 64 || len(result.Path) == 0 ||
+			len(result.Path) > 4096 || len(result.Entries) > 5000 || result.Scanned < 0 ||
+			len(result.NextCursor) > 4096 || (result.NextCursor != "" && (!strings.HasPrefix(result.NextCursor, "/") ||
+				strings.IndexFunc(result.NextCursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
 			return domain.ErrOperationTransition
 		}
 		for _, entry := range result.Entries {
@@ -237,12 +248,12 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 			return err
 		}
 		if _, err = tx.Exec(ctx, `delete from snapshot_list_results
-			where repository_id=$1 and snapshot_id=$2 and path=$3`, job.Repository.ID, result.SnapshotID, result.Path); err != nil {
+			where repository_id=$1 and snapshot_id=$2 and path=$3 and cursor=$4`, job.Repository.ID, result.SnapshotID, result.Path, request.Cursor); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(ctx, `insert into snapshot_list_results(operation_id,repository_id,snapshot_id,tree_id,path,
-			truncated,scanned,entries,collected_at,expires_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			job.Operation.ID, job.Repository.ID, result.SnapshotID, result.TreeID, result.Path,
+		if _, err = tx.Exec(ctx, `insert into snapshot_list_results(operation_id,repository_id,snapshot_id,tree_id,path,cursor,next_cursor,
+			truncated,scanned,entries,collected_at,expires_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+			job.Operation.ID, job.Repository.ID, result.SnapshotID, result.TreeID, result.Path, request.Cursor, result.NextCursor,
 			result.Truncated, result.Scanned, entries, now, now.Add(snapshotListLifetime)); err != nil {
 			return err
 		}

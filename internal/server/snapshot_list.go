@@ -17,7 +17,7 @@ type SnapshotLister func(context.Context, restic.ListRequest, func(context.Conte
 // SnapshotEntries returns a fresh cached page or queues one bounded scan. The
 // bool reports that a scan is pending; it is not an error.
 func (c *ControlPlane) SnapshotEntries(ctx context.Context, snapshotID string,
-	repositoryID *uuid.UUID, rawPath string, requestedBy uuid.UUID,
+	repositoryID *uuid.UUID, rawPath, rawCursor string, requestedBy uuid.UUID,
 ) (domain.SnapshotListResult, bool, error) {
 	if c.listSnapshot == nil || len(c.masterKey) != 32 {
 		return domain.SnapshotListResult{}, false, domain.ErrStorageUnavailable
@@ -28,6 +28,13 @@ func (c *ControlPlane) SnapshotEntries(ctx context.Context, snapshotID string,
 	path, err := restic.NormalizeListPath(rawPath)
 	if err != nil {
 		return domain.SnapshotListResult{}, false, &ValidationError{Field: "path", Code: "INVALID_PATH"}
+	}
+	cursor := ""
+	if rawCursor != "" {
+		cursor, err = restic.NormalizeListPath(rawCursor)
+		if err != nil || cursor == "/" {
+			return domain.SnapshotListResult{}, false, &ValidationError{Field: "cursor", Code: "INVALID_CURSOR"}
+		}
 	}
 	snapshots, err := c.store.SnapshotsByID(ctx, snapshotID)
 	if err != nil {
@@ -61,7 +68,7 @@ func (c *ControlPlane) SnapshotEntries(ctx context.Context, snapshotID string,
 		return domain.SnapshotListResult{}, false, domain.ErrSnapshotUnavailable
 	}
 	now := c.clock().UTC()
-	result, fresh, err := c.store.SnapshotListResult(ctx, resolved, snapshotID, path, now)
+	result, fresh, err := c.store.SnapshotListResult(ctx, resolved, snapshotID, path, cursor, now)
 	if err != nil {
 		return domain.SnapshotListResult{}, false, err
 	}
@@ -83,7 +90,7 @@ func (c *ControlPlane) SnapshotEntries(ctx context.Context, snapshotID string,
 	}
 	operation, err := c.store.EnqueueSnapshotList(ctx, domain.Operation{
 		ID: operationID, RepositoryID: &resolved, RequestedByUserID: &requestedBy,
-	}, snapshotID, path)
+	}, snapshotID, path, cursor)
 	if errors.Is(err, domain.ErrRepositoryBusy) {
 		return domain.SnapshotListResult{}, false, domain.ErrRepositoryBusy
 	}
