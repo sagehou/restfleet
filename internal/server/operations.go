@@ -219,7 +219,11 @@ func (c *ControlPlane) ReconcileOperations(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return closed + lost, nil
+	overdue, err := c.store.ReconcilePlanHealth(ctx, now)
+	if err != nil {
+		return 0, err
+	}
+	return closed + lost + overdue, nil
 }
 
 // RunOperationReconciler runs the closure loop until ctx ends. Persistence

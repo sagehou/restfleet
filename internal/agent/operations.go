@@ -274,6 +274,41 @@ func (s *State) PutOperationWithRuntime(record OperationRecord, runtime PlanRunt
 	})
 }
 
+// NextRuns returns the bounded, time-ordered plan runtimes advertised in the
+// heartbeat. It is a telemetry view; scheduling still uses PlanRuntime directly.
+func (s *State) NextRuns(limit int) ([]PlanRuntime, error) {
+	items := make([]PlanRuntime, 0)
+	err := s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(planRuntimeBucket))
+		if bucket == nil {
+			return nil
+		}
+		return bucket.ForEach(func(_, value []byte) error {
+			var runtime PlanRuntime
+			if err := json.Unmarshal(value, &runtime); err != nil {
+				return err
+			}
+			if !runtime.NextRunAt.IsZero() {
+				items = append(items, runtime)
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if !items[i].NextRunAt.Equal(items[j].NextRunAt) {
+			return items[i].NextRunAt.Before(items[j].NextRunAt)
+		}
+		return items[i].PlanID.String() < items[j].PlanID.String()
+	})
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
 // ReportableOperations returns terminal results that still need upload and
 // running records whose progress is older than the throttling interval.
 func (s *State) ReportableOperations(now time.Time, progressInterval time.Duration) ([]OperationRecord, error) {

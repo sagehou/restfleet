@@ -149,7 +149,19 @@ type AgentHeartbeat struct {
 	LocalTime        time.Time
 	ErrorCode        string
 	HealthChecks     []AgentHealthCheck
+	ActiveOperations []AgentActiveOperation
+	NextRuns         []AgentNextRun
 	ReceivedAt       time.Time
+}
+
+type AgentActiveOperation struct {
+	OperationID uuid.UUID
+	Status      string
+}
+
+type AgentNextRun struct {
+	PlanID      uuid.UUID
+	ScheduledAt time.Time
 }
 
 type AgentInventory struct {

@@ -982,7 +982,7 @@ export interface components {
              */
             accepted_revision: number;
             /** @enum {string} */
-            backup_health: "UNKNOWN" | "HEALTHY" | "OVERDUE" | "FAILED";
+            backup_health: "UNKNOWN" | "HEALTHY" | "OVERDUE" | "FAILED" | "NEVER_RUN" | "PAUSED";
             /** @description Allowed JSON merge-patch subset stored with the plan. */
             overrides?: {
                 [key: string]: unknown;

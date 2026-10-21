@@ -127,16 +127,21 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 		return tx.Commit(ctx)
 	}
 	health := ""
+	success := false
 	switch result.Status {
 	case "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS":
-		health = "HEALTHY"
-	case "FAILED":
+		health, success = "HEALTHY", true
+	case "FAILED", "LOST":
 		health = "FAILED"
+	case "MISSED":
+		health = "OVERDUE"
 	}
-	if health != "" {
-		if _, err = tx.Exec(ctx, "update plans set backup_health=$2,updated_at=$3 where id=$1", result.PlanID, health, finished); err != nil {
-			return err
-		}
+	if _, err = tx.Exec(ctx, `update plans set
+		backup_health=case when status='PAUSED' then 'PAUSED' when $2='' then backup_health else $2 end,
+		last_operation_id=$3,
+		last_success_at=case when $4 then $5 else last_success_at end,
+		updated_at=$5 where id=$1`, result.PlanID, health, result.OperationID, success, finished); err != nil {
+		return err
 	}
 	if result.SnapshotID != "" {
 		if _, err = tx.Exec(ctx, `insert into snapshots(plan_id,snapshot_id,agent_id,host_id,repository_id,
@@ -160,7 +165,7 @@ func (s *Store) FleetBackupCounts(ctx context.Context) (plans, operations, runni
 		(select count(*) from backup_operations),
 		(select count(*) from backup_operations where status='RUNNING'),
 		(select count(*) from backup_operations where status='FAILED' and finished_at > now() - interval '24 hours'),
-		(select count(*) from plans where archived_at is null and backup_health='FAILED')`).
+		(select count(*) from plans where archived_at is null and backup_health in ('FAILED','OVERDUE','NEVER_RUN'))`).
 		Scan(&plans, &operations, &running, &failed24h, &unhealthy)
 	return
 }
