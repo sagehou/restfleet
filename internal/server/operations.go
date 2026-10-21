@@ -12,7 +12,9 @@ import (
 // RecordOperationProgress ingests one throttled progress report. The Agent owns
 // scheduling, so progress for an unknown operation creates the row.
 func (c *ControlPlane) RecordOperationProgress(ctx context.Context, progress domain.BackupOperationProgress) error {
-	if progress.OperationID.Version() != 7 || progress.PlanID.Version() != 7 || progress.AgentID.Version() != 7 {
+	if !domain.ValidOperationID(progress.OperationID) ||
+		progress.PlanID.Version() != 7 || progress.PlanID.Variant() != uuid.RFC4122 ||
+		progress.AgentID.Version() != 7 || progress.AgentID.Variant() != uuid.RFC4122 {
 		return domain.ErrNotFound
 	}
 	return c.store.UpsertOperationProgress(ctx, progress)
@@ -22,7 +24,9 @@ func (c *ControlPlane) RecordOperationProgress(ctx context.Context, progress dom
 // snapshot in the same transaction. A failed index write therefore fails the
 // whole result so the Agent replays it; it is never silently lost.
 func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.BackupOperationResult) error {
-	if result.OperationID.Version() != 7 || result.PlanID.Version() != 7 || result.AgentID.Version() != 7 {
+	if !domain.ValidOperationID(result.OperationID) ||
+		result.PlanID.Version() != 7 || result.PlanID.Variant() != uuid.RFC4122 ||
+		result.AgentID.Version() != 7 || result.AgentID.Variant() != uuid.RFC4122 {
 		return domain.ErrNotFound
 	}
 	switch result.Status {

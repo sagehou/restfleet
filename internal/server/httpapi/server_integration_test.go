@@ -93,6 +93,7 @@ func setupIntegration(
 	t.Cleanup(adminPool.Close)
 	_, err = adminPool.Exec(ctx, `
 		truncate table gateway_audit_records, gateway_audit_origins, idempotency_records, operation_events, jobs, operations,
+			snapshot_list_results,
 			storage_credential_revisions, storage_credentials,
 			outbox_events, agent_inventories, agent_desired_states,
 			server_pki, secrets, agent_certificates, enrollment_tokens,

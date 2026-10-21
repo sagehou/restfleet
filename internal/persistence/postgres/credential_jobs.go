@@ -323,7 +323,13 @@ func lockCredentialJob(ctx context.Context, tx pgx.Tx, id, owner uuid.UUID) (dom
 		return job, err
 	}
 	if job.Operation.RepositoryID != nil {
-		r, repoErr := lockProvisionRepository(ctx, tx, *job.Operation.RepositoryID)
+		var r domain.Repository
+		var repoErr error
+		if job.Operation.Type == "SNAPSHOT_LIST" {
+			r, repoErr = lockRepositoryForRead(ctx, tx, *job.Operation.RepositoryID)
+		} else {
+			r, repoErr = lockProvisionRepository(ctx, tx, *job.Operation.RepositoryID)
+		}
 		if repoErr != nil && !errors.Is(repoErr, domain.ErrHostUnavailable) && !errors.Is(repoErr, domain.ErrRepositoryUnavailable) {
 			return job, repoErr
 		}

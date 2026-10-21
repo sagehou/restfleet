@@ -44,8 +44,9 @@ paths:
     post:
       operationId: openGatewayBackupSession
       description: |
-        ID 必须为规范 UUIDv7。重复 POST 返回原会话，不延长期限、不重复运行；
-        同 ID 改变 Repository 或 deadline 返回 409。期限取请求 deadline、开始后
+        ID 必须为规范 UUID。定时任务的 operation_id 使用确定性 UUIDv5，
+        手动任务使用 UUIDv7；其余绑定 ID 必须为 UUIDv7。重复 POST 返回原会话，
+        不延长期限、不重复运行；同 ID 改变 Repository 或 deadline 返回 409。期限取请求 deadline、开始后
         24h 和原中心占用到期的较早值。无需在线请求 Control API。
         每次 Gateway 运行最多保留 4096 条会话去重记录；达到上限返回 503。
       requestBody:

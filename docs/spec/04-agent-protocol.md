@@ -236,7 +236,7 @@ retry_policy
 - Agent 计算并持久化 `next_run_at`；
 - jitter 基于 `(plan_id, scheduled_at)` 的稳定 hash，重启不改变；
 - 在 misfire grace 内重启可执行一次补偿；超过 grace 跳过并上报 MISSED；
-- 同一 scheduled time 只生成一个 deterministic local operation key；
+- 同一 scheduled time 只生成一个 deterministic local operation key；该 key 是 UUIDv5（ADR-0037），Server 与 Gateway 的 `operation_id` 校验 MUST 接受规范 UUIDv5 或 UUIDv7；
 - `FORBID` 时前一 backup 仍运行则跳过并上报 CONCURRENCY_SKIPPED；
 - 暂停 Plan 不取消已经 RUNNING 的 Operation，除非另行发送 cancel。
 
@@ -346,7 +346,7 @@ ACK 仅含 delivery_id/revision，MUST 精确匹配当前绑定、密钥引用�
 
 ### 13.2 Gateway 会话
 
-`api/openapi/gateway-v1.yaml` 定义独立数据面。Agent MUST 用既有 mTLS 身份，对本 Host 已授权 Repository 执行 POST/GET/DELETE `/gateway/v1/repositories/{repository_id}/backup-sessions/{operation_id}`。请求只含规范 UUIDv7 与 UTC deadline，不含云端材料或可信身份声明。Gateway 自行生成 session_id，ACTIVE 后返回独立 endpoint_path，最多保留 4096 条运行内去重记录。
+`api/openapi/gateway-v1.yaml` 定义独立数据面。Agent MUST 用既有 mTLS 身份，对本 Host 已授权 Repository 执行 POST/GET/DELETE `/gateway/v1/repositories/{repository_id}/backup-sessions/{operation_id}`。请求只含规范 UUID：`operation_id` 允许 UUIDv5（定时任务确定性键，ADR-0037）或 UUIDv7（手动任务），其余绑定 ID MUST 为 UUIDv7；不含云端材料或可信身份声明。Gateway 自行生成 session_id，ACTIVE 后返回独立 endpoint_path，最多保留 4096 条运行内去重记录。
 
 响应丢失 MUST 使用相同 operation_id/参数查询或重试；重复 POST 不重复启动、不延长期限，参数冲突返回 409。CLOSED/FAILED 不能重新打开。DELETE MUST join 请求、后端进程与材料清理，不代表备份成功或占用释放。期限取任务 deadline、开始后 24h、原 admission 到期的较早值；旧会话路径不能清理新会话的锁。
 

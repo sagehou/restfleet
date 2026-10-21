@@ -156,7 +156,7 @@ func (a *AuthorizedBackup) WithBackup(ctx context.Context, operation uuid.UUID, 
 }
 
 func (a *AuthorizedBackup) withBackup(ctx context.Context, operation uuid.UUID, run func(context.Context, Access) error, probe bool) (result error) {
-	if operation.Version() != 7 || operation.Variant() != uuid.RFC4122 || run == nil || ctx.Err() != nil {
+	if !domain.ValidOperationID(operation) || run == nil || ctx.Err() != nil {
 		return ErrAuthorization
 	}
 	a.mu.Lock()

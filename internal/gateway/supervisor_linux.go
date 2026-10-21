@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/rclone"
 )
 
@@ -111,10 +112,13 @@ func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	for _, id := range []uuid.UUID{request.Binding.HostID, request.Binding.RepositoryID, request.Binding.GatewayID, request.Binding.OperationID, request.CredentialID} {
+	for _, id := range []uuid.UUID{request.Binding.HostID, request.Binding.RepositoryID, request.Binding.GatewayID, request.CredentialID} {
 		if id.Version() != 7 || id.Variant() != uuid.RFC4122 {
 			return ErrInvalidSession
 		}
+	}
+	if !domain.ValidOperationID(request.Binding.OperationID) {
+		return ErrInvalidSession
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
