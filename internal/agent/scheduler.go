@@ -32,7 +32,7 @@ type PlanExecutor interface {
 
 // RunLocalScheduler blocks until ctx ends. It persists next_run_at before each
 // run so a crash cannot replay or skip a slot, then executes due plans.
-func (s *State) RunLocalScheduler(ctx context.Context, interval time.Duration, executor PlanExecutor) error {
+func (s *State) RunLocalScheduler(ctx context.Context, interval time.Duration, executor PlanExecutor, onError func(error)) error {
 	if executor == nil {
 		return errors.New("local scheduler requires an executor")
 	}
@@ -42,7 +42,12 @@ func (s *State) RunLocalScheduler(ctx context.Context, interval time.Duration, e
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		s.tickScheduler(ctx, executor)
+		if err := s.tickScheduler(ctx, executor, onError); err != nil {
+			if onError == nil {
+				return err
+			}
+			onError(err)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -51,85 +56,94 @@ func (s *State) RunLocalScheduler(ctx context.Context, interval time.Duration, e
 	}
 }
 
-func (s *State) tickScheduler(ctx context.Context, executor PlanExecutor) {
+func (s *State) tickScheduler(ctx context.Context, executor PlanExecutor, onError func(error)) error {
 	desired, ok, err := s.ActiveDesiredState()
-	if err != nil || !ok {
-		return
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
 	}
 	running, err := s.RunningOperations()
 	if err != nil {
-		return
+		return err
 	}
 	runningByPlan := make(map[uuid.UUID]bool, len(running))
 	for _, record := range running {
 		runningByPlan[record.PlanID] = true
 	}
 	now := time.Now().UTC()
+	var firstErr error
 	for _, plan := range desired.Plans {
-		s.advancePlan(ctx, plan, now, runningByPlan, executor)
+		if err := s.advancePlan(ctx, plan, now, runningByPlan, executor, onError); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
+	return firstErr
 }
 
 func (s *State) advancePlan(ctx context.Context, plan domain.PlanSchedule, now time.Time,
-	runningByPlan map[uuid.UUID]bool, executor PlanExecutor) {
+	runningByPlan map[uuid.UUID]bool, executor PlanExecutor, onError func(error),
+) error {
 	scheduler, err := schedule.New(plan.PlanID, schedule.Spec{
 		Cron: plan.Cron, Timezone: plan.Timezone,
 		JitterSeconds: plan.JitterSeconds, MisfireGraceSeconds: plan.MisfireGraceSeconds,
 		ConcurrencyPolicy: plan.ConcurrencyPolicy,
 	})
 	if err != nil {
-		return
+		return err
 	}
 	runtime, found, err := s.PlanRuntime(plan.PlanID)
 	if err != nil {
-		return
+		return err
 	}
 	runtime.PlanID = plan.PlanID
 	if !found || runtime.NextRunAt.IsZero() {
 		if next, ok := scheduler.NextRun(now); ok {
 			runtime.NextRunAt = next
 		}
-		_ = s.PutPlanRuntime(runtime)
-		return
+		return s.PutPlanRuntime(runtime)
 	}
 	if now.Before(runtime.NextRunAt) {
-		return
+		return nil
 	}
 	scheduled := runtime.NextRunAt
-	if next, ok := scheduler.NextRun(scheduled); ok {
+	// Compute the next run from the current instant, not from the already
+	// jittered scheduled time; otherwise jitter accumulates across runs.
+	if next, ok := scheduler.NextRun(now); ok {
 		runtime.NextRunAt = next
 	} else {
 		runtime.NextRunAt = time.Time{}
 	}
 	runtime.LastScheduledAt = scheduled
-	// Advance first: a crash after this point must not replay the slot.
-	_ = s.PutPlanRuntime(runtime)
 
 	operationID := schedule.OperationID(plan.PlanID, scheduled)
-	if _, exists, err := s.Operation(operationID); err == nil && exists {
-		return
+	if _, exists, err := s.Operation(operationID); err != nil {
+		return err
+	} else if exists {
+		// The slot was already recorded; only advance the runtime.
+		return s.PutPlanRuntime(runtime)
 	}
 	if schedule.DecideMisfire(now, scheduled, plan.MisfireGraceSeconds) == schedule.ReportMissed {
-		_ = s.PutOperation(OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
+		return s.PutOperationWithRuntime(OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
 			ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, FinishedAt: now,
-			Status: OperationMissed, ErrorCode: "MISFIRE_GRACE_EXCEEDED"})
-		return
+			Status: OperationMissed, ErrorCode: "MISFIRE_GRACE_EXCEEDED"}, runtime)
 	}
 	deadline := scheduled.Add(24 * time.Hour)
 	if deadline.Before(now) {
 		deadline = now.Add(24 * time.Hour)
 	}
 	if schedule.ConcurrencySkip(plan.ConcurrencyPolicy, runningByPlan[plan.PlanID]) {
-		_ = s.PutOperation(OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
+		return s.PutOperationWithRuntime(OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
 			ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, FinishedAt: now,
-			Status: OperationConcurrencySkipped, ErrorCode: "CONCURRENCY_SKIPPED"})
-		return
+			Status: OperationConcurrencySkipped, ErrorCode: "CONCURRENCY_SKIPPED"}, runtime)
 	}
 	record := OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
 		ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, StartedAt: now, Status: OperationRunning}
-	_ = s.PutOperation(record)
 	runtime.LastOperationID = operationID
-	_ = s.PutPlanRuntime(runtime)
+	if err := s.PutOperationWithRuntime(record, runtime); err != nil {
+		return err
+	}
 	runningByPlan[plan.PlanID] = true
 	runCtx, endRun := s.BeginOperation(ctx, operationID)
 	go func() {
@@ -146,6 +160,9 @@ func (s *State) advancePlan(ctx context.Context, plan domain.PlanSchedule, now t
 		record.FilesNew = outcome.FilesNew
 		record.DataAdded = outcome.DataAdded
 		record.FinishedAt = time.Now().UTC()
-		_ = s.PutOperation(record)
+		if err := s.PutOperation(record); err != nil && onError != nil {
+			onError(err)
+		}
 	}()
+	return nil
 }

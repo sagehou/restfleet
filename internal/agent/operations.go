@@ -242,6 +242,38 @@ func (s *State) PutPlanRuntime(runtime PlanRuntime) error {
 	})
 }
 
+// PutOperationWithRuntime persists the operation and its plan's advanced
+// runtime in one bbolt transaction. A crash therefore cannot retain one without
+// the other, and a failed write never starts a run or loses a missed/skipped
+// record.
+func (s *State) PutOperationWithRuntime(record OperationRecord, runtime PlanRuntime) error {
+	if runtime.PlanID == uuid.Nil || record.PlanID != runtime.PlanID {
+		return errors.New("operation and runtime plan mismatch")
+	}
+	operationPayload, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	runtimePayload, err := json.Marshal(runtime)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		operations, err := tx.CreateBucketIfNotExists([]byte(operationsBucket))
+		if err != nil {
+			return err
+		}
+		if err := operations.Put(record.ID[:], operationPayload); err != nil {
+			return err
+		}
+		runtimes, err := tx.CreateBucketIfNotExists([]byte(planRuntimeBucket))
+		if err != nil {
+			return err
+		}
+		return runtimes.Put(runtime.PlanID[:], runtimePayload)
+	})
+}
+
 // ReportableOperations returns terminal results that still need upload and
 // running records whose progress is older than the throttling interval.
 func (s *State) ReportableOperations(now time.Time, progressInterval time.Duration) ([]OperationRecord, error) {

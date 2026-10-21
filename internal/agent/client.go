@@ -170,7 +170,11 @@ func Run(ctx context.Context, state *State, config RunConfig) error {
 	schedulerCtx, stopScheduler := context.WithCancel(ctx)
 	defer stopScheduler()
 	go func() {
-		_ = state.RunLocalScheduler(schedulerCtx, 30*time.Second, BackupExecutor{State: state, Binary: binary})
+		err := state.RunLocalScheduler(schedulerCtx, 30*time.Second, BackupExecutor{State: state, Binary: binary},
+			func(err error) { fmt.Fprintf(os.Stderr, "scheduler: %v\n", err) })
+		if err != nil && schedulerCtx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "scheduler stopped: %v\n", err)
+		}
 	}()
 	delay := time.Second
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
