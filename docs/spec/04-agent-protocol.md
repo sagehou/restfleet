@@ -268,6 +268,13 @@ Agent 必须：
 
 Delivery 是 at-least-once。不得假设单次消息只到达一次。
 
+Server MUST 在把 `JobDispatch` 写入流之前原子 claim（`backup_operations.dispatched_at`）。取消与 claim 并发时只有一方成功，从而在协议层排除“已取消的 QUEUED 作业仍启动 Restic”：
+
+- 取消先提交且作业从未 dispatch：直接转 `CANCELED`，claim 不再匹配，Agent 不会收到任务；
+- 取消先提交且作业已被 claim：转 `CANCEL_REQUESTED`，Server 在同一心跳的 cancellation 阶段（或下一次心跳）发送 `JobCancel`；Agent 以 cancel-before-dispatch 集合拒绝启动；
+- claim 先提交且取消随后到达：Server 在发送前重新读取状态，已取消则不发送 `JobDispatch`；若发送与取消真正重叠，Agent 收到 `JobCancel` 后终止。
+- `CANCEL_REQUESTED` 超过 `JobCancel` deadline（默认 2 分钟）仍没有 `started_at` 的中心 closure 转 `CANCELED`，防止丢失的 dispatch/cancel 永久挂起；该 closure 不伪造执行成功，也不复活已开始的作业。
+
 Server 在 `Welcome.server_capabilities[]` 宣告增量能力。Agent 只有同时声明 `job_result_ack_v1` 且 Server 宣告该能力时，才在收到 `JobResultAccepted{operation_id}` 后把本地终态标记为已上传；否则保持旧的“发送成功即标记”行为。未宣告 `job_cancel_v1` 的 Agent 不接收 `JobCancel`。
 
 ## 10. Backup Operation 报告
@@ -384,6 +391,7 @@ Server 重启或网络断开：
 
 - Server 发 `JobCancel{job_id, operation_id, reason, deadline}`；
 - Agent 幂等记录 cancel request，返回 `JobCancelAccepted`；
+- 未匹配到本地运行记录的 cancel MUST 进入有界 cancel-before-dispatch 集合；同一 `operation_id` 的 `JobDispatch` 随后到达时 MUST 直接持久化并回报 `CANCELED`，MUST NOT 启动 Restic；
 - 对 Restic process group 先 SIGINT，grace 后 SIGTERM，再 SIGKILL；
 - pre-hook 未结束时同样取消整个 process group；
 - 生成 CANCELED 或 FAILED_CANCEL_TIMEOUT；

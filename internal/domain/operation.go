@@ -120,6 +120,9 @@ type BackupOperation struct {
 	RootOperationID   *uuid.UUID
 	CancelRequestedAt *time.Time
 	CancelReason      string
+	// DispatchedAt records that a JobDispatch was claimed for this operation.
+	// The row stays QUEUED until JobAccepted so a lost dispatch is retried.
+	DispatchedAt *time.Time
 }
 
 type BackupOperationProgress struct {

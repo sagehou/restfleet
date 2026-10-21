@@ -24,18 +24,8 @@ func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence
 		return records[i].Terminal() && !records[j].Terminal()
 	})
 	for _, record := range records {
-		scheduled := timestamppb.New(record.ScheduledAt)
 		if record.Terminal() {
-			payload := &agentv1.AgentToServer{Payload: &agentv1.AgentToServer_JobResult{
-				JobResult: &agentv1.JobResult{
-					OperationId: record.ID.String(), PlanId: record.PlanID.String(),
-					PlanRevision: record.PlanRevision, ScheduledAt: scheduled,
-					Status: record.Status, ErrorCode: record.ErrorCode, ExitCode: int64(record.ExitCode),
-					SnapshotId: record.SnapshotID, FilesNew: record.FilesNew,
-					DataAdded: record.DataAdded, FinishedAt: timestamppb.New(record.FinishedAt),
-				},
-			}}
-			if err := sendAgentMessage(stream, sequence, protocol, payload); err != nil {
+			if err := sendOperationResult(stream, sequence, protocol, record); err != nil {
 				return err
 			}
 			if !resultAck {
@@ -52,6 +42,7 @@ func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence
 			}
 			continue
 		}
+		scheduled := timestamppb.New(record.ScheduledAt)
 		payload := &agentv1.AgentToServer{Payload: &agentv1.AgentToServer_JobProgress{
 			JobProgress: &agentv1.JobProgress{
 				OperationId: record.ID.String(), PlanId: record.PlanID.String(),
@@ -81,4 +72,25 @@ func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence
 		}
 	}
 	return nil
+}
+
+// sendOperationResult replays one stored terminal result. It is used for normal
+// upload and for a duplicate JobDispatch of an operation that already finished.
+func sendOperationResult(
+	stream agentv1.AgentControlService_ConnectClient,
+	sequence *uint64,
+	protocol string,
+	record OperationRecord,
+) error {
+	return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
+		Payload: &agentv1.AgentToServer_JobResult{
+			JobResult: &agentv1.JobResult{
+				OperationId: record.ID.String(), PlanId: record.PlanID.String(),
+				PlanRevision: record.PlanRevision, ScheduledAt: timestamppb.New(record.ScheduledAt),
+				Status: record.Status, ErrorCode: record.ErrorCode, ExitCode: int64(record.ExitCode),
+				SnapshotId: record.SnapshotID, FilesNew: record.FilesNew,
+				DataAdded: record.DataAdded, FinishedAt: timestamppb.New(record.FinishedAt),
+			},
+		},
+	})
 }

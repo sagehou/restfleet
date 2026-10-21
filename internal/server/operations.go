@@ -4,9 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/sagehou/restfleet/internal/domain"
+)
+
+const (
+	// dispatchRetryAfter re-sends a JobDispatch whose delivery was not
+	// acknowledged. Duplicate delivery is idempotent on the Agent.
+	dispatchRetryAfter = 15 * time.Second
+	// cancelClosureGrace bounds how long a cancel that never produced a
+	// started operation stays pending. It exceeds the JobCancel deadline so a
+	// connected Agent always has a chance to report the terminal result.
+	cancelClosureGrace = 2 * time.Minute
 )
 
 // RecordOperationProgress ingests one throttled progress report. The Agent owns
@@ -94,8 +105,11 @@ func (c *ControlPlane) QueueBackupNow(ctx context.Context, planID uuid.UUID, act
 	return operation, nil
 }
 
-func (c *ControlPlane) NextQueuedJob(ctx context.Context, agentID uuid.UUID) (domain.BackupOperation, bool, error) {
-	return c.store.NextQueuedManualOperation(ctx, agentID)
+// ClaimQueuedJob atomically claims the next manual job before the Agent stream
+// writes JobDispatch. A cancel that commits first makes the claim fail, so a
+// canceled QUEUED operation can never start Restic.
+func (c *ControlPlane) ClaimQueuedJob(ctx context.Context, agentID uuid.UUID) (domain.BackupOperation, bool, error) {
+	return c.store.ClaimManualOperationDispatch(ctx, agentID, c.clock().UTC(), dispatchRetryAfter)
 }
 
 func (c *ControlPlane) MarkJobDispatched(ctx context.Context, id uuid.UUID) error {
@@ -186,6 +200,35 @@ func (c *ControlPlane) RetryBackupOperation(ctx context.Context, id uuid.UUID,
 
 func (c *ControlPlane) PendingCancellations(ctx context.Context, agentID uuid.UUID) ([]domain.BackupOperation, error) {
 	return c.store.PendingCancelOperations(ctx, agentID)
+}
+
+// ReconcileOperations closes cancellations that never reached a started
+// operation. It is safe to run concurrently with dispatch because both paths
+// take a row lock and only terminal transitions are written.
+func (c *ControlPlane) ReconcileOperations(ctx context.Context) (int64, error) {
+	now := c.clock().UTC()
+	return c.store.CloseUnstartedCancellations(ctx, now.Add(-cancelClosureGrace), now)
+}
+
+// RunOperationReconciler runs the closure loop until ctx ends. Persistence
+// failures are reported through onError and retried instead of aborting the
+// server; no operation state is inferred from a failed attempt.
+func (c *ControlPlane) RunOperationReconciler(ctx context.Context, interval time.Duration, onError func()) error {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if _, err := c.ReconcileOperations(ctx); err != nil && ctx.Err() == nil && onError != nil {
+			onError()
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
 }
 
 // RejectManualOperation closes a dispatched manual run the Agent refused.

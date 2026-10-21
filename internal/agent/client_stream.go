@@ -373,7 +373,29 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	if !deadline.After(time.Now()) {
 		return reject("DEADLINE_EXCEEDED")
 	}
-	if _, exists, err := state.Operation(operationID); err == nil && exists {
+	// A JobCancel can arrive before its JobDispatch when a dispatch was lost and
+	// the server retried. Never start Restic in that case; persist and report a
+	// canceled result so the Server can close the operation.
+	if state.ConsumeCancel(operationID) {
+		now := time.Now().UTC()
+		scheduled := job.GetNotBefore().AsTime().UTC()
+		if scheduled.IsZero() {
+			scheduled = now
+		}
+		record := OperationRecord{
+			ID: operationID, PlanID: planID, PlanRevision: job.GetPlanRevision(),
+			ConfigHash: job.GetConfigHash(), ScheduledAt: scheduled,
+			StartedAt: now, FinishedAt: now, Status: OperationCanceled, ErrorCode: "CANCELED",
+		}
+		if err := state.PutOperation(record); err != nil {
+			return reject("PERSIST_FAILED")
+		}
+		return sendOperationResult(stream, sequence, protocol, record)
+	}
+	if existing, exists, err := state.Operation(operationID); err == nil && exists {
+		if existing.Terminal() {
+			return sendOperationResult(stream, sequence, protocol, existing)
+		}
 		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
 			Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
 				JobId: job.GetJobId(), OperationId: job.GetOperationId(),

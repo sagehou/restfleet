@@ -90,7 +90,8 @@ type Store interface {
 	BackupOperation(context.Context, uuid.UUID) (domain.BackupOperation, error)
 	FleetBackupCounts(context.Context) (plans, operations, running, failed24h, unhealthy int64, err error)
 	CreateManualOperation(context.Context, domain.BackupOperation) error
-	NextQueuedManualOperation(context.Context, uuid.UUID) (domain.BackupOperation, bool, error)
+	ClaimManualOperationDispatch(context.Context, uuid.UUID, time.Time, time.Duration) (domain.BackupOperation, bool, error)
+	CloseUnstartedCancellations(context.Context, time.Time, time.Time) (int64, error)
 	MarkOperationDispatched(context.Context, uuid.UUID) error
 	CancelBackupOperation(context.Context, uuid.UUID, string, time.Time) (domain.BackupOperation, error)
 	PendingCancelOperations(context.Context, uuid.UUID) ([]domain.BackupOperation, error)
