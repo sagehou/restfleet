@@ -408,6 +408,7 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 		record.SnapshotID = outcome.SnapshotID
 		record.FilesDone, record.TotalFiles = outcome.FilesDone, outcome.TotalFiles
 		record.BytesDone, record.TotalBytes = outcome.BytesDone, outcome.TotalBytes
+		record.FilesNew, record.DataAdded = outcome.FilesNew, outcome.DataAdded
 		record.FinishedAt = time.Now().UTC()
 		_ = state.PutOperation(record)
 	}()

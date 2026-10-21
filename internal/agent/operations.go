@@ -41,6 +41,8 @@ type OperationRecord struct {
 	TotalFiles     int64     `json:"total_files"`
 	BytesDone      int64     `json:"bytes_done"`
 	TotalBytes     int64     `json:"total_bytes"`
+	FilesNew       int64     `json:"files_new,omitempty"`
+	DataAdded      int64     `json:"data_added,omitempty"`
 	Uploaded       bool      `json:"uploaded,omitempty"`
 	LastReportedAt time.Time `json:"last_reported_at,omitempty"`
 }

@@ -166,6 +166,7 @@ type Event struct {
 	BytesDone   int64
 	TotalBytes  int64
 	SnapshotID  string
+	FilesNew    int64
 	DataAdded   int64
 	Message     string
 }
@@ -178,6 +179,7 @@ type wireEvent struct {
 	BytesDone   *int64   `json:"bytes_done"`
 	TotalBytes  *int64   `json:"total_bytes"`
 	SnapshotID  string   `json:"snapshot_id"`
+	FilesNew    *int64   `json:"files_new"`
 	DataAdded   *int64   `json:"data_added"`
 	Message     string   `json:"message"`
 }
@@ -214,6 +216,9 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		return event, true, nil
 	case "summary":
 		event := Event{Type: "summary", SnapshotID: wire.SnapshotID}
+		if wire.FilesNew != nil {
+			event.FilesNew = *wire.FilesNew
+		}
 		if wire.DataAdded != nil {
 			event.DataAdded = *wire.DataAdded
 		}

@@ -2,12 +2,12 @@
 
 RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面。它通过轻量 Agent 统一下发备份计划、采集运行状态、浏览快照、触发恢复并集中执行仓库维护，同时把 rclone 与云存储凭据严格留在中心节点。
 
-> 当前进度（2026-10-21）：M0–M3 完成；M4 三项交付源码已合入，运行验收未完成；M5–M8 为部分实现，定时备份与快照扫描落库的 P0 已修复，但仍有 P1 正确性/验收缺口，尚不能视为可用；M9–M12 未开工。详细状态、阻塞项与下一步见 [当前开发状态](docs/development/current-state.md)。
+> 当前进度（2026-10-21）：M0–M3 完成；M4 三项交付源码已合入，READY 已有 CI 证据，真实云后端/部署态轮换恢复按用户决定暂缓（不在 GitHub 保存凭据）；M5–M8 为部分实现，定时与扫描 P0 已修复，但仍有 P1 正确性/验收缺口；M9–M12 未开工。详细状态见 [当前开发状态](docs/development/current-state.md)。
 
 | 里程碑 | 状态 | 摘要 |
 |---|---|---|
 | M0–M3 | 完成 | 骨架、认证、Host/enrollment、心跳/库存/desired state |
-| M4 | 源码已合入，验收未完成 | 凭据、仓库初始化、Gateway 会话/授权/轮换恢复源码已入 `main`；READY 正/负向已有 CI 证据；真实三后端与部署态轮换/恢复未验收 |
+| M4 | 源码已合入，验收部分暂缓 | 凭据、仓库初始化、Gateway 会话/授权/轮换恢复源码已入 `main`；READY 正/负向已有 CI 证据；真实三后端与部署态轮换/恢复按用户决定暂缓（不在 GitHub 保存凭据） |
 | M5 | 部分 | 模板、Plan、状态机、本地调度核心已接入；定时 operation ID P0 已解除，`PENDING_APPLY` 与 revision 语义仍待修 |
 | M6 | 部分 | 手动与定时上报链路已通；终态 guard、取消/拒绝、结果统计与崩溃恢复仍有缺陷 |
 | M7 | 部分 | 终态健康与仪表盘计数；OVERDUE/NEVER_RUN/PAUSED、next-run/last-success、Attention Queue 未实现 |

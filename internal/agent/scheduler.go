@@ -20,6 +20,8 @@ type OperationOutcome struct {
 	TotalFiles int64
 	BytesDone  int64
 	TotalBytes int64
+	FilesNew   int64
+	DataAdded  int64
 }
 
 // PlanExecutor runs one scheduled operation. Implementations own Restic and the
@@ -141,6 +143,8 @@ func (s *State) advancePlan(ctx context.Context, plan domain.PlanSchedule, now t
 		record.TotalFiles = outcome.TotalFiles
 		record.BytesDone = outcome.BytesDone
 		record.TotalBytes = outcome.TotalBytes
+		record.FilesNew = outcome.FilesNew
+		record.DataAdded = outcome.DataAdded
 		record.FinishedAt = time.Now().UTC()
 		_ = s.PutOperation(record)
 	}()

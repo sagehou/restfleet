@@ -151,7 +151,7 @@
 
 ## M4 — Storage Credential, Repository and Gateway
 
-**Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)；三项交付源码已合入（#51–#60、#67、#76），剩余为运行验收。2026-10-21 新增 READY 正向/吊销降级 CI 证据（#101）及定时/扫描 P0 修复（#99）；真实三后端、部署态轮换/恢复、DEP-005/006 仍被外部凭据与受信部署阻塞。审计仍发现：旧 Agent 兼容路径会解密/下发 Gateway password（与 AGENTS 不变量冲突，需明确兼容决策或移除）；启动 metadata 的 `lifetime_seconds=0` 固定为 72h，未使用 `RESTFLEET_GATEWAY_OFFLINE_WINDOW`；`admission_lifetime_seconds` 未受离线窗口约束。
+**Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)；三项交付源码已合入（#51–#60、#67、#76），剩余为运行验收。2026-10-21 新增 READY 正向/吊销降级 CI 证据（#101）及定时/扫描 P0 修复（#99）；真实三后端、部署态轮换/恢复与 DEP-005/006 按用户决定暂缓（不在 GitHub 保存真实云凭据），不阻塞后续代码推进，M4 保持 IN PROGRESS。审计仍发现：旧 Agent 兼容路径会解密/下发 Gateway password（与 AGENTS 不变量冲突，需明确兼容决策或移除）；启动 metadata 的 `lifetime_seconds=0` 固定为 72h，未使用 `RESTFLEET_GATEWAY_OFFLINE_WINDOW`；`admission_lifetime_seconds` 未受离线窗口约束。
 
 ### 当前交付与收敛要求
 
@@ -203,7 +203,7 @@
 - 已按用户决定采用 ADR-0032：离线窗口可配置，默认从最后中心签发起 72h，并受原占用截止限制；单次会话仍最多 24h。原占用不延长、到期不释放 fence、失败 owner 不复活。Gateway 不可达则暂停备份并报错，保留配对和配置；MUST NOT 将每次定时备份改成必须在线请求 Control API。
 - M4 MUST 提供 M5/M6 可依赖的会话协议与离线基础。M4 客户端夹具 MUST 明确标识；真正的 Agent 调度执行、离线 Operation 补报与 AGT-005/006 完整产品集成在 M6 验收，仍是 V1 发布门禁。
 - 本轮 MUST NOT 扩展后端、离线冷启动恢复、新服务依赖、通用编排框架或额外管理界面；只补当前流程必需的入口、协调和既有仓库页面状态。
-- REP-016 的真实三后端认证、刷新、备份/索引/恢复及 rclone 兼容性仍在部署后的 GitHub Actions 验证，不作为前续源码交付的阻塞条件。源码交付与部署验收 MUST 分开记录，未验收不得声称相应后端生产验证通过。
+- REP-016 的真实三后端认证、刷新、备份/索引/恢复及 rclone 兼容性按用户 2026-10-21 决定暂缓，不在 GitHub 保存真实云凭据；未来如执行，使用受控部署环境并只回填脱敏证据。源码交付与部署验收 MUST 分开记录，未验收不得声称相应后端生产验证通过。
 
 三次交付只组织剩余工作，不删减规范或验收要求。每次 MUST 复用已有安全负向套件；当前暂不新增测试用例，不为每个 provider 扩建模拟套件。源码交付、已有 Actions 结果和未验证的新行为 MUST 分开记录。仅有 command、组件测试或队列排空不构成 M4 完成。
 
@@ -211,7 +211,7 @@
 
 - REP-001–060 的适用功能与关键安全边界，复用已有测试；REP-016 按下述部署验收执行；
 - DEP-005/006；
-- REP-016 的真实 OneDrive / Google Drive 刷新与 WebDAV 认证、备份恢复改为部署后的 Actions 验收；不阻塞前续源码交付；
+- REP-016 的真实 OneDrive / Google Drive 刷新与 WebDAV 认证、备份恢复按用户决定暂缓，不在 GitHub 保存真实云凭据；不阻塞前续源码交付。
 - public deletion/overwrite negative suite。
 
 ## M5 — Templates, Plans and Local Scheduler
