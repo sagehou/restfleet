@@ -22,7 +22,7 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 	templateID, planID := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	hash := strings.Repeat("a", 64)
 	if _, err := pool.Exec(ctx, `insert into templates(id,name,current_revision,created_at,updated_at)
-		values($1,'operation-guard',1,$2,$2)`, templateID, now); err != nil {
+		values($1,$2,1,$3,$3)`, templateID, templateID.String(), now); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `insert into template_revisions(template_id,revision,config_json,config_hash,created_by,created_at)
