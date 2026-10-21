@@ -9,16 +9,16 @@ type Props = { canManage: boolean; onUnauthorized: () => void }
 const endpoint = '/api/v1/backup-operations'
 const statusLabels: Record<BackupOperation['status'], string> = {
   QUEUED: '排队中', RUNNING: '运行中', SUCCEEDED: '成功', SUCCEEDED_WITH_WARNINGS: '成功（有告警）',
-  FAILED: '失败', CANCEL_REQUESTED: '取消请求中', CANCELED: '已取消', MISSED: '错过执行', CONCURRENCY_SKIPPED: '并发跳过',
+  FAILED: '失败', CANCEL_REQUESTED: '取消请求中', CANCELED: '已取消', LOST: '已丢失', MISSED: '错过执行', CONCURRENCY_SKIPPED: '并发跳过',
 }
 
 function terminal(status: BackupOperation['status']): boolean {
   return status === 'SUCCEEDED' || status === 'SUCCEEDED_WITH_WARNINGS' || status === 'FAILED' ||
-    status === 'CANCELED' || status === 'MISSED' || status === 'CONCURRENCY_SKIPPED'
+    status === 'CANCELED' || status === 'LOST' || status === 'MISSED' || status === 'CONCURRENCY_SKIPPED'
 }
 
 function retryable(status: BackupOperation['status']): boolean {
-  return status === 'FAILED' || status === 'CANCELED' || status === 'MISSED' || status === 'CONCURRENCY_SKIPPED'
+  return status === 'FAILED' || status === 'CANCELED' || status === 'LOST' || status === 'MISSED' || status === 'CONCURRENCY_SKIPPED'
 }
 
 function percent(operation: BackupOperation): string {

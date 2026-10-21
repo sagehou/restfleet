@@ -112,10 +112,8 @@ func TestPendingResultIDsBoundAndExcludeUploaded(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Close()
-	ids := make([]uuid.UUID, 0, 3)
 	for i := 0; i < 3; i++ {
 		id := uuid.Must(uuid.NewV7())
-		ids = append(ids, id)
 		if err := state.PutOperation(OperationRecord{
 			ID: id, PlanID: uuid.Must(uuid.NewV7()), Status: OperationFailed,
 			FinishedAt: time.Now().UTC(),
