@@ -21,7 +21,7 @@
 - 按用户当前指示，先实现功能，暂不新增或改写测试用例。编译、测试、认证及运行验证 MUST 仅在 GitHub Actions 执行；复用已有质量门禁，新增行为的验收保持待验证，不因源码完成而标记通过。
 - 2026-10-19 已完成 M4 第二项剩余功能的源码接入：`gateway-rotate`、`gateway-recover`、Gateway 侧 `provision`/`finalize` 与 ADR-0036 / 09 §7.27；测试策略按用户选择在里程碑结束后统一补齐，当前仅新增元数据/策略边界测试。验收证据、剩余项与接手入口见 [轮换与恢复交接](docs/development/handoff-2026-10-19-rotation.md)。
 
-2026-10-21 实际状态：M5–M8 已有部分实现合入 `main`，但均未达到退出条件；本轮不宣称任何里程碑完成。两个 P0 已由 #99 修复（定时 UUIDv5 operation ID、`SNAPSHOT_LIST` 读锁/事务提交）；#103 修复 M6 终态 guard/拒绝重投/summary 统计，#104 修复 M5 PENDING_APPLY/状态机/revision/accepted_revision，#105 修复路径、schema version 与 Operation 分页，#107 关闭取消与 dispatch 竞态，#108 补 `pending_result_ids`、Agent 崩溃恢复与 Server 旧 boot LOST 对账。剩余 P1：调度器 jitter/DST、结果/日志背压与 `JobLogChunk`、M8 缓存。下一步继续 P1 与 M8，再按依赖顺序推进 M9。详细证据见 [当前开发状态](docs/development/current-state.md) 与 [M4 运行验收记录](docs/development/m4-acceptance-2026-10-21.md)。
+2026-10-21 实际状态：M5–M8 已有部分实现合入 `main`，但均未达到退出条件；本轮不宣称任何里程碑完成。两个 P0 已由 #99 修复（定时 UUIDv5 operation ID、`SNAPSHOT_LIST` 读锁/事务提交）；#103 修复 M6 终态 guard/拒绝重投/summary 统计，#104 修复 M5 PENDING_APPLY/状态机/revision/accepted_revision，#105 修复路径、schema version 与 Operation 分页，#107 关闭取消与 dispatch 竞态，#108 补 `pending_result_ids`、Agent 崩溃恢复与 Server 旧 boot LOST 对账，#110 修复调度器 jitter/DST/持久化错误，#111 接入 Plan 健康/next_run，#112 加缓存边界与过期清理。剩余：结果/日志背压与 `JobLogChunk`、M8 周期索引/UNMANAGED/cursor、M7 Attention Queue、M9–M12。下一步继续 M8/M6，再按依赖顺序推进 M9。详细证据见 [当前开发状态](docs/development/current-state.md) 与 [M4 运行验收记录](docs/development/m4-acceptance-2026-10-21.md)。
 
 ## M0 — Repository Scaffold
 
@@ -216,7 +216,7 @@
 
 ## M5 — Templates, Plans and Local Scheduler
 
-**Status: IN PROGRESS** — 模板与 Plan 的建表、不可变 revision、读取/创建/修订 API 已接入（Plan 绑定 Host/Agent/Repository，effective config 由中心合并并存档）；计划状态机（apply/pause/resume）、批量 `apply-to-plans`、模板归档与依赖列表已接入；Web 页面已接入；Agent 本地调度核心（cron/时区/stable jitter/misfire/FORBID、deterministic operation key）已落地为 `internal/agent/schedule`，`DesiredState` 与 Agent 控制协议已支持 `plans[]`（调度子集、参与 config_hash、空数组时哈希不变）；计划变更时会重写 Agent 快照并 bump desired revision（`AGENT_DESIRED_STATE_CHANGED` outbox）。2026-10-21：#99 解除定时 operation ID P0；#104 只下发 ACTIVE Plan、阻止 DRAFT pause→resume 绕过、apply/pause/resume 不再新增 revision，并在 Agent 接受快照时写入 `accepted_revision`。剩余：调度器 jitter/DST/持久化错误、SCH-001–006 / AGT-003/004 / API-003 专项测试；Backup Health 仍只有终态更新。
+**Status: IN PROGRESS** — 模板与 Plan 的建表、不可变 revision、读取/创建/修订 API 已接入（Plan 绑定 Host/Agent/Repository，effective config 由中心合并并存档）；计划状态机（apply/pause/resume）、批量 `apply-to-plans`、模板归档与依赖列表已接入；Web 页面已接入；Agent 本地调度核心（cron/时区/stable jitter/misfire/FORBID、deterministic operation key）已落地为 `internal/agent/schedule`，`DesiredState` 与 Agent 控制协议已支持 `plans[]`（调度子集、参与 config_hash、空数组时哈希不变）；计划变更时会重写 Agent 快照并 bump desired revision（`AGENT_DESIRED_STATE_CHANGED` outbox）。2026-10-21：#99 解除定时 operation ID P0；#104 只下发 ACTIVE Plan、阻止 DRAFT pause→resume 绕过、apply/pause/resume 不再新增 revision，并在 Agent 接受快照时写入 `accepted_revision`；#110 修复 jitter 漂移、operation/runtime 原子持久化与调度错误上报。剩余：SCH-001–006 / AGT-003/004 / API-003 专项测试；Backup Health 已接入 #111 的 NEVER_RUN/PAUSED/OVERDUE。
 
 ### Goal
 
@@ -254,7 +254,7 @@
 
 ## M6 — Backup Execution
 
-**Status: IN PROGRESS** — 手动与定时上报链路已通（#99 对齐 UUIDv5 operation ID）；#103 增加终态 guard、关闭拒绝的 QUEUED 作业、避免旧 progress 覆盖终态，并把 summary `files_new/data_added` 写入快照索引；#107 以原子 dispatch claim 与 cancel-before-dispatch 集合关闭取消竞态；#108 补 Hello `pending_result_ids`、Agent 启动时 RUNNING→LOST 恢复、Server 旧 boot `LOST` 对账（含 grace 与 `LOCAL_OPERATION_RECOVERED`）。剩余：结果/日志背压与 `JobLogChunk`、M6 专项测试。
+**Status: IN PROGRESS** — 手动与定时上报链路已通（#99 对齐 UUIDv5 operation ID）；#103 增加终态 guard、关闭拒绝的 QUEUED 作业、避免旧 progress 覆盖终态，并把 summary `files_new/data_added` 写入快照索引；#107 以原子 dispatch claim 与 cancel-before-dispatch 集合关闭取消竞态；#108 补 Hello `pending_result_ids`、Agent 启动时 RUNNING→LOST 恢复、Server 旧 boot `LOST` 对账（含 grace 与 `LOCAL_OPERATION_RECOVERED`）；#110 让调度器持久化失败可见且不启动未记录的任务。剩余：结果/日志背压与 `JobLogChunk`、M6 专项测试。
 
 ### Goal
 
@@ -294,7 +294,7 @@
 
 ## M7 — Dashboard and Health
 
-**Status: IN PROGRESS** — 计划健康随终态结果更新，仪表盘新增 Plans/Operations/运行中/24h 失败/不健康计划计数；但仅 FAILED 计入不健康，OVERDUE/NEVER_RUN/PAUSED、`next_run_at`/`last_success_at` 计算、Attention Queue、缓存与健康转换事件均未实现。
+**Status: IN PROGRESS** — 计划健康随终态结果更新，仪表盘新增 Plans/Operations/运行中/24h 失败/不健康计划计数；#111 已接入 `NEVER_RUN`/`PAUSED`/`OVERDUE`、`next_run_at`/`last_success_at`、heartbeat next_runs 与 overdue reconciliation，不健康计数覆盖 FAILED/OVERDUE/NEVER_RUN；Attention Queue、Healthy/Failed/Overdue/NeverRun/Paused 分项指标仍待实现。
 
 ### Goal
 
@@ -324,7 +324,7 @@
 
 ## M8 — Snapshot Index and Browser
 
-**Status: IN PROGRESS** — 快照索引/列表/浏览源码已合入；`SNAPSHOT_LIST` 读锁与事务提交已由 #99 修复，READY 仓库可落库；无周期 `snapshots --json` 索引、UNMANAGED/two-pass missing、cursor/filter、大规模虚拟化；缓存键缺 tree_id、无过期清理、截断无 continuation。
+**Status: IN PROGRESS** — 快照索引/列表/浏览源码已合入；`SNAPSHOT_LIST` 读锁与事务提交已由 #99 修复，READY 仓库可落库；#112 增加条目名/路径边界并周期清理过期缓存。剩余：周期 `snapshots --json` 索引、UNMANAGED/two-pass missing、cursor/filter、截断 continuation、大规模虚拟化，以及 cache tree_id 校验。
 
 ### Goal
 

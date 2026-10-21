@@ -4,9 +4,9 @@
 
 ## 仓库与验证
 
-- `main`：`109f9ea fix(m6): recover crash-left operations and report pending results (#108)`。
-- 本地与远端只有 `main`，工作区干净；批次分支 `fix/m6-crash-recovery` 已删除。
-- PR #99（P0 修复）、#100（session ID 保持 UUIDv7）、#101（READY 正向/降级测试）、#103（M6 终态/统计）、#104（M5 Plan 语义）、#105（路径/版本/分页）、#107（取消与 dispatch 竞态）、#108（崩溃恢复与 `pending_result_ids`）均通过 10 项检查并 squash 合并。
+- `main`：`b4b9efd feat(m8): bound snapshot cache entries and expire stale pages (#112)`。
+- 本地与远端只有 `main`，工作区干净；批次分支均已删除。
+- PR #99（P0 修复）、#100（session ID 保持 UUIDv7）、#101（READY 正向/降级测试）、#103（M6 终态/统计）、#104（M5 Plan 语义）、#105（路径/版本/分页）、#107（取消与 dispatch 竞态）、#108（崩溃恢复与 `pending_result_ids`）、#110（调度器持久化/jitter）、#111（M7 健康/next_run）、#112（M8 缓存边界/清理）均通过 10 项检查并 squash 合并。
 - 编译、测试、认证及运行验证只在 GitHub Actions 执行；开发工作区只做源码/文档编辑和只读检查。
 
 ## 里程碑
@@ -15,10 +15,10 @@
 |---|---|---|
 | M0–M3 | COMPLETE | 骨架、认证、Host/enrollment、心跳/库存/desired state |
 | M4 | IN PROGRESS | 三项交付源码已合入；READY 正/负向已有 CI 证据；真实三后端、部署态轮换/恢复与 DEP-005/006 按用户决定暂缓（不在 GitHub 保存凭据） |
-| M5 | IN PROGRESS | 模板、Plan、状态机、本地调度核心已接入；定时 operation ID、PENDING_APPLY 下发、状态机绕过与 accepted_revision 已修复；调度器 jitter/DST 与专项测试待补 |
-| M6 | IN PROGRESS | 手动与定时上报、终态 guard、拒绝闭环、summary 统计、取消竞态与崩溃恢复（pending_result_ids/LOST）已修复；结果/日志背压、`JobLogChunk` 与专项测试待补 |
-| M7 | IN PROGRESS | 终态健康与仪表盘计数；OVERDUE/NEVER_RUN/PAUSED、Attention Queue 未实现 |
-| M8 | IN PROGRESS | 索引/列表/浏览 UI；扫描落库已修复；周期索引/UNMANAGED/缓存清理未实现 |
+| M5 | IN PROGRESS | 模板、Plan、状态机、本地调度核心已接入；PENDING_APPLY、状态机绕过、accepted_revision、jitter/DST/持久化错误已修复；SCH/AGT/API 专项测试待补 |
+| M6 | IN PROGRESS | 手动与定时上报、终态 guard、取消竞态、崩溃恢复（pending_result_ids/LOST）、调度器持久化已修复；结果/日志背压、`JobLogChunk` 与专项测试待补 |
+| M7 | IN PROGRESS | NEVER_RUN/PAUSED/OVERDUE、next_run_at/last_success_at、unhealthy 计数已接入；Attention Queue 与分项 dashboard 指标待补 |
+| M8 | IN PROGRESS | 索引/列表/浏览 UI、缓存边界/过期清理已接入；周期索引、UNMANAGED/two-pass、cursor/continuation 待补 |
 | M9–M12 | NOT STARTED | 下载、恢复、保留/维护、通知与发布 |
 
 ## 已合入
@@ -32,6 +32,9 @@
 - `#105`：Restic 路径规范化/换行拒绝、`/version` schema 修复、Operation 分页 cursor 修复。
 - `#107`：dispatch 原子 claim、Agent cancel-before-dispatch 集合、`CANCEL_REQUESTED` 未启动 closure，关闭取消与执行竞态。
 - `#108`：Hello `pending_result_ids`、Agent 启动 RUNNING→LOST 恢复、Server `boot_changed_at` grace 后旧 boot LOST 对账；`JobAccepted` 记录 `started_at` 以保护已接收的取消作业。
+- `#110`：调度器从当前时刻计算 jitter、operation/runtime 原子持久化、错误上报、DST spring-forward 测试。
+- `#111`：Plan `NEVER_RUN`/`PAUSED`/`OVERDUE` 健康、`next_run_at`/`last_success_at`、heartbeat `next_runs` 与 overdue reconciliation。
+- `#112`：快照缓存条目名/路径边界、过期缓存清理。
 - M4 源码：`#51`–`#60`、`#67`、`#76`；历史批次与 CI 证据见 [M4 交付历史](m4-delivery-history.md)，运行验收矩阵见 [M4 运行验收记录](m4-acceptance-2026-10-21.md)。
 
 ## 已修复 P0（#99）
@@ -41,11 +44,12 @@
 
 ## P1：正确性与安全
 
-已修复（#103/#104/#105/#107/#108）：终态结果覆盖、拒绝 QUEUED 作业重投、结果统计字段错配、PENDING_APPLY 下发、DRAFT pause→resume 绕过、apply/pause/resume 新增 revision、accepted_revision 恒为 0、路径换行/非规范化、schema version 硬编码、Operation 分页重复、取消与 dispatch 竞态、`pending_result_ids`、Agent 崩溃后 RUNNING→LOST 与 Server 旧 boot LOST 对账。剩余：
+已修复（#103/#104/#105/#107/#108/#110/#111/#112）：终态结果覆盖、拒绝 QUEUED 作业重投、结果统计字段错配、PENDING_APPLY 下发、DRAFT pause→resume 绕过、apply/pause/resume 新增 revision、accepted_revision 恒为 0、路径换行/非规范化、schema version 硬编码、Operation 分页重复、取消与 dispatch 竞态、`pending_result_ids`、Agent 崩溃后 RUNNING→LOST、调度器 jitter/DST/持久化错误、Plan 健康/next_run、缓存条目边界与过期清理。剩余：
 
-1. **调度器边界。** `NextRun` 从已加 jitter 的时刻继续计算（`internal/agent/scheduler.go:96-98`），jitter 大于 cron 间隔时会跳槽；分钟扫描未处理 DST（`internal/agent/schedule/schedule.go:82-91`）；持久化错误被丢弃（`scheduler.go:90,104,128,130,145`）；重试/永久失败语义未实现。
-2. **结果与日志背压未实现。** 终态结果在重连后全量重放，缺少发送上限/背压；`JobLogChunk` 与每 Operation 10 MiB 限额、truncation marker、离线日志缓冲尚未接入。
-3. **M8 缓存与截断。** 缓存键缺少 `tree_id`，过期行不清理；条目名/路径无长度上限；截断按全部后代计数，深目录可能提前耗尽预算；截断页没有 continuation；`SnapshotList.next_cursor` 仍未赋值。
+1. **结果与日志背压未实现。** 终态结果在重连后全量重放，缺少发送上限/背压；`JobLogChunk` 与每 Operation 10 MiB 限额、truncation marker、离线日志缓冲尚未接入。
+2. **M8 周期索引与浏览继续。** 无周期 `restic snapshots --json` 索引、UNMANAGED/two-pass missing、cursor/filter、截断 continuation 与大规模目录虚拟化；缓存仍以 `(repository,snapshot,path)` 查询，未把 `tree_id` 纳入校验。
+3. **M7 Attention Queue。** 已有健康状态/unhealthy 计数，但 dashboard 没有 Healthy/Failed/Overdue/NeverRun/Paused 分项指标和 Attention Queue。
+4. **M9–M12 未开工。** 下载、恢复、保留/维护、通知与发布仍需按规格实现。
 
 ## M4 设计/安全不一致
 
@@ -69,7 +73,8 @@
 
 ## 下一步
 
-1. 修复 P1：终态 guard/取消/拒绝、结果统计、Plan 调度语义、路径校验、崩溃恢复与 M8 缓存；为每个状态转换和负向边界补 Actions 测试。
-2. M4 外部验收按用户 2026-10-21 决定暂缓：不在 GitHub 保存真实云凭据；未来如执行，使用受控部署环境并只回填脱敏证据。M4 保持 IN PROGRESS，但不再阻塞 M5–M8 代码推进。
-3. M4 兼容路径与离线窗口不一致需要设计决定，不能静默保留。
+1. 继续 M8：周期 `restic snapshots --json` 索引、UNMANAGED/two-pass、cache `tree_id` 校验、cursor/continuation 与大规模虚拟化。
+2. 补 M6 结果/日志背压与 `JobLogChunk`，并补 M5/M6 的 SCH/AGT/BAK 专项测试。
+3. 补 M7 Attention Queue 与 Healthy/Failed/Overdue/NeverRun/Paused 分项指标。
 4. 之后按 M9 → M10 → M11 → M12 推进；不要从总范围删除未开工项。
+5. M4 外部验收保持暂缓：不在 GitHub 保存真实云凭据；未来如执行，使用受控部署环境并只回填脱敏证据。M4 保持 IN PROGRESS，不阻塞上述代码推进。
