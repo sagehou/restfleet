@@ -177,7 +177,12 @@ func (s *Store) AcceptAgentConfig(
 	result domain.AgentConfigResult,
 	at time.Time,
 ) error {
-	tag, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `
 		update agents a
 		set accepted_revision = greatest(a.accepted_revision, $2),
 		    config_error_code = case when a.desired_revision = $2 then '' else a.config_error_code end,
@@ -196,7 +201,22 @@ func (s *Store) AcceptAgentConfig(
 	if tag.RowsAffected() != 1 {
 		return domain.ErrNotFound
 	}
-	return nil
+	// A Plan revision is accepted only when that exact revision is present in
+	// the accepted desired-state snapshot; later plan edits stay unaccepted.
+	if _, err = tx.Exec(ctx, `
+		update plans p
+		set accepted_revision = p.desired_revision, updated_at = $3
+		from agent_desired_states d
+		where d.agent_id = $1 and d.revision = $2 and p.agent_id = $1
+		  and exists (
+		    select 1 from jsonb_array_elements(d.config_json->'plans') e
+		    where (e->>'plan_id')::uuid = p.id
+		      and (e->>'revision')::bigint = p.desired_revision
+		  )
+	`, agentID, result.Revision, at); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) RejectAgentConfig(
