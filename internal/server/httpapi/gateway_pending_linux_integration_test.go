@@ -586,3 +586,38 @@ func TestGatewayPendingBlocksSynchronousRefreshBypass(t *testing.T) {
 	}
 	f.count(t, 0, 0, 1)
 }
+
+func TestRepositoryReadinessFromVerifiedGatewayObservation(t *testing.T) {
+	f := pendingIntegrationFixture(t, "onedrive")
+	ctx := context.Background()
+	record := f.record("audit")
+	record.Event.Action = "backend_ready"
+	record.Event.Reason = "verified"
+	record.Event.Authenticated = false
+	if ack, err := f.control.ReplayGatewayPending(ctx, f.request.RuntimeID, f.seal(t, record)); err != nil || ack == nil {
+		t.Fatal("verified backend observation was not accepted")
+	}
+
+	repository, err := f.control.Repository(ctx, f.statement.Binding.RepositoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repository.Status != "READY" {
+		t.Fatalf("repository status = %s, want READY", repository.Status)
+	}
+
+	revoke := f.request
+	revoke.ID = uuid.Must(uuid.NewV7())
+	revoke.ExpectedRevision = 1
+	revoke.Revoke, revoke.Lifetime = true, 0
+	if _, err := f.control.DecideGatewayAuthorization(ctx, revoke); err != nil {
+		t.Fatal(err)
+	}
+	repository, err = f.control.Repository(ctx, f.statement.Binding.RepositoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repository.Status != "DEGRADED" {
+		t.Fatalf("revoked repository status = %s, want DEGRADED", repository.Status)
+	}
+}
