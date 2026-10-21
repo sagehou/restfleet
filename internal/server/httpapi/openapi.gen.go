@@ -277,6 +277,8 @@ const (
 	CREDENTIALCHANGED     OperationErrorCode = "CREDENTIAL_CHANGED"
 	CREDENTIALDISABLED    OperationErrorCode = "CREDENTIAL_DISABLED"
 	Empty                 OperationErrorCode = ""
+	INDEXFAILED           OperationErrorCode = "INDEX_FAILED"
+	INDEXTIMEDOUT         OperationErrorCode = "INDEX_TIMED_OUT"
 	INITIALIZEFAILED      OperationErrorCode = "INITIALIZE_FAILED"
 	INITIALIZETIMEDOUT    OperationErrorCode = "INITIALIZE_TIMED_OUT"
 	PASSWORDREJECTED      OperationErrorCode = "PASSWORD_REJECTED"
@@ -306,6 +308,10 @@ func (e OperationErrorCode) Valid() bool {
 	case CREDENTIALDISABLED:
 		return true
 	case Empty:
+		return true
+	case INDEXFAILED:
+		return true
+	case INDEXTIMEDOUT:
 		return true
 	case INITIALIZEFAILED:
 		return true
@@ -344,12 +350,15 @@ func (e OperationErrorCode) Valid() bool {
 
 // Defines values for OperationSource.
 const (
-	USER OperationSource = "USER"
+	SYSTEM OperationSource = "SYSTEM"
+	USER   OperationSource = "USER"
 )
 
 // Valid indicates whether the value is a known member of the OperationSource enum.
 func (e OperationSource) Valid() bool {
 	switch e {
+	case SYSTEM:
+		return true
 	case USER:
 		return true
 	default:
@@ -910,7 +919,7 @@ type Operation struct {
 	FinishedAt          *time.Time          `json:"finished_at,omitempty"`
 	Id                  openapi_types.UUID  `json:"id"`
 	RepositoryId        *openapi_types.UUID `json:"repository_id,omitempty"`
-	RequestedByUserId   openapi_types.UUID  `json:"requested_by_user_id"`
+	RequestedByUserId   *openapi_types.UUID `json:"requested_by_user_id,omitempty"`
 	SecretRevision      int64               `json:"secret_revision"`
 	Source              OperationSource     `json:"source"`
 	StartedAt           *time.Time          `json:"started_at,omitempty"`
@@ -1068,16 +1077,16 @@ type Session struct {
 
 // Snapshot defines model for Snapshot.
 type Snapshot struct {
-	AgentId      openapi_types.UUID `json:"agent_id"`
-	BytesAdded   int64              `json:"bytes_added"`
-	CapturedAt   time.Time          `json:"captured_at"`
-	FilesNew     int64              `json:"files_new"`
-	HostId       openapi_types.UUID `json:"host_id"`
-	OperationId  openapi_types.UUID `json:"operation_id"`
-	PlanId       openapi_types.UUID `json:"plan_id"`
-	RecordedAt   time.Time          `json:"recorded_at"`
-	RepositoryId openapi_types.UUID `json:"repository_id"`
-	SnapshotId   string             `json:"snapshot_id"`
+	AgentId      *openapi_types.UUID `json:"agent_id,omitempty"`
+	BytesAdded   int64               `json:"bytes_added"`
+	CapturedAt   time.Time           `json:"captured_at"`
+	FilesNew     int64               `json:"files_new"`
+	HostId       openapi_types.UUID  `json:"host_id"`
+	OperationId  *openapi_types.UUID `json:"operation_id,omitempty"`
+	PlanId       *openapi_types.UUID `json:"plan_id,omitempty"`
+	RecordedAt   time.Time           `json:"recorded_at"`
+	RepositoryId openapi_types.UUID  `json:"repository_id"`
+	SnapshotId   string              `json:"snapshot_id"`
 }
 
 // SnapshotEntries defines model for SnapshotEntries.

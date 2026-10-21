@@ -86,6 +86,7 @@ func run(logger *slog.Logger) error {
 	var runCredentialTest control.CredentialTestRunner
 	var initializeRepository control.RepositoryInitializer
 	var listSnapshot control.SnapshotLister
+	var indexSnapshots control.SnapshotIndexer
 	if config.EnrollmentEnabled {
 		credentialRuntime, err = rclone.NewRuntime(config.CredentialRuntimeDir, config.RcloneBinary)
 		if err != nil {
@@ -99,11 +100,13 @@ func run(logger *slog.Logger) error {
 		}
 		initializeRepository = provisioner.Provision
 		listSnapshot = provisioner.List
+		indexSnapshots = provisioner.SnapshotIndex
 	}
 	controlPlane, err := control.NewControlPlane(store, control.Settings{
 		RunCredentialTest:           runCredentialTest,
 		InitializeRepository:        initializeRepository,
 		ListSnapshot:                listSnapshot,
+		IndexSnapshots:              indexSnapshots,
 		BootstrapToken:              config.BootstrapToken,
 		MasterKey:                   config.MasterKey,
 		GatewayPublicURL:            config.GatewayPublicURL,
@@ -228,6 +231,20 @@ func run(logger *slog.Logger) error {
 		close(workerDone)
 	}
 	defer func() { stop(); <-workerDone }()
+	indexDone := make(chan struct{})
+	if indexSnapshots != nil {
+		go func() {
+			defer close(indexDone)
+			if err := controlPlane.RunSnapshotIndexer(ctx, 15*time.Minute, func() {
+				logger.Warn("snapshot indexer will retry", "component", "snapshot_indexer", "event", "index_retry", "error_code", "SNAPSHOT_INDEX_RETRY")
+			}); err != nil {
+				serverErrors <- err
+			}
+		}()
+	} else {
+		close(indexDone)
+	}
+	defer func() { stop(); <-indexDone }()
 	reconcileDone := make(chan struct{})
 	go func() {
 		defer close(reconcileDone)

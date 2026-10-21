@@ -148,7 +148,7 @@ func (s *Store) EnqueueStorageOperation(ctx context.Context, o domain.Operation,
 	}
 	o.SecretRevision = c.SecretRevision
 	_, err = tx.Exec(ctx, `insert into operations(id,type,status,source,storage_credential_id,secret_revision,requested_by_user_id,attempt,created_at,repository_id)
-		values($1,$2,$3,$4,$5,$6,$7,1,$8,$9)`, o.ID, o.Type, o.Status, o.Source, c.ID, o.SecretRevision, o.RequestedByUserID, o.CreatedAt, o.RepositoryID)
+		values($1,$2,$3,$4,$5,$6,$7,1,$8,$9)`, o.ID, o.Type, o.Status, o.Source, c.ID, o.SecretRevision, optionalUUID(o.RequestedByUserID), o.CreatedAt, o.RepositoryID)
 	if err != nil {
 		return o, err
 	}
@@ -198,7 +198,7 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	var operationID uuid.UUID
 	var attempt, maxAttempts int
 	err = tx.QueryRow(ctx, `select id,operation_id,attempt,max_attempts,payload from jobs
-		where queue in ('CREDENTIAL_TEST','REPOSITORY_INITIALIZE','SNAPSHOT_LIST') and ((status='READY' and available_at<=clock_timestamp())
+		where queue in ('CREDENTIAL_TEST','REPOSITORY_INITIALIZE','SNAPSHOT_LIST','SNAPSHOT_INDEX') and ((status='READY' and available_at<=clock_timestamp())
 		or (status='LEASED' and lease_expires_at<=clock_timestamp()))
 		order by available_at,id for update skip locked limit 1`).Scan(&job.ID, &operationID, &attempt, &maxAttempts, &job.Payload)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -214,7 +214,7 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	if job.Operation.RepositoryID != nil {
 		var r domain.Repository
 		var repoErr error
-		if job.Operation.Type == "SNAPSHOT_LIST" {
+		if job.Operation.Type == "SNAPSHOT_LIST" || job.Operation.Type == "SNAPSHOT_INDEX" {
 			r, repoErr = lockRepositoryForRead(ctx, tx, *job.Operation.RepositoryID)
 		} else {
 			r, repoErr = lockProvisionRepository(ctx, tx, *job.Operation.RepositoryID)
@@ -279,6 +279,8 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 		runtimeReason = "INITIALIZE_RUNTIME"
 	case "SNAPSHOT_LIST":
 		runtimeReason = "SNAPSHOT_LIST_RUNTIME"
+	case "SNAPSHOT_INDEX":
+		runtimeReason = "SNAPSHOT_INDEX_RUNTIME"
 	}
 	audit, err := credentialJobAudit(job.Operation, "STORAGE_SECRET_ACCESS", runtimeReason, now)
 	if err != nil {
@@ -325,7 +327,7 @@ func lockCredentialJob(ctx context.Context, tx pgx.Tx, id, owner uuid.UUID) (dom
 	if job.Operation.RepositoryID != nil {
 		var r domain.Repository
 		var repoErr error
-		if job.Operation.Type == "SNAPSHOT_LIST" {
+		if job.Operation.Type == "SNAPSHOT_LIST" || job.Operation.Type == "SNAPSHOT_INDEX" {
 			r, repoErr = lockRepositoryForRead(ctx, tx, *job.Operation.RepositoryID)
 		} else {
 			r, repoErr = lockProvisionRepository(ctx, tx, *job.Operation.RepositoryID)

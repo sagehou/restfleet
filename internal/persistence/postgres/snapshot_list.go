@@ -52,7 +52,7 @@ func lockRepositoryForRead(ctx context.Context, tx pgx.Tx, id uuid.UUID) (domain
 // repository serialization: no active operation, backup admission or live lease
 // may exist, so credential refresh remains safe.
 func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operation, snapshotID, path string) (domain.Operation, error) {
-	if operation.RepositoryID == nil || operation.RequestedByUserID == uuid.Nil ||
+	if operation.RepositoryID == nil || operation.RequestedByUserID == nil || *operation.RequestedByUserID == uuid.Nil ||
 		operation.ID.Version() != 7 || len(path) == 0 || len(path) > 4096 {
 		return operation, domain.ErrOperationTransition
 	}
@@ -108,7 +108,7 @@ func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operat
 		requested_by_user_id,attempt,created_at,repository_id)
 		values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 		operation.ID, operation.Type, operation.Status, operation.Source, operation.StorageCredentialID,
-		operation.SecretRevision, operation.RequestedByUserID, operation.Attempt, operation.CreatedAt, repo.ID); err != nil {
+		operation.SecretRevision, optionalUUID(operation.RequestedByUserID), operation.Attempt, operation.CreatedAt, repo.ID); err != nil {
 		var databaseError *pgconn.PgError
 		if errors.As(err, &databaseError) && databaseError.Code == "23505" {
 			return operation, domain.ErrRepositoryBusy
@@ -266,20 +266,33 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 	return tx.Commit(ctx)
 }
 
+const snapshotColumns = "plan_id,snapshot_id,agent_id,host_id,repository_id,operation_id,captured_at,recorded_at,files_new,bytes_added,managed,tree_id,tags,paths,program_version,missing_at"
+
+func scanSnapshot(row rowScanner) (domain.Snapshot, error) {
+	var item domain.Snapshot
+	if err := row.Scan(&item.PlanID, &item.SnapshotID, &item.AgentID, &item.HostID, &item.RepositoryID,
+		&item.OperationID, &item.CapturedAt, &item.RecordedAt, &item.FilesNew, &item.BytesAdded,
+		&item.Managed, &item.TreeID, &item.Tags, &item.Paths, &item.ProgramVersion, &item.MissingAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return item, domain.ErrNotFound
+		}
+		return item, err
+	}
+	return item, nil
+}
+
 // SnapshotsByID resolves every index entry for one native snapshot ID. The API
 // requires a repository when more than one repository contains the ID.
 func (s *Store) SnapshotsByID(ctx context.Context, snapshotID string) ([]domain.Snapshot, error) {
-	rows, err := s.pool.Query(ctx, `select plan_id,snapshot_id,agent_id,host_id,repository_id,operation_id,captured_at,recorded_at,files_new,bytes_added
-		from snapshots where snapshot_id=$1 order by recorded_at desc`, snapshotID)
+	rows, err := s.pool.Query(ctx, "select "+snapshotColumns+" from snapshots where snapshot_id=$1 order by recorded_at desc", snapshotID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := make([]domain.Snapshot, 0)
 	for rows.Next() {
-		var item domain.Snapshot
-		if err := rows.Scan(&item.PlanID, &item.SnapshotID, &item.AgentID, &item.HostID, &item.RepositoryID,
-			&item.OperationID, &item.CapturedAt, &item.RecordedAt, &item.FilesNew, &item.BytesAdded); err != nil {
+		item, err := scanSnapshot(rows)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)

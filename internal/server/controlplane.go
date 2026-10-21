@@ -102,6 +102,9 @@ type Store interface {
 	Snapshots(context.Context, int) ([]domain.Snapshot, error)
 	SnapshotsByID(context.Context, string) ([]domain.Snapshot, error)
 	EnqueueSnapshotList(context.Context, domain.Operation, string, string) (domain.Operation, error)
+	EnqueueSnapshotIndex(context.Context, domain.Operation) (domain.Operation, error)
+	ReadyRepositoryIDs(context.Context, int) ([]uuid.UUID, error)
+	FinishSnapshotIndexJob(context.Context, uuid.UUID, uuid.UUID, string, domain.SnapshotIndexResult) error
 	ActiveSnapshotListOperation(context.Context, uuid.UUID) (domain.Operation, bool, error)
 	SnapshotListResult(context.Context, uuid.UUID, string, string, time.Time) (domain.SnapshotListResult, bool, error)
 	FinishSnapshotListJob(context.Context, uuid.UUID, uuid.UUID, string, domain.SnapshotListResult) error
@@ -134,6 +137,7 @@ type Settings struct {
 	RunCredentialTest           CredentialTestRunner
 	InitializeRepository        RepositoryInitializer
 	ListSnapshot                SnapshotLister
+	IndexSnapshots              SnapshotIndexer
 	GatewayPublicURL            string
 	GatewayOfflineWindow        time.Duration
 	GatewaySigningKey           ed25519.PrivateKey
@@ -177,6 +181,7 @@ type ControlPlane struct {
 	runCredentialTest    CredentialTestRunner
 	initializeRepository RepositoryInitializer
 	listSnapshot         SnapshotLister
+	indexSnapshots       SnapshotIndexer
 	gatewayPublicURL     string
 	gatewayOfflineWindow time.Duration
 	gatewaySigningKey    ed25519.PrivateKey
@@ -241,6 +246,7 @@ func NewControlPlane(store Store, settings Settings) (*ControlPlane, error) {
 		runCredentialTest:    settings.RunCredentialTest,
 		initializeRepository: settings.InitializeRepository,
 		listSnapshot:         settings.ListSnapshot,
+		indexSnapshots:       settings.IndexSnapshots,
 		gatewayPublicURL:     settings.GatewayPublicURL,
 		gatewayOfflineWindow: settings.GatewayOfflineWindow,
 		gatewayPendingKey:    append([]byte(nil), settings.GatewayPendingDecryptionKey...),

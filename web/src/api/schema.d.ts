@@ -1098,15 +1098,15 @@ export interface components {
         Snapshot: {
             snapshot_id: string;
             /** Format: uuid */
-            plan_id: string;
+            plan_id?: string | null;
             /** Format: uuid */
-            agent_id: string;
+            agent_id?: string | null;
             /** Format: uuid */
             host_id: string;
             /** Format: uuid */
             repository_id: string;
             /** Format: uuid */
-            operation_id: string;
+            operation_id?: string | null;
             /** Format: date-time */
             captured_at: string;
             /** Format: date-time */
@@ -1162,13 +1162,13 @@ export interface components {
             /** @enum {string} */
             status: "QUEUED" | "DISPATCHED" | "ACKNOWLEDGED" | "RUNNING" | "SUCCEEDED" | "SUCCEEDED_WITH_WARNINGS" | "FAILED" | "CANCEL_REQUESTED" | "CANCELED" | "TIMED_OUT" | "LOST" | "REJECTED";
             /** @enum {string} */
-            source: "USER";
+            source: "USER" | "SYSTEM";
             /** Format: uuid */
             storage_credential_id: string;
             /** Format: int64 */
             secret_revision: number;
             /** Format: uuid */
-            requested_by_user_id: string;
+            requested_by_user_id?: string | null;
             attempt: number;
             /** Format: date-time */
             created_at: string;
@@ -1181,7 +1181,7 @@ export interface components {
             /** Format: date-time */
             finished_at?: string;
             /** @enum {string} */
-            error_code: "" | "CONNECTION_FAILED" | "TEST_TIMED_OUT" | "CONFIG_UNSAFE" | "REFRESH_FAILED" | "CREDENTIAL_CHANGED" | "CREDENTIAL_DISABLED" | "SECRET_UNAVAILABLE" | "WORKER_LOST" | "INITIALIZE_FAILED" | "INITIALIZE_TIMED_OUT" | "REPOSITORY_LOCKED" | "REPOSITORY_MISMATCH" | "REPOSITORY_NOT_EMPTY" | "PASSWORD_REJECTED" | "REPOSITORY_UNAVAILABLE" | "SNAPSHOT_NOT_FOUND" | "PATH_INVALID" | "SCAN_FAILED" | "SCAN_TIMED_OUT";
+            error_code: "" | "CONNECTION_FAILED" | "TEST_TIMED_OUT" | "CONFIG_UNSAFE" | "REFRESH_FAILED" | "CREDENTIAL_CHANGED" | "CREDENTIAL_DISABLED" | "SECRET_UNAVAILABLE" | "WORKER_LOST" | "INITIALIZE_FAILED" | "INITIALIZE_TIMED_OUT" | "REPOSITORY_LOCKED" | "REPOSITORY_MISMATCH" | "REPOSITORY_NOT_EMPTY" | "PASSWORD_REJECTED" | "REPOSITORY_UNAVAILABLE" | "SNAPSHOT_NOT_FOUND" | "PATH_INVALID" | "SCAN_FAILED" | "SCAN_TIMED_OUT" | "INDEX_FAILED" | "INDEX_TIMED_OUT";
         };
         StorageCredential: {
             /** Format: uuid */

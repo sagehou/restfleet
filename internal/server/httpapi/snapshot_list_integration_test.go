@@ -32,7 +32,7 @@ func TestSnapshotListCompletesForInitializedRepository(t *testing.T) {
 	}
 	snapshotID, treeID := strings.Repeat("b", 64), strings.Repeat("c", 64)
 	operation, err := store.EnqueueSnapshotList(ctx, domain.Operation{
-		ID: uuid.Must(uuid.NewV7()), RepositoryID: &repository.Id, RequestedByUserID: userID,
+		ID: uuid.Must(uuid.NewV7()), RepositoryID: &repository.Id, RequestedByUserID: &userID,
 	}, snapshotID, "/")
 	if err != nil {
 		t.Fatal(err)

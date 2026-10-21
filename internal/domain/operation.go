@@ -21,7 +21,7 @@ type Operation struct {
 	StorageCredentialID                                 uuid.UUID
 	RepositoryID                                        *uuid.UUID
 	SecretRevision                                      int64
-	RequestedByUserID                                   uuid.UUID
+	RequestedByUserID                                   *uuid.UUID
 	Attempt                                             int
 	CreatedAt                                           time.Time
 	DispatchedAt, AcknowledgedAt, StartedAt, FinishedAt *time.Time
@@ -155,18 +155,44 @@ type BackupOperationResult struct {
 	FinishedAt   time.Time
 }
 
-// Snapshot indexes one successful backup run.
+// Snapshot indexes one Restic snapshot. A NULL PlanID/AgentID/OperationID and
+// Managed=false identifies an out-of-band snapshot that must never enter
+// automatic retention.
 type Snapshot struct {
-	PlanID       uuid.UUID
-	SnapshotID   string
-	AgentID      uuid.UUID
-	HostID       uuid.UUID
-	RepositoryID uuid.UUID
-	OperationID  uuid.UUID
-	CapturedAt   time.Time
-	RecordedAt   time.Time
-	FilesNew     int64
-	BytesAdded   int64
+	PlanID         *uuid.UUID
+	SnapshotID     string
+	AgentID        *uuid.UUID
+	HostID         uuid.UUID
+	RepositoryID   uuid.UUID
+	OperationID    *uuid.UUID
+	CapturedAt     time.Time
+	RecordedAt     time.Time
+	FilesNew       int64
+	BytesAdded     int64
+	Managed        bool
+	TreeID         string
+	Tags           []string
+	Paths          []string
+	ProgramVersion string
+	MissingAt      *time.Time
+}
+
+// IndexedSnapshot is one entry returned by `restic snapshots --json`. PlanID is
+// resolved from RestFleet tags; nil means the snapshot is UNMANAGED.
+type IndexedSnapshot struct {
+	PlanID         *uuid.UUID
+	SnapshotID     string
+	TreeID         string
+	CapturedAt     time.Time
+	Tags           []string
+	Paths          []string
+	ProgramVersion string
+	FilesNew       int64
+	BytesAdded     int64
+}
+
+type SnapshotIndexResult struct {
+	Entries []IndexedSnapshot
 }
 
 // SnapshotEntry is one direct child of a snapshot path. Values come from a
