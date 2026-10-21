@@ -21,7 +21,7 @@
 - 按用户当前指示，先实现功能，暂不新增或改写测试用例。编译、测试、认证及运行验证 MUST 仅在 GitHub Actions 执行；复用已有质量门禁，新增行为的验收保持待验证，不因源码完成而标记通过。
 - 2026-10-19 已完成 M4 第二项剩余功能的源码接入：`gateway-rotate`、`gateway-recover`、Gateway 侧 `provision`/`finalize` 与 ADR-0036 / 09 §7.27；测试策略按用户选择在里程碑结束后统一补齐，当前仅新增元数据/策略边界测试。验收证据、剩余项与接手入口见 [轮换与恢复交接](docs/development/handoff-2026-10-19-rotation.md)。
 
-2026-10-21 实际状态：M5–M8 已有部分实现合入 `main`，但均未达到退出条件；本轮不宣称任何里程碑完成。审计确认两个 P0 阻塞：定时备份的操作 ID 在 Agent（UUIDv5）与服务端/Gateway（仅 UUIDv7）之间不一致；`SNAPSHOT_LIST` 完成路径复用 provision 锁，已初始化仓库的扫描结果无法落库。另有终态 upsert 无 guard、取消/拒绝与迟到结果竞态等 P1 问题。下一步先修复 P0 并补 Actions 验证，再回到 M4 运行验收或按依赖顺序推进 M9。详细证据见 [当前开发状态](docs/development/current-state.md)。
+2026-10-21 实际状态：M5–M8 已有部分实现合入 `main`，但均未达到退出条件；本轮不宣称任何里程碑完成。两个 P0 已由 #99 修复：定时备份的 UUIDv5 operation ID 已在 Server/Agent/Gateway 校验中对齐；`SNAPSHOT_LIST` 改用读锁并补上事务提交。终态 upsert 无 guard、取消/拒绝与迟到结果竞态等 P1 问题仍待处理。下一步补 P1 与 M4 外部验收，再按依赖顺序推进 M9。详细证据见 [当前开发状态](docs/development/current-state.md) 与 [M4 运行验收记录](docs/development/m4-acceptance-2026-10-21.md)。
 
 ## M0 — Repository Scaffold
 
@@ -151,7 +151,7 @@
 
 ## M4 — Storage Credential, Repository and Gateway
 
-**Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)；三项交付源码已合入（#51–#60、#67、#76），剩余为运行验收。2026-10-21 审计仍发现：旧 Agent 兼容路径会解密/下发 Gateway password（与 AGENTS 不变量冲突，需明确兼容决策或移除）；启动 metadata 的 `lifetime_seconds=0` 固定为 72h，未使用 `RESTFLEET_GATEWAY_OFFLINE_WINDOW`；`admission_lifetime_seconds` 未受离线窗口约束。真实三后端、生产 mTLS、轮换/恢复、续证/吊销与 READY 降级均未验收。
+**Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)；三项交付源码已合入（#51–#60、#67、#76），剩余为运行验收。2026-10-21 新增 READY 正向/吊销降级 CI 证据（#101）及定时/扫描 P0 修复（#99）；真实三后端、部署态轮换/恢复、DEP-005/006 仍被外部凭据与受信部署阻塞。审计仍发现：旧 Agent 兼容路径会解密/下发 Gateway password（与 AGENTS 不变量冲突，需明确兼容决策或移除）；启动 metadata 的 `lifetime_seconds=0` 固定为 72h，未使用 `RESTFLEET_GATEWAY_OFFLINE_WINDOW`；`admission_lifetime_seconds` 未受离线窗口约束。
 
 ### 当前交付与收敛要求
 
@@ -216,7 +216,7 @@
 
 ## M5 — Templates, Plans and Local Scheduler
 
-**Status: IN PROGRESS** — 模板与 Plan 的建表、不可变 revision、读取/创建/修订 API 已接入（Plan 绑定 Host/Agent/Repository，effective config 由中心合并并存档）；计划状态机（apply/pause/resume）、批量 `apply-to-plans`、模板归档与依赖列表已接入；Web 页面已接入；Agent 本地调度核心（cron/时区/stable jitter/misfire/FORBID、deterministic operation key）已落地为 `internal/agent/schedule`，`DesiredState` 与 Agent 控制协议已支持 `plans[]`（调度子集、参与 config_hash、空数组时哈希不变）；计划变更时会重写 Agent 快照并 bump desired revision（`AGENT_DESIRED_STATE_CHANGED` outbox）。2026-10-21 审计：定时链路被 M6 的操作 ID 校验阻断；`PENDING_APPLY` 会被下发执行；DRAFT 可经 pause→resume 绕过 apply；apply/pause/resume 总是新增 revision，`plans.accepted_revision` 从未写入；无 SCH-001–006 / AGT-003/004 / API-003 专项测试。Backup Health 仅有终态更新。
+**Status: IN PROGRESS** — 模板与 Plan 的建表、不可变 revision、读取/创建/修订 API 已接入（Plan 绑定 Host/Agent/Repository，effective config 由中心合并并存档）；计划状态机（apply/pause/resume）、批量 `apply-to-plans`、模板归档与依赖列表已接入；Web 页面已接入；Agent 本地调度核心（cron/时区/stable jitter/misfire/FORBID、deterministic operation key）已落地为 `internal/agent/schedule`，`DesiredState` 与 Agent 控制协议已支持 `plans[]`（调度子集、参与 config_hash、空数组时哈希不变）；计划变更时会重写 Agent 快照并 bump desired revision（`AGENT_DESIRED_STATE_CHANGED` outbox）。2026-10-21 审计：定时 operation ID P0 已由 #99 解除；`PENDING_APPLY` 会被下发执行；DRAFT 可经 pause→resume 绕过 apply；apply/pause/resume 总是新增 revision，`plans.accepted_revision` 从未写入；无 SCH-001–006 / AGT-003/004 / API-003 专项测试。Backup Health 仅有终态更新。
 
 ### Goal
 
@@ -254,7 +254,7 @@
 
 ## M6 — Backup Execution
 
-**Status: IN PROGRESS** — 手动备份源码链路已接通（dispatch → accept → Restic → progress → result → `JobResultAccepted`）；定时路径因 Agent 生成 UUIDv5、Server/Gateway 只接受 UUIDv7 而无法上报，属于 P0 阻断。终态结果 upsert 无 terminal guard，取消竞态可被迟到结果覆盖；拒绝的 QUEUED 作业可能反复重投；结果统计把累计 files_done/bytes_done 当作 files_new/data_added；无 M6 专项测试与真实 Restic 集成验收。
+**Status: IN PROGRESS** — 手动与定时上报链路已通（#99 对齐 UUIDv5 operation ID）；终态结果 upsert 无 terminal guard，取消竞态可被迟到结果覆盖；拒绝的 QUEUED 作业可能反复重投；结果统计把累计 files_done/bytes_done 当作 files_new/data_added；无 M6 专项测试与真实 Restic 集成验收。
 
 ### Goal
 
@@ -324,7 +324,7 @@
 
 ## M8 — Snapshot Index and Browser
 
-**Status: IN PROGRESS** — 快照索引/列表/浏览源码已合入；`SNAPSHOT_LIST` 完成路径复用 provision 锁，READY/已初始化仓库的扫描结果无法落库（P0）；无周期 `snapshots --json` 索引、UNMANAGED/two-pass missing、cursor/filter、大规模虚拟化；缓存键缺 tree_id 且无过期清理。
+**Status: IN PROGRESS** — 快照索引/列表/浏览源码已合入；`SNAPSHOT_LIST` 读锁与事务提交已由 #99 修复，READY 仓库可落库；无周期 `snapshots --json` 索引、UNMANAGED/two-pass missing、cursor/filter、大规模虚拟化；缓存键缺 tree_id 且无过期清理。
 
 ### Goal
 
