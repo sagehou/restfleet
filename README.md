@@ -11,7 +11,7 @@ RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面
 | M5 | 部分 | 模板、Plan、状态机、本地调度核心已接入；PENDING_APPLY、状态机绕过、accepted_revision、jitter/DST 已修复；SCH/AGT/API 专项测试待补 |
 | M6 | 部分 | 手动与定时上报、终态 guard、取消竞态、崩溃恢复、调度器持久化已修复；结果/日志背压与专项测试待补 |
 | M7 | 部分 | NEVER_RUN/PAUSED/OVERDUE、next-run/last-success、unhealthy 计数已接入；Attention Queue 与分项指标待补 |
-| M8 | 部分 | 索引/列表/浏览 UI、缓存边界/清理已接入；周期索引、UNMANAGED、cursor/continuation 待补 |
+| M8 | 部分 | 索引/列表/浏览 UI、周期 `snapshots --json` 索引、UNMANAGED 与 missing marker 已接入；cursor/continuation、cache tree_id 与虚拟化待补 |
 | M9–M12 | 未开工 | 下载、恢复、保留/维护、通知与发布 |
 
 开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
