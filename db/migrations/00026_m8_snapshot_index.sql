@@ -2,6 +2,7 @@
 -- Snapshots are keyed by repository and native snapshot id so out-of-band
 -- snapshots can be indexed as UNMANAGED without inventing a Plan.
 alter table snapshots
+  drop constraint snapshots_pkey,
   alter column plan_id drop not null,
   alter column agent_id drop not null,
   alter column operation_id drop not null,
@@ -12,7 +13,6 @@ alter table snapshots
   add column paths text[] not null default '{}',
   add column program_version text not null default '',
   add column missing_at timestamptz,
-  drop constraint snapshots_pkey,
   add constraint snapshots_pkey primary key (repository_id, snapshot_id),
   add constraint snapshots_tree_check check (tree_id = '' or tree_id ~ '^[0-9a-f]{64}$');
 create index snapshots_repository_time_idx on snapshots(repository_id, captured_at desc, snapshot_id);
@@ -44,7 +44,6 @@ drop index snapshots_repository_time_idx;
 alter table snapshots
   drop constraint snapshots_tree_check,
   drop constraint snapshots_pkey,
-  add constraint snapshots_pkey primary key (plan_id, snapshot_id),
   drop column missing_at,
   drop column program_version,
   drop column paths,
@@ -54,6 +53,7 @@ alter table snapshots
   alter column operation_id set not null,
   alter column agent_id set not null,
   alter column plan_id set not null,
+  add constraint snapshots_pkey primary key (plan_id, snapshot_id),
   add constraint snapshots_operation_id_fkey foreign key (operation_id) references backup_operations(id);
 alter table jobs drop constraint jobs_queue_check,
   drop constraint jobs_payload_check,
