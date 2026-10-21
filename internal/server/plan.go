@@ -177,7 +177,7 @@ func (c *ControlPlane) UpdatePlan(ctx context.Context, id uuid.UUID, expectedRev
 
 // PausePlan stops future scheduling without cancelling anything already running.
 func (c *ControlPlane) PausePlan(ctx context.Context, id uuid.UUID, expectedRevision int64, actor domain.User, meta RequestMeta) (domain.Plan, error) {
-	return c.planStatus(ctx, id, expectedRevision, "PAUSED", "PLAN_PAUSE", []string{"DRAFT", "PENDING_APPLY", "ACTIVE"}, actor, meta)
+	return c.planStatus(ctx, id, expectedRevision, "PAUSED", "PLAN_PAUSE", []string{"ACTIVE"}, actor, meta)
 }
 
 // ResumePlan re-activates a paused plan at its current desired revision.
@@ -224,12 +224,12 @@ func (c *ControlPlane) planStatus(ctx context.Context, id uuid.UUID, expectedRev
 	if err != nil {
 		return domain.Plan{}, err
 	}
-	changes, err := json.Marshal(map[string]int64{"revision": expectedRevision + 1})
+	changes, err := json.Marshal(map[string]string{"status": target})
 	if err != nil {
 		return domain.Plan{}, err
 	}
 	audit.Changes = changes
-	updated, err := c.store.SavePlanRevision(ctx, plan, expectedRevision, audit)
+	updated, err := c.store.UpdatePlanStatus(ctx, plan, expectedRevision, audit)
 	if err != nil {
 		return domain.Plan{}, err
 	}

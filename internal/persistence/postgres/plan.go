@@ -175,6 +175,42 @@ func (s *Store) SavePlanRevision(ctx context.Context, p domain.Plan, expectedRev
 	return p, nil
 }
 
+// UpdatePlanStatus changes only the plan lifecycle state. It does not append a
+// plan revision or change desired_revision; apply/pause/resume are not config
+// edits.
+func (s *Store) UpdatePlanStatus(ctx context.Context, p domain.Plan, expectedRevision int64, audit domain.AuditEvent) (domain.Plan, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var current int64
+	var archivedAt *time.Time
+	if err = tx.QueryRow(ctx, "select desired_revision,archived_at from plans where id=$1 for update", p.ID).Scan(&current, &archivedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Plan{}, domain.ErrNotFound
+		}
+		return domain.Plan{}, err
+	}
+	if archivedAt != nil {
+		return domain.Plan{}, domain.ErrNotFound
+	}
+	if current != expectedRevision {
+		return domain.Plan{}, domain.ErrRevisionConflict
+	}
+	if _, err = tx.Exec(ctx, "update plans set status=$2,updated_at=$3 where id=$1", p.ID, p.Status, p.UpdatedAt); err != nil {
+		return domain.Plan{}, persistenceError(err)
+	}
+	if err = appendAudit(ctx, tx, audit); err != nil {
+		return domain.Plan{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return domain.Plan{}, err
+	}
+	p.DesiredRevision = current
+	return p, nil
+}
+
 // PublishAgentDesiredState rewrites the Agent snapshot from its current plans
 // and queues one outbox event. It runs after a plan mutation commits; a repeat
 // simply produces the next revision, so retries are harmless.
@@ -211,7 +247,7 @@ func (s *Store) PublishAgentDesiredState(ctx context.Context, agentID uuid.UUID,
 	if err := json.Unmarshal(configJSON, &current); err != nil {
 		return err
 	}
-	rows, err := tx.Query(ctx, "select "+planColumns+" from plans where agent_id=$1 and archived_at is null and status in ('ACTIVE','PENDING_APPLY') order by id", agentID)
+	rows, err := tx.Query(ctx, "select "+planColumns+" from plans where agent_id=$1 and archived_at is null and status='ACTIVE' order by id", agentID)
 	if err != nil {
 		return err
 	}

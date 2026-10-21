@@ -156,7 +156,7 @@ export function Plans({ hosts, canManage, onUnauthorized }: Props) {
           {canManage && <button className="primary-button" disabled={busy} onClick={() => { setCreating(true); setSelected(null) }}>创建计划</button>}
         </div>
       </div>
-      <p className="warning-text" role="status">计划不会自动开始备份：先 apply 到 ACTIVE，等 Agent 调度接入后才真正执行。</p>
+      <p className="warning-text" role="status">计划不会自动开始备份：先 apply 到 ACTIVE，Agent 接受配置后按计划执行。</p>
       {message && <p className="error-message" role="alert">{message}</p>}
       {creating && (
         <form aria-label="创建计划" className="credential-form" onSubmit={submit}>
@@ -206,7 +206,7 @@ export function Plans({ hosts, canManage, onUnauthorized }: Props) {
               <button className="primary-button" disabled={busy} onClick={() => { void transition(selected, 'apply') }}>应用配置</button>}
             {canManage && selected.status === 'PAUSED' &&
               <button className="primary-button" disabled={busy} onClick={() => { void transition(selected, 'resume') }}>恢复调度</button>}
-            {canManage && (selected.status === 'ACTIVE' || selected.status === 'PENDING_APPLY' || selected.status === 'DRAFT') &&
+            {canManage && selected.status === 'ACTIVE' &&
               <button className="secondary-button" disabled={busy} onClick={() => { void transition(selected, 'pause') }}>暂停调度</button>}
             {canManage && selected.status === 'ACTIVE' &&
               <button className="secondary-button" disabled={busy} onClick={() => { void backupNow(selected) }}>立即备份</button>}
