@@ -243,7 +243,10 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 	if err = ensureCredentialLease(ctx, tx, id, owner); err != nil {
 		return err
 	}
-	return finishJobRow(ctx, tx, &job, to, now)
+	if err = finishJobRow(ctx, tx, &job, to, now); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // SnapshotsByID resolves every index entry for one native snapshot ID. The API
