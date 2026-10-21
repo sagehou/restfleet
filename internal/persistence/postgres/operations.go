@@ -275,6 +275,25 @@ func (s *Store) CloseUnstartedCancellations(ctx context.Context, cutoff, now tim
 	return tag.RowsAffected(), nil
 }
 
+// ReconcileLostOperations closes operations that were RUNNING under a previous
+// Agent boot and were not reported before the grace window expired. A
+// boot_changed_at timestamp is written when a new boot id connects, so a
+// reconnecting Agent still has time to replay its recovered LOST/CANCELED
+// result before the Server draws the same conclusion.
+func (s *Store) ReconcileLostOperations(ctx context.Context, bootCutoff, now time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `update backup_operations o
+		set status='LOST',error_code='LOCAL_OPERATION_RECOVERED',finished_at=$2,updated_at=$2
+		from agents a
+		where o.agent_id=a.id and o.status in ('RUNNING','CANCEL_REQUESTED')
+		  and o.finished_at is null
+		  and a.boot_changed_at is not null and a.boot_changed_at <= $1
+		  and coalesce(o.started_at,o.created_at) < a.boot_changed_at`, bootCutoff, now)
+	if err != nil {
+		return 0, persistenceError(err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (s *Store) PendingCancelOperations(ctx context.Context, agentID uuid.UUID) ([]domain.BackupOperation, error) {
 	rows, err := s.pool.Query(ctx, "select "+backupOperationColumns+` from backup_operations
 		where agent_id=$1 and status='CANCEL_REQUESTED' order by created_at`, agentID)
@@ -301,9 +320,13 @@ func (s *Store) RejectManualOperation(ctx context.Context, id uuid.UUID, now tim
 	return err
 }
 
-// MarkOperationDispatched records JobAccepted. A cancel that arrived first
-// leaves the row CANCEL_REQUESTED, which this transition deliberately ignores.
+// MarkOperationDispatched records JobAccepted. It keeps a canceled row in
+// CANCEL_REQUESTED but records started_at, proving the Agent received the job;
+// the unstarted-cancellation closure must not close a run that may be active.
 func (s *Store) MarkOperationDispatched(ctx context.Context, id uuid.UUID) error {
-	_, err := s.pool.Exec(ctx, "update backup_operations set status='RUNNING',started_at=coalesce(started_at,now()),updated_at=now() where id=$1 and status='QUEUED'", id)
+	_, err := s.pool.Exec(ctx, `update backup_operations
+		set status=case when status='QUEUED' then 'RUNNING' else status end,
+		    started_at=coalesce(started_at,now()),updated_at=now()
+		where id=$1 and status in ('QUEUED','CANCEL_REQUESTED') and finished_at is null`, id)
 	return err
 }

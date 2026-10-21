@@ -1557,7 +1557,7 @@ components:
         agent_id: { type: string, format: uuid }
         type: { type: string, enum: [BACKUP, RESTORE, SNAPSHOT_INDEX, DOWNLOAD, CHECK, FORGET, PRUNE, MAINTENANCE] }
         source: { type: string, enum: [SCHEDULED, MANUAL] }
-        status: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCEL_REQUESTED, CANCELED, MISSED, CONCURRENCY_SKIPPED] }
+        status: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, SUCCEEDED_WITH_WARNINGS, FAILED, CANCEL_REQUESTED, CANCELED, LOST, MISSED, CONCURRENCY_SKIPPED] }
         plan_revision: { type: integer, format: int64, minimum: 1 }
         scheduled_at: { type: string, format: date-time }
         started_at: { type: string, format: date-time }

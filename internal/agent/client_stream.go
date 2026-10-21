@@ -52,12 +52,17 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 		return false, err
 	}
 	bootID := readBootID()
+	pendingResultIDs, err := state.PendingResultIDs(maxPendingResultIDs)
+	if err != nil {
+		return false, err
+	}
 	var agentSequence uint64
 	if err := sendAgentMessage(stream, &agentSequence, "1.0", &agentv1.AgentToServer{
 		Payload: &agentv1.AgentToServer_Hello{Hello: &agentv1.Hello{
 			InstallId: installID.String(), BootId: bootID, AgentVersion: config.Version,
 			SupportedProtocolVersions: []string{"1.0", "0.9"},
 			AcceptedConfigRevision:    acceptedRevision,
+			PendingResultIds:          pendingResultIDs,
 			Capabilities: []string{
 				"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability, domain.RepositoryIdentityCapability,
 				domain.JobResultAckCapability, domain.JobCancelCapability,

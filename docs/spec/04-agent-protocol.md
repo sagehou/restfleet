@@ -384,8 +384,9 @@ Server 重启或网络断开：
 - 重连 Hello 带 accepted revision 和 pending result IDs；
 - Server reconciliation 比较 desired/accepted；
 - Server 对本地发起的 schedule operation 以 deterministic key upsert；
+- Server 在 `boot_id` 变化时记录 `boot_changed_at`；超过 grace（默认 2 分钟）仍是 `RUNNING`/`CANCEL_REQUESTED` 且开始时间早于该 boot 变化的 Operation 转 `LOST`，error code 为 `LOCAL_OPERATION_RECOVERED`。grace 给重启后的 Agent 先补报本地恢复结果的机会，Server 不因超时伪造成功；
 - 旧 boot_id 下 RUNNING 且新 Hello 不报告的 Operation 在 grace 后转 LOST；
-- Agent 启动时发现本地 RUNNING record，但进程不存在，回 `LocalOperationRecovered` 并标记 LOST/FAILED，不伪造成功。
+- Agent 启动时发现本地 RUNNING record，但进程不存在，MUST 以 `LOST` 终态结果（error code `LOCAL_OPERATION_RECOVERED`）补报，MUST NOT 伪造成功。
 
 ## 16. Cancel
 

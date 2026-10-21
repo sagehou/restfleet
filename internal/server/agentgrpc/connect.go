@@ -55,6 +55,12 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 	if selected == "" || len(hello.GetPendingResultIds()) > maxPendingResults {
 		return s.denied(stream.Context(), "PROTOCOL_INCOMPATIBLE", meta, codes.FailedPrecondition, "Agent protocol is incompatible")
 	}
+	for _, pending := range hello.GetPendingResultIds() {
+		id, parseErr := uuid.Parse(pending)
+		if parseErr != nil || !domain.ValidOperationID(id) {
+			return s.invalidMessage(stream, meta, "HELLO_INVALID")
+		}
+	}
 	if hello.GetAcceptedConfigRevision() < 0 ||
 		hello.GetAcceptedConfigRevision() > agent.DesiredRevision {
 		return s.invalidMessage(stream, meta, "ACCEPTED_REVISION_INVALID")

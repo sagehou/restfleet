@@ -423,10 +423,12 @@ stateDiagram-v2
     RUNNING --> CANCEL_REQUESTED
     CANCEL_REQUESTED --> CANCELED
     DISPATCHED --> LOST
+    RUNNING --> LOST
+    CANCEL_REQUESTED --> LOST
     RUNNING --> TIMED_OUT
 ```
 
-允许的额外路径：QUEUED→REJECTED、QUEUED→CANCELED、DISPATCHED→FAILED。任何终态不能回到非终态；Retry 创建新 Operation 并设置 parent，不重开旧记录。
+允许的额外路径：QUEUED→REJECTED、QUEUED→CANCELED、DISPATCHED→FAILED、CANCEL_REQUESTED→LOST。任何终态不能回到非终态；Retry 创建新 Operation 并设置 parent，不重开旧记录。
 
 ## 12. OperationLogChunk
 

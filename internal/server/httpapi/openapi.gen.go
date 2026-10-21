@@ -132,6 +132,7 @@ const (
 	BackupOperationStatusCANCELREQUESTED       BackupOperationStatus = "CANCEL_REQUESTED"
 	BackupOperationStatusCONCURRENCYSKIPPED    BackupOperationStatus = "CONCURRENCY_SKIPPED"
 	BackupOperationStatusFAILED                BackupOperationStatus = "FAILED"
+	BackupOperationStatusLOST                  BackupOperationStatus = "LOST"
 	BackupOperationStatusMISSED                BackupOperationStatus = "MISSED"
 	BackupOperationStatusQUEUED                BackupOperationStatus = "QUEUED"
 	BackupOperationStatusRUNNING               BackupOperationStatus = "RUNNING"
@@ -149,6 +150,8 @@ func (e BackupOperationStatus) Valid() bool {
 	case BackupOperationStatusCONCURRENCYSKIPPED:
 		return true
 	case BackupOperationStatusFAILED:
+		return true
+	case BackupOperationStatusLOST:
 		return true
 	case BackupOperationStatusMISSED:
 		return true

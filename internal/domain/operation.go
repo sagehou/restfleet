@@ -59,11 +59,11 @@ func ValidateOperationTransition(from, to string) error {
 			return nil
 		}
 	case "RUNNING":
-		if to == "SUCCEEDED" || to == "SUCCEEDED_WITH_WARNINGS" || to == "FAILED" || to == "CANCEL_REQUESTED" || to == "TIMED_OUT" {
+		if to == "SUCCEEDED" || to == "SUCCEEDED_WITH_WARNINGS" || to == "FAILED" || to == "CANCEL_REQUESTED" || to == "TIMED_OUT" || to == "LOST" {
 			return nil
 		}
 	case "CANCEL_REQUESTED":
-		if to == "CANCELED" {
+		if to == "CANCELED" || to == "LOST" {
 			return nil
 		}
 	}

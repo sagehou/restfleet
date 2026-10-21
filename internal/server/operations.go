@@ -18,6 +18,9 @@ const (
 	// started operation stays pending. It exceeds the JobCancel deadline so a
 	// connected Agent always has a chance to report the terminal result.
 	cancelClosureGrace = 2 * time.Minute
+	// lostReconciliationGrace covers the Agent restart window in which it can
+	// replay a recovered LOST result before the Server closes old-boot runs.
+	lostReconciliationGrace = 2 * time.Minute
 )
 
 // RecordOperationProgress ingests one throttled progress report. The Agent owns
@@ -41,7 +44,7 @@ func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.
 		return domain.ErrNotFound
 	}
 	switch result.Status {
-	case "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS", "FAILED", "CANCELED", "MISSED", "CONCURRENCY_SKIPPED":
+	case "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS", "FAILED", "CANCELED", "LOST", "MISSED", "CONCURRENCY_SKIPPED":
 	default:
 		return &ValidationError{Field: "status", Code: "INVALID_OPERATION_STATUS"}
 	}
@@ -203,11 +206,20 @@ func (c *ControlPlane) PendingCancellations(ctx context.Context, agentID uuid.UU
 }
 
 // ReconcileOperations closes cancellations that never reached a started
-// operation. It is safe to run concurrently with dispatch because both paths
-// take a row lock and only terminal transitions are written.
+// operation and runs whose Agent boot ended without a terminal report. It is
+// safe to run concurrently with dispatch and result ingestion: every path
+// takes a row lock and only terminal transitions are written.
 func (c *ControlPlane) ReconcileOperations(ctx context.Context) (int64, error) {
 	now := c.clock().UTC()
-	return c.store.CloseUnstartedCancellations(ctx, now.Add(-cancelClosureGrace), now)
+	closed, err := c.store.CloseUnstartedCancellations(ctx, now.Add(-cancelClosureGrace), now)
+	if err != nil {
+		return 0, err
+	}
+	lost, err := c.store.ReconcileLostOperations(ctx, now.Add(-lostReconciliationGrace), now)
+	if err != nil {
+		return 0, err
+	}
+	return closed + lost, nil
 }
 
 // RunOperationReconciler runs the closure loop until ctx ends. Persistence
