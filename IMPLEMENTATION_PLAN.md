@@ -21,7 +21,7 @@
 - 按用户当前指示，先实现功能，暂不新增或改写测试用例。编译、测试、认证及运行验证 MUST 仅在 GitHub Actions 执行；复用已有质量门禁，新增行为的验收保持待验证，不因源码完成而标记通过。
 - 2026-10-19 已完成 M4 第二项剩余功能的源码接入：`gateway-rotate`、`gateway-recover`、Gateway 侧 `provision`/`finalize` 与 ADR-0036 / 09 §7.27；测试策略按用户选择在里程碑结束后统一补齐，当前仅新增元数据/策略边界测试。验收证据、剩余项与接手入口见 [轮换与恢复交接](docs/development/handoff-2026-10-19-rotation.md)。
 
-2026-10-21 实际状态：M5–M8 已有部分实现合入 `main`，但均未达到退出条件；本轮不宣称任何里程碑完成。两个 P0 已由 #99 修复（定时 UUIDv5 operation ID、`SNAPSHOT_LIST` 读锁/事务提交）；#103 修复 M6 终态 guard/拒绝重投/summary 统计，#104 修复 M5 PENDING_APPLY/状态机/revision/accepted_revision，#105 修复路径、schema version 与 Operation 分页，#107 关闭取消与 dispatch 竞态，#108 补 `pending_result_ids`、Agent 崩溃恢复与 Server 旧 boot LOST 对账，#110 修复调度器 jitter/DST/持久化错误，#111 接入 Plan 健康/next_run，#112 加缓存边界与过期清理，#114 接入周期 `restic snapshots --json` 索引、UNMANAGED/missing marker。剩余：结果/日志背压与 `JobLogChunk`、M8 cursor/tree_id/虚拟化、M7 Attention Queue、M9–M12。下一步继续 M8/M6，再按依赖顺序推进 M9。详细证据见 [当前开发状态](docs/development/current-state.md) 与 [M4 运行验收记录](docs/development/m4-acceptance-2026-10-21.md)。
+2026-10-21 实际状态：M5–M8 已有部分实现合入 `main`，但均未达到退出条件；本轮不宣称任何里程碑完成。两个 P0 已由 #99 修复（定时 UUIDv5 operation ID、`SNAPSHOT_LIST` 读锁/事务提交）；#103 修复 M6 终态 guard/拒绝重投/summary 统计，#104 修复 M5 PENDING_APPLY/状态机/revision/accepted_revision，#105 修复路径、schema version 与 Operation 分页，#107 关闭取消与 dispatch 竞态，#108 补 `pending_result_ids`、Agent 崩溃恢复与 Server 旧 boot LOST 对账，#110 修复调度器 jitter/DST/持久化错误，#111 接入 Plan 健康/next_run，#112 加缓存边界与过期清理，#114 接入周期 `restic snapshots --json` 索引、UNMANAGED/missing marker，#116 补 cursor/continuation。剩余：结果/日志背压与 `JobLogChunk`、M8 tree_id/虚拟化、M7 Attention Queue、M9–M12。下一步继续 M8/M6，再按依赖顺序推进 M9。详细证据见 [当前开发状态](docs/development/current-state.md) 与 [M4 运行验收记录](docs/development/m4-acceptance-2026-10-21.md)。
 
 ## M0 — Repository Scaffold
 
@@ -324,7 +324,7 @@
 
 ## M8 — Snapshot Index and Browser
 
-**Status: IN PROGRESS** — 快照索引/列表/浏览源码已合入；`SNAPSHOT_LIST` 读锁与事务提交已由 #99 修复，READY 仓库可落库；#112 增加条目名/路径边界并周期清理过期缓存；#114 接入系统 `SNAPSHOT_INDEX` job、`restic snapshots --json`、managed tag 映射、UNMANAGED snapshot、`missing_at` 与 15 分钟周期索引。剩余：cursor/filter、截断 continuation、大规模虚拟化，以及 cache tree_id 校验。
+**Status: IN PROGRESS** — 快照索引/列表/浏览源码已合入；`SNAPSHOT_LIST` 读锁与事务提交已由 #99 修复，READY 仓库可落库；#112 增加条目名/路径边界并周期清理过期缓存；#114 接入系统 `SNAPSHOT_INDEX` job、`restic snapshots --json`、managed tag 映射、UNMANAGED snapshot、`missing_at` 与 15 分钟周期索引；#116 接入 cursor/continuation 与前端“加载更多”。剩余：filter、大规模虚拟化，以及 cache tree_id 校验。
 
 ### Goal
 
