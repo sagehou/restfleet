@@ -47,6 +47,10 @@ func TestPlanStatusTransitionsDoNotCreateRevisions(t *testing.T) {
 		planID, planID.String(), repository.HostId, enrolled.AgentId, repository.Id, templateID, string(raw), hash, now); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `insert into plan_revisions(plan_id,revision,effective_config_json,config_hash,created_by,created_at)
+		values($1,1,$2::jsonb,$3,$4,$5)`, planID, string(raw), hash, userID, now); err != nil {
+		t.Fatal(err)
+	}
 
 	var agentRevision int64
 	if err := pool.QueryRow(ctx, "select desired_revision from agents where id=$1", enrolled.AgentId).Scan(&agentRevision); err != nil {
