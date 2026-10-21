@@ -18,6 +18,9 @@ const endpoint = '/api/v1/plans'
 const statusLabels: Record<Plan['status'], string> = {
   DRAFT: '草稿', PENDING_APPLY: '待应用', ACTIVE: '已启用', PAUSED: '已暂停', INVALID: '配置无效', ARCHIVED: '已归档',
 }
+const healthLabels: Record<Plan['backup_health'], string> = {
+  UNKNOWN: '未知', HEALTHY: '健康', OVERDUE: '已逾期', FAILED: '失败', NEVER_RUN: '从未运行', PAUSED: '已暂停',
+}
 
 export function Plans({ hosts, canManage, onUnauthorized }: Props) {
   const [items, setItems] = useState<Plan[]>([])
@@ -198,7 +201,7 @@ export function Plans({ hosts, canManage, onUnauthorized }: Props) {
             <div><dt>desired / accepted</dt><dd>{selected.desired_revision} / {selected.accepted_revision}</dd></div>
             <div><dt>调度</dt><dd>{describeCron(selected.effective_config.schedule_cron)}（{selected.effective_config.schedule_timezone}）</dd></div>
             <div><dt>路径</dt><dd>{selected.effective_config.paths.join('、')}</dd></div>
-            <div><dt>备份健康</dt><dd>{selected.backup_health}</dd></div>
+            <div><dt>备份健康</dt><dd>{healthLabels[selected.backup_health]}</dd></div>
           </dl>
           <p className="muted">effective config 是存档快照；模板后续变更不会自动影响此计划。</p>
           <div className="actions">

@@ -428,10 +428,12 @@ func (e OperationType) Valid() bool {
 
 // Defines values for PlanBackupHealth.
 const (
-	PlanBackupHealthFAILED  PlanBackupHealth = "FAILED"
-	PlanBackupHealthHEALTHY PlanBackupHealth = "HEALTHY"
-	PlanBackupHealthOVERDUE PlanBackupHealth = "OVERDUE"
-	PlanBackupHealthUNKNOWN PlanBackupHealth = "UNKNOWN"
+	PlanBackupHealthFAILED   PlanBackupHealth = "FAILED"
+	PlanBackupHealthHEALTHY  PlanBackupHealth = "HEALTHY"
+	PlanBackupHealthNEVERRUN PlanBackupHealth = "NEVER_RUN"
+	PlanBackupHealthOVERDUE  PlanBackupHealth = "OVERDUE"
+	PlanBackupHealthPAUSED   PlanBackupHealth = "PAUSED"
+	PlanBackupHealthUNKNOWN  PlanBackupHealth = "UNKNOWN"
 )
 
 // Valid indicates whether the value is a known member of the PlanBackupHealth enum.
@@ -441,7 +443,11 @@ func (e PlanBackupHealth) Valid() bool {
 		return true
 	case PlanBackupHealthHEALTHY:
 		return true
+	case PlanBackupHealthNEVERRUN:
+		return true
 	case PlanBackupHealthOVERDUE:
+		return true
+	case PlanBackupHealthPAUSED:
 		return true
 	case PlanBackupHealthUNKNOWN:
 		return true

@@ -26,11 +26,27 @@ func heartbeatSnapshot(
 		{Name: "system_clock", Healthy: clockOffset <= maxClockOffset && clockOffset >= -maxClockOffset, ErrorCode: errorCode(clockOffset <= maxClockOffset && clockOffset >= -maxClockOffset, "CLOCK_SKEW")},
 		{Name: "uptime", Healthy: uptimeOK, ErrorCode: errorCode(uptimeOK, "UPTIME_UNAVAILABLE")},
 	}
+	nextRuns := make([]*agentv1.NextRun, 0)
+	if runtimes, err := state.NextRuns(200); err == nil {
+		for _, runtime := range runtimes {
+			nextRuns = append(nextRuns, &agentv1.NextRun{
+				PlanId: runtime.PlanID.String(), ScheduledAt: timestamppb.New(runtime.NextRunAt),
+			})
+		}
+	}
+	active := make([]*agentv1.ActiveOperation, 0)
+	if running, err := state.RunningOperations(); err == nil {
+		for _, operation := range running {
+			active = append(active, &agentv1.ActiveOperation{
+				OperationId: operation.ID.String(), Status: operation.Status,
+			})
+		}
+	}
 	return &agentv1.Heartbeat{
 		BootId: bootID, UptimeSeconds: uptime,
 		AcceptedRevision: acceptedRevision, StateFreeBytes: freeBytes,
 		ClockOffsetMs: clockOffset.Milliseconds(), HealthChecks: checks,
-		LocalTime: timestamppb.Now(),
+		LocalTime: timestamppb.Now(), NextRuns: nextRuns, ActiveOperations: active,
 	}
 }
 

@@ -198,7 +198,18 @@ func (s *Store) UpdatePlanStatus(ctx context.Context, p domain.Plan, expectedRev
 	if current != expectedRevision {
 		return domain.Plan{}, domain.ErrRevisionConflict
 	}
-	if _, err = tx.Exec(ctx, "update plans set status=$2,updated_at=$3 where id=$1", p.ID, p.Status, p.UpdatedAt); err != nil {
+	if _, err = tx.Exec(ctx, `update plans set status=$2,updated_at=$3,
+		backup_health=case
+			when $2='PAUSED' then 'PAUSED'
+			when $2='ACTIVE' then case
+				when last_success_at is null then 'NEVER_RUN'
+				when last_operation_id is not null and exists(
+					select 1 from backup_operations where id=last_operation_id and status in ('FAILED','LOST')
+				) then 'FAILED'
+				else 'HEALTHY' end
+			else backup_health end,
+		next_run_at=case when $2='PAUSED' then null else next_run_at end
+		where id=$1`, p.ID, p.Status, p.UpdatedAt); err != nil {
 		return domain.Plan{}, persistenceError(err)
 	}
 	if err = appendAudit(ctx, tx, audit); err != nil {
@@ -209,6 +220,23 @@ func (s *Store) UpdatePlanStatus(ctx context.Context, p domain.Plan, expectedRev
 	}
 	p.DesiredRevision = current
 	return p, nil
+}
+
+// ReconcilePlanHealth marks an ACTIVE plan OVERDUE when its advertised next run
+// plus misfire grace has passed without a newer successful snapshot. A plan that
+// has never produced an operation stays NEVER_RUN until its first attempt.
+func (s *Store) ReconcilePlanHealth(ctx context.Context, now time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `update plans set backup_health='OVERDUE',updated_at=$1
+		where status='ACTIVE' and archived_at is null and next_run_at is not null
+		  and last_operation_id is not null
+		  and (last_success_at is null or last_success_at < next_run_at)
+		  and next_run_at + make_interval(secs => greatest(0,least(86400,
+		    coalesce((effective_config->>'misfire_grace_seconds')::int,0)))) < $1
+		  and backup_health<>'PAUSED'`, now)
+	if err != nil {
+		return 0, persistenceError(err)
+	}
+	return tag.RowsAffected(), nil
 }
 
 // PublishAgentDesiredState rewrites the Agent snapshot from its current plans

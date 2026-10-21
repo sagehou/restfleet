@@ -1480,7 +1480,7 @@ components:
         status: { type: string, enum: [DRAFT, PENDING_APPLY, ACTIVE, PAUSED, INVALID, ARCHIVED] }
         desired_revision: { type: integer, format: int64, minimum: 1 }
         accepted_revision: { type: integer, format: int64, minimum: 0, description: Last revision acknowledged by the Agent. }
-        backup_health: { type: string, enum: [UNKNOWN, HEALTHY, OVERDUE, FAILED] }
+        backup_health: { type: string, enum: [UNKNOWN, HEALTHY, OVERDUE, FAILED, NEVER_RUN, PAUSED] }
         overrides: { type: object, additionalProperties: true, description: Allowed JSON merge-patch subset stored with the plan. }
         effective_config: { $ref: "#/components/schemas/TemplateConfig" }
         created_at: { type: string, format: date-time }

@@ -346,8 +346,25 @@ func heartbeatFromProto(
 	if message.GetUptimeSeconds() > uint64(^uint64(0)>>1) ||
 		message.GetStateFreeBytes() > uint64(^uint64(0)>>1) ||
 		message.GetLocalTime() == nil || message.GetLocalTime().CheckValid() != nil ||
-		len(message.GetActiveOperations()) > 0 || len(message.GetNextRuns()) > 0 {
+		len(message.GetActiveOperations()) > 200 || len(message.GetNextRuns()) > 200 {
 		return domain.AgentHeartbeat{}, errors.New("invalid heartbeat")
+	}
+	active := make([]domain.AgentActiveOperation, 0, len(message.GetActiveOperations()))
+	for _, operation := range message.GetActiveOperations() {
+		id, err := uuid.Parse(operation.GetOperationId())
+		if err != nil || !domain.ValidOperationID(id) || operation.GetStatus() == "" || len(operation.GetStatus()) > 32 {
+			return domain.AgentHeartbeat{}, errors.New("invalid heartbeat")
+		}
+		active = append(active, domain.AgentActiveOperation{OperationID: id, Status: operation.GetStatus()})
+	}
+	nextRuns := make([]domain.AgentNextRun, 0, len(message.GetNextRuns()))
+	for _, run := range message.GetNextRuns() {
+		id, err := uuid.Parse(run.GetPlanId())
+		if err != nil || id.Version() != 7 || id.Variant() != uuid.RFC4122 ||
+			run.GetScheduledAt() == nil || run.GetScheduledAt().CheckValid() != nil {
+			return domain.AgentHeartbeat{}, errors.New("invalid heartbeat")
+		}
+		nextRuns = append(nextRuns, domain.AgentNextRun{PlanID: id, ScheduledAt: run.GetScheduledAt().AsTime().UTC()})
 	}
 	checks := make([]domain.AgentHealthCheck, 0, len(message.GetHealthChecks()))
 	for _, check := range message.GetHealthChecks() {
@@ -365,7 +382,7 @@ func heartbeatFromProto(
 		ResticVersion:    message.GetResticVersion(),
 		StateFreeBytes:   int64(message.GetStateFreeBytes()),
 		ClockOffsetMS:    message.GetClockOffsetMs(), LocalTime: message.GetLocalTime().AsTime(),
-		HealthChecks: checks,
+		HealthChecks: checks, ActiveOperations: active, NextRuns: nextRuns,
 	}, nil
 }
 

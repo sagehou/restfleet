@@ -83,7 +83,12 @@ func (s *Store) RecordAgentHeartbeat(
 	ctx context.Context,
 	heartbeat domain.AgentHeartbeat,
 ) (domain.Agent, error) {
-	tag, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Agent{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `
 		update agents
 		set boot_id = $2, uptime_seconds = $3, restic_version = $4,
 		    accepted_revision = greatest(accepted_revision, $5),
@@ -100,6 +105,16 @@ func (s *Store) RecordAgentHeartbeat(
 	}
 	if tag.RowsAffected() != 1 {
 		return domain.Agent{}, domain.ErrAgentRevoked
+	}
+	for _, run := range heartbeat.NextRuns {
+		if _, err := tx.Exec(ctx, `update plans set next_run_at=$3,updated_at=$4
+			where id=$1 and agent_id=$2 and archived_at is null`,
+			run.PlanID, heartbeat.AgentID, run.ScheduledAt, heartbeat.ReceivedAt); err != nil {
+			return domain.Agent{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Agent{}, err
 	}
 	return s.Agent(ctx, heartbeat.AgentID)
 }
