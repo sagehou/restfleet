@@ -312,8 +312,8 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 func lockCredentialJob(ctx context.Context, tx pgx.Tx, id, owner uuid.UUID) (domain.CredentialJob, error) {
 	job := domain.CredentialJob{ID: id, Owner: owner}
 	var operationID uuid.UUID
-	err := tx.QueryRow(ctx, `select operation_id,lease_expires_at from jobs where id=$1 and
-		status='LEASED' and lease_owner=$2 and lease_expires_at>clock_timestamp() for update`, id, owner).Scan(&operationID, &job.LeaseExpiresAt)
+	err := tx.QueryRow(ctx, `select operation_id,lease_expires_at,payload from jobs where id=$1 and
+		status='LEASED' and lease_owner=$2 and lease_expires_at>clock_timestamp() for update`, id, owner).Scan(&operationID, &job.LeaseExpiresAt, &job.Payload)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return job, domain.ErrJobLeaseLost
 	}

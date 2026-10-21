@@ -2870,6 +2870,7 @@ export interface operations {
             query?: {
                 path?: string;
                 repository_id?: string;
+                cursor?: string;
             };
             header?: never;
             path: {

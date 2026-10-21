@@ -101,12 +101,12 @@ type Store interface {
 	RejectManualOperation(context.Context, uuid.UUID, time.Time) error
 	Snapshots(context.Context, int) ([]domain.Snapshot, error)
 	SnapshotsByID(context.Context, string) ([]domain.Snapshot, error)
-	EnqueueSnapshotList(context.Context, domain.Operation, string, string) (domain.Operation, error)
+	EnqueueSnapshotList(context.Context, domain.Operation, string, string, string) (domain.Operation, error)
 	EnqueueSnapshotIndex(context.Context, domain.Operation) (domain.Operation, error)
 	ReadyRepositoryIDs(context.Context, int) ([]uuid.UUID, error)
 	FinishSnapshotIndexJob(context.Context, uuid.UUID, uuid.UUID, string, domain.SnapshotIndexResult) error
 	ActiveSnapshotListOperation(context.Context, uuid.UUID) (domain.Operation, bool, error)
-	SnapshotListResult(context.Context, uuid.UUID, string, string, time.Time) (domain.SnapshotListResult, bool, error)
+	SnapshotListResult(context.Context, uuid.UUID, string, string, string, time.Time) (domain.SnapshotListResult, bool, error)
 	FinishSnapshotListJob(context.Context, uuid.UUID, uuid.UUID, string, domain.SnapshotListResult) error
 	SaveTemplateRevision(context.Context, domain.Template, int64, domain.AuditEvent) (domain.Template, error)
 	Repository(context.Context, uuid.UUID) (domain.Repository, error)

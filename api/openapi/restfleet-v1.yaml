@@ -1050,6 +1050,9 @@ paths:
         - name: repository_id
           in: query
           schema: { type: string, format: uuid }
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 4096 }
       responses:
         "200":
           description: Fresh bounded directory page.

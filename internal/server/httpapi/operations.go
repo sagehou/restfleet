@@ -140,7 +140,7 @@ func (a *API) ListSnapshotEntries(w http.ResponseWriter, r *http.Request, snapsh
 	if !ok {
 		return
 	}
-	if r.URL.RawQuery != "" && params.Path == nil && params.RepositoryId == nil {
+	if r.URL.RawQuery != "" && params.Path == nil && params.RepositoryId == nil && params.Cursor == nil {
 		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
 		return
 	}
@@ -148,7 +148,11 @@ func (a *API) ListSnapshotEntries(w http.ResponseWriter, r *http.Request, snapsh
 	if params.Path != nil {
 		path = *params.Path
 	}
-	result, pending, err := a.control.SnapshotEntries(r.Context(), snapshotID, params.RepositoryId, path, authenticated.User.ID)
+	cursor := ""
+	if params.Cursor != nil {
+		cursor = *params.Cursor
+	}
+	result, pending, err := a.control.SnapshotEntries(r.Context(), snapshotID, params.RepositoryId, path, cursor, authenticated.User.ID)
 	if err != nil {
 		a.fleetProblem(w, r, err)
 		return
@@ -164,6 +168,10 @@ func (a *API) ListSnapshotEntries(w http.ResponseWriter, r *http.Request, snapsh
 		SnapshotId: result.SnapshotID, RepositoryId: result.RepositoryID, Path: result.Path,
 		Items: make([]SnapshotEntry, 0, len(result.Entries)), Source: Cache,
 		CollectedAt: result.CollectedAt, Truncated: result.Truncated,
+	}
+	if result.NextCursor != "" {
+		next := result.NextCursor
+		response.NextCursor = &next
 	}
 	for _, entry := range result.Entries {
 		response.Items = append(response.Items, SnapshotEntry{

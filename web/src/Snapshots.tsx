@@ -35,8 +35,10 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
   onUnauthorized: () => void
 }) {
   const [path, setPath] = useState('/')
+  const [cursor, setCursor] = useState('')
   const [entries, setEntries] = useState<SnapshotEntries | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -48,9 +50,11 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
   const goTo = (next: string) => {
     if (next === path) return
     setLoading(true)
+    setLoadingMore(false)
     setWaiting(false)
     setMessage('')
     setEntries(null)
+    setCursor('')
     setPath(next)
   }
 
@@ -58,7 +62,7 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
     let active = true
     let timer: number | undefined
     const controller = new AbortController()
-    const endpoint = `/api/v1/snapshots/${encodeURIComponent(snapshot.snapshot_id)}/entries?path=${encodeURIComponent(path)}&repository_id=${encodeURIComponent(snapshot.repository_id)}`
+    const endpoint = `/api/v1/snapshots/${encodeURIComponent(snapshot.snapshot_id)}/entries?path=${encodeURIComponent(path)}&repository_id=${encodeURIComponent(snapshot.repository_id)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
     async function pollOperation(operationID: string, remaining: number) {
       try {
         const operation = await requestJSON<Operation>(`/api/v1/operations/${encodeURIComponent(operationID)}`, { signal: controller.signal })
@@ -91,6 +95,7 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
         if (!active) return
         if (response.status === 202) {
           setLoading(false)
+          setLoadingMore(false)
           setWaiting(true)
           const pending = response.body as SnapshotScanPending
           if (remaining <= 0) {
@@ -102,10 +107,17 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
         }
         setWaiting(false)
         setLoading(false)
-        setEntries(response.body as SnapshotEntries)
+        setLoadingMore(false)
+        const page = response.body as SnapshotEntries
+        if (cursor) {
+          setEntries((previous) => previous ? { ...page, items: [...previous.items, ...page.items] } : page)
+        } else {
+          setEntries(page)
+        }
       } catch (error) {
         if (active && !controller.signal.aborted) {
           setLoading(false)
+          setLoadingMore(false)
           setWaiting(false)
           handleError(error)
         }
@@ -117,7 +129,7 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
       controller.abort()
       if (timer !== undefined) window.clearTimeout(timer)
     }
-  }, [snapshot.snapshot_id, snapshot.repository_id, path, handleError])
+  }, [snapshot.snapshot_id, snapshot.repository_id, path, cursor, handleError])
 
   const navigate = (entry: SnapshotEntry) => {
     if (entry.type === 'dir') goTo(entry.path)
@@ -143,7 +155,9 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
       {message && <p className="error-message" role="alert">{message}</p>}
       {(loading || waiting) && <p aria-live="polite">{waiting ? '正在读取快照目录，稍后自动刷新…' : '正在加载目录…'}</p>}
       {entries && <>
-        {entries.truncated && <p className="muted">目录条目过多，本次仅显示前 {entries.items.length} 项。</p>}
+        {entries.truncated && <p className="muted">{entries.next_cursor
+          ? `已加载 ${entries.items.length} 项目录条目，可继续加载。`
+          : `目录条目过多，本次仅显示前 ${entries.items.length} 项。`}</p>}
         {!entries.items.length && <p className="muted">这个目录是空的。</p>}
         {entries.items.length > 0 && <div className="table-wrap"><table>
           <thead><tr><th>名称</th><th>类型</th><th>大小</th><th>修改时间</th></tr></thead>
@@ -156,6 +170,10 @@ function SnapshotBrowser({ snapshot, onClose, onUnauthorized }: {
             <td>{new Date(entry.mtime).toLocaleString()}</td>
           </tr>)}</tbody>
         </table></div>}
+        {entries.next_cursor && <div className="actions">
+          <button className="secondary-button" disabled={loadingMore}
+            onClick={() => { setLoadingMore(true); setCursor(entries.next_cursor ?? '') }}>{loadingMore ? '加载中…' : '加载更多'}</button>
+        </div>}
         <p className="muted">缓存于 {new Date(entries.collected_at).toLocaleString()}。</p>
       </>}
     </article>
