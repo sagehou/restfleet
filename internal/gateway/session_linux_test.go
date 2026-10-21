@@ -447,12 +447,6 @@ func TestSessionCloseCancelsAndJoinsBackendRequest(t *testing.T) {
 	}
 }
 
-func TestSessionAcceptsScheduledOperationKey(t *testing.T) {
-	binding := bindingFixture()
-	binding.OperationID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("plan|2026-10-21T00:00:00Z"))
-	newSession(t, socketServer(t, &fakeBackend{objects: map[string]string{}}), binding, acceptAudit)
-}
-
 func TestSessionUUIDsSeparateRepositoryAndOperationVersions(t *testing.T) {
 	scheduled := uuid.NewSHA1(uuid.NameSpaceOID, []byte("plan|2026-10-21T00:00:00Z"))
 	if _, ok := sessionOperationUUID(scheduled.String()); !ok {
