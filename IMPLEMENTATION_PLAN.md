@@ -9,6 +9,7 @@
 - 不满足前置条件时不得通过临时代码绕过安全不变量；
 - 跨里程碑验收 MUST 归属于其实现依赖已具备的阶段；调度组件测试不等于真实备份成功，移动验收归属 MUST 保留原 Acceptance ID、要求及 V1 发布门禁；
 - 当前计划记录能力、剩余交付与退出条件；历史批次记录 MUST 与当前状态分开。
+- 每个 Milestone 使用一个追踪 issue，列出本节 Acceptance IDs；任务、修复和评审以 PR 为单位，不为每个任务单独建 issue。新 Milestone 开工时创建/更新对应 issue。
 
 ## 当前执行顺序（2026-10-19）
 
@@ -19,6 +20,8 @@
 - 新发现的问题 MUST 说明影响、最小修复与所属交付；不得静默扩大范围。安全不变量及已有验收要求 MUST 保留，协议、信任边界、持久化或 API 变更按仓库规则同批更新规范与 ADR。
 - 按用户当前指示，先实现功能，暂不新增或改写测试用例。编译、测试、认证及运行验证 MUST 仅在 GitHub Actions 执行；复用已有质量门禁，新增行为的验收保持待验证，不因源码完成而标记通过。
 - 2026-10-19 已完成 M4 第二项剩余功能的源码接入：`gateway-rotate`、`gateway-recover`、Gateway 侧 `provision`/`finalize` 与 ADR-0036 / 09 §7.27；测试策略按用户选择在里程碑结束后统一补齐，当前仅新增元数据/策略边界测试。验收证据、剩余项与接手入口见 [轮换与恢复交接](docs/development/handoff-2026-10-19-rotation.md)。
+
+2026-10-21 实际状态：M5–M8 已有部分实现合入 `main`，但均未达到退出条件；本轮不宣称任何里程碑完成。审计确认两个 P0 阻塞：定时备份的操作 ID 在 Agent（UUIDv5）与服务端/Gateway（仅 UUIDv7）之间不一致；`SNAPSHOT_LIST` 完成路径复用 provision 锁，已初始化仓库的扫描结果无法落库。另有终态 upsert 无 guard、取消/拒绝与迟到结果竞态等 P1 问题。下一步先修复 P0 并补 Actions 验证，再回到 M4 运行验收或按依赖顺序推进 M9。详细证据见 [当前开发状态](docs/development/current-state.md)。
 
 ## M0 — Repository Scaffold
 
@@ -148,7 +151,7 @@
 
 ## M4 — Storage Credential, Repository and Gateway
 
-**Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)
+**Status: IN PROGRESS** — [#15](https://github.com/sagehou/restfleet/issues/15)；三项交付源码已合入（#51–#60、#67、#76），剩余为运行验收。2026-10-21 审计仍发现：旧 Agent 兼容路径会解密/下发 Gateway password（与 AGENTS 不变量冲突，需明确兼容决策或移除）；启动 metadata 的 `lifetime_seconds=0` 固定为 72h，未使用 `RESTFLEET_GATEWAY_OFFLINE_WINDOW`；`admission_lifetime_seconds` 未受离线窗口约束。真实三后端、生产 mTLS、轮换/恢复、续证/吊销与 READY 降级均未验收。
 
 ### 当前交付与收敛要求
 
@@ -213,7 +216,7 @@
 
 ## M5 — Templates, Plans and Local Scheduler
 
-**Status: IN PROGRESS** — 模板与 Plan 的建表、不可变 revision、读取/创建/修订 API 已接入（Plan 绑定 Host/Agent/Repository，effective config 由中心合并并存档）；计划状态机（apply/pause/resume）、批量 `apply-to-plans`、模板归档与依赖列表已接入；Web 页面已接入；Agent 本地调度核心（cron/时区/stable jitter/misfire/FORBID、deterministic operation key）已落地为 `internal/agent/schedule`，`DesiredState` 与 Agent 控制协议已支持 `plans[]`（调度子集、参与 config_hash、空数组时哈希不变）；计划变更时会重写 Agent 快照并 bump desired revision（`AGENT_DESIRED_STATE_CHANGED` outbox）；Agent 调度循环属于 M6 执行链；Backup Health 计算待完成。
+**Status: IN PROGRESS** — 模板与 Plan 的建表、不可变 revision、读取/创建/修订 API 已接入（Plan 绑定 Host/Agent/Repository，effective config 由中心合并并存档）；计划状态机（apply/pause/resume）、批量 `apply-to-plans`、模板归档与依赖列表已接入；Web 页面已接入；Agent 本地调度核心（cron/时区/stable jitter/misfire/FORBID、deterministic operation key）已落地为 `internal/agent/schedule`，`DesiredState` 与 Agent 控制协议已支持 `plans[]`（调度子集、参与 config_hash、空数组时哈希不变）；计划变更时会重写 Agent 快照并 bump desired revision（`AGENT_DESIRED_STATE_CHANGED` outbox）。2026-10-21 审计：定时链路被 M6 的操作 ID 校验阻断；`PENDING_APPLY` 会被下发执行；DRAFT 可经 pause→resume 绕过 apply；apply/pause/resume 总是新增 revision，`plans.accepted_revision` 从未写入；无 SCH-001–006 / AGT-003/004 / API-003 专项测试。Backup Health 仅有终态更新。
 
 ### Goal
 
@@ -251,7 +254,7 @@
 
 ## M6 — Backup Execution
 
-**Status: IN PROGRESS** — Restic argv、JSONL 解析、进程组控制已接入；Agent 本地调度循环、Operation 持久化（bbolt）与 Gateway 会话内执行已接线；中心 `backup_operations` 表、进度/结果接收与 Operations 页面已接入；手动「立即备份」经心跳下发 `JobDispatch` 并由 Agent 执行；取消经 `JobCancel` 幂等下发、重试创建关联新 Operation、终态先补报并等待 `JobResultAccepted` 后才标记上传已接入；Actions 验收待完成。
+**Status: IN PROGRESS** — 手动备份源码链路已接通（dispatch → accept → Restic → progress → result → `JobResultAccepted`）；定时路径因 Agent 生成 UUIDv5、Server/Gateway 只接受 UUIDv7 而无法上报，属于 P0 阻断。终态结果 upsert 无 terminal guard，取消竞态可被迟到结果覆盖；拒绝的 QUEUED 作业可能反复重投；结果统计把累计 files_done/bytes_done 当作 files_new/data_added；无 M6 专项测试与真实 Restic 集成验收。
 
 ### Goal
 
@@ -291,7 +294,7 @@
 
 ## M7 — Dashboard and Health
 
-**Status: IN PROGRESS** — 计划健康随终态结果更新，仪表盘新增 Plans/Operations/运行中/24h 失败/不健康计划计数。
+**Status: IN PROGRESS** — 计划健康随终态结果更新，仪表盘新增 Plans/Operations/运行中/24h 失败/不健康计划计数；但仅 FAILED 计入不健康，OVERDUE/NEVER_RUN/PAUSED、`next_run_at`/`last_success_at` 计算、Attention Queue、缓存与健康转换事件均未实现。
 
 ### Goal
 
@@ -321,7 +324,7 @@
 
 ## M8 — Snapshot Index and Browser
 
-**Status: IN PROGRESS** — 快照索引与列表已合入（#91）；`restic ls --json` 有界扫描、`SNAPSHOT_LIST` 后台任务、目录 API 与浏览页面已接入；大规模虚拟化与 Actions 验收待完成。
+**Status: IN PROGRESS** — 快照索引/列表/浏览源码已合入；`SNAPSHOT_LIST` 完成路径复用 provision 锁，READY/已初始化仓库的扫描结果无法落库（P0）；无周期 `snapshots --json` 索引、UNMANAGED/two-pass missing、cursor/filter、大规模虚拟化；缓存键缺 tree_id 且无过期清理。
 
 ### Goal
 
@@ -351,6 +354,8 @@
 
 ## M9 — Single-file Download
 
+**Status: NOT STARTED**
+
 ### Goal
 
 安全审计地从中心下载单个历史文件。
@@ -376,6 +381,8 @@
 - header/path injection suite。
 
 ## M10 — Staging Restore
+
+**Status: NOT STARTED**
 
 ### Goal
 
@@ -410,6 +417,8 @@
 
 ## M11 — Retention and Maintenance
 
+**Status: NOT STARTED**
+
 ### Goal
 
 集中安全执行 check/forget/prune/unlock。
@@ -437,6 +446,8 @@
 - no shared/unmanaged deletions。
 
 ## M12 — Notifications, Audit Hardening and Release
+
+**Status: NOT STARTED**
 
 ### Goal
 
