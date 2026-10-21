@@ -68,7 +68,7 @@ func TestSnapshotIndexMarksManagedAndMissing(t *testing.T) {
 	}
 
 	index([]domain.IndexedSnapshot{entry(managedID, &planID), entry(unmanagedID, nil)})
-	var managed, unmanaged bool
+	var managed bool
 	var managedPlan *uuid.UUID
 	if err := pool.QueryRow(ctx, `select managed,plan_id from snapshots where repository_id=$1 and snapshot_id=$2`,
 		repository.Id, managedID).Scan(&managed, &managedPlan); err != nil {
