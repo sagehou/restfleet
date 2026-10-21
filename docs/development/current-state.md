@@ -14,7 +14,7 @@
 | 阶段 | 状态 | 说明 |
 |---|---|---|
 | M0–M3 | COMPLETE | 骨架、认证、Host/enrollment、心跳/库存/desired state |
-| M4 | IN PROGRESS | 三项交付源码已合入；READY 正/负向已有 CI 证据；真实三后端、部署态轮换/恢复与 DEP-005/006 未完成 |
+| M4 | IN PROGRESS | 三项交付源码已合入；READY 正/负向已有 CI 证据；真实三后端、部署态轮换/恢复与 DEP-005/006 按用户决定暂缓（不在 GitHub 保存凭据） |
 | M5 | IN PROGRESS | 模板、Plan、状态机、本地调度核心已接入；定时 operation ID P0 已解除；`PENDING_APPLY` 与 revision 语义待修 |
 | M6 | IN PROGRESS | 手动与定时上报链路已通；终态 guard、取消/拒绝、结果统计与崩溃恢复仍有缺陷 |
 | M7 | IN PROGRESS | 终态健康与仪表盘计数；OVERDUE/NEVER_RUN/PAUSED、Attention Queue 未实现 |
@@ -69,6 +69,6 @@
 ## 下一步
 
 1. 修复 P1：终态 guard/取消/拒绝、结果统计、Plan 调度语义、路径校验、崩溃恢复与 M8 缓存；为每个状态转换和负向边界补 Actions 测试。
-2. 完成 M4 外部验收：真实 OneDrive/Google Drive/WebDAV、部署态轮换/恢复、DEP-005/006。当前仓库没有配置 secrets，不能在本环境伪造通过。
+2. M4 外部验收按用户 2026-10-21 决定暂缓：不在 GitHub 保存真实云凭据；未来如执行，使用受控部署环境并只回填脱敏证据。M4 保持 IN PROGRESS，但不再阻塞 M5–M8 代码推进。
 3. M4 兼容路径与离线窗口不一致需要设计决定，不能静默保留。
 4. 之后按 M9 → M10 → M11 → M12 推进；不要从总范围删除未开工项。

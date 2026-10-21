@@ -83,7 +83,8 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 	})
 	if errors.Is(runErr, restic.ErrCanceled) || errors.Is(sessionErr, context.Canceled) {
 		return OperationOutcome{Status: OperationCanceled, ErrorCode: "CANCELED", ExitCode: runResult.ExitCode,
-			FilesDone: progress.files, TotalFiles: progress.totalFiles, BytesDone: progress.bytes, TotalBytes: progress.totalBytes}
+			FilesDone: progress.files, TotalFiles: progress.totalFiles, BytesDone: progress.bytes,
+			TotalBytes: progress.totalBytes, FilesNew: progress.filesNew, DataAdded: progress.dataAdded}
 	}
 	if sessionErr != nil && runErr == nil {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: "GATEWAY_SESSION_FAILED"}
@@ -94,7 +95,8 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 func classify(exitCode int, snapshotID string, sawSummary bool, progress *progressSink) OperationOutcome {
 	outcome := OperationOutcome{ExitCode: exitCode, SnapshotID: snapshotID,
 		FilesDone: progress.files, TotalFiles: progress.totalFiles,
-		BytesDone: progress.bytes, TotalBytes: progress.totalBytes}
+		BytesDone: progress.bytes, TotalBytes: progress.totalBytes,
+		FilesNew: progress.filesNew, DataAdded: progress.dataAdded}
 	switch exitCode {
 	case 0:
 		if !sawSummary || snapshotID == "" {
@@ -164,6 +166,8 @@ type progressSink struct {
 	totalFiles  int64
 	bytes       int64
 	totalBytes  int64
+	filesNew    int64
+	dataAdded   int64
 	lastWrite   time.Time
 	lastPercent float64
 	pendingLine []byte
@@ -206,6 +210,7 @@ func (p *progressSink) consume(line []byte) {
 	case "summary":
 		p.sawSummary = true
 		p.snapshotID = event.SnapshotID
+		p.filesNew, p.dataAdded = event.FilesNew, event.DataAdded
 		if event.FilesDone > 0 {
 			p.files = event.FilesDone
 		}
@@ -220,6 +225,7 @@ func (p *progressSink) persist() {
 	}
 	record.FilesDone, record.TotalFiles = p.files, p.totalFiles
 	record.BytesDone, record.TotalBytes = p.bytes, p.totalBytes
+	record.FilesNew, record.DataAdded = p.filesNew, p.dataAdded
 	if p.snapshotID != "" {
 		record.SnapshotID = p.snapshotID
 	}

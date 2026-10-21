@@ -147,8 +147,8 @@ type BackupOperationResult struct {
 	ErrorCode    string
 	ExitCode     int
 	SnapshotID   string
-	FilesDone    int64
-	BytesDone    int64
+	FilesNew     int64
+	DataAdded    int64
 	FinishedAt   time.Time
 }
 

@@ -197,7 +197,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				OperationID: operationID, PlanID: planID, AgentID: agentID,
 				PlanRevision: result.GetPlanRevision(), ScheduledAt: result.GetScheduledAt().AsTime().UTC(),
 				Status: result.GetStatus(), ErrorCode: result.GetErrorCode(), ExitCode: int(result.GetExitCode()),
-				SnapshotID: result.GetSnapshotId(), FilesDone: result.GetFilesNew(), BytesDone: result.GetDataAdded(),
+				SnapshotID: result.GetSnapshotId(), FilesNew: result.GetFilesNew(), DataAdded: result.GetDataAdded(),
 				FinishedAt: result.GetFinishedAt().AsTime().UTC(),
 			}); err != nil {
 				var validation *control.ValidationError

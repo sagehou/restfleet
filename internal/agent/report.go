@@ -31,17 +31,23 @@ func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence
 					OperationId: record.ID.String(), PlanId: record.PlanID.String(),
 					PlanRevision: record.PlanRevision, ScheduledAt: scheduled,
 					Status: record.Status, ErrorCode: record.ErrorCode, ExitCode: int64(record.ExitCode),
-					SnapshotId: record.SnapshotID, FilesNew: record.FilesDone,
-					DataAdded: record.BytesDone, FinishedAt: timestamppb.New(record.FinishedAt),
+					SnapshotId: record.SnapshotID, FilesNew: record.FilesNew,
+					DataAdded: record.DataAdded, FinishedAt: timestamppb.New(record.FinishedAt),
 				},
 			}}
 			if err := sendAgentMessage(stream, sequence, protocol, payload); err != nil {
 				return err
 			}
 			if !resultAck {
-				record.Uploaded = true
-				if err := state.PutOperation(record); err != nil {
+				current, found, err := state.Operation(record.ID)
+				if err != nil {
 					return err
+				}
+				if found {
+					current.Uploaded = true
+					if err := state.PutOperation(current); err != nil {
+						return err
+					}
 				}
 			}
 			continue
@@ -59,8 +65,18 @@ func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence
 		if err := sendAgentMessage(stream, sequence, protocol, payload); err != nil {
 			return err
 		}
-		record.LastReportedAt = time.Now().UTC()
-		if err := state.PutOperation(record); err != nil {
+		// The executor may have written the terminal record while the progress
+		// message was in flight. Re-read before updating the throttle timestamp
+		// so a stale RUNNING view cannot overwrite the terminal result.
+		current, found, err := state.Operation(record.ID)
+		if err != nil {
+			return err
+		}
+		if !found || current.Terminal() {
+			continue
+		}
+		current.LastReportedAt = time.Now().UTC()
+		if err := state.PutOperation(current); err != nil {
 			return err
 		}
 	}

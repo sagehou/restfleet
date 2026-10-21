@@ -84,9 +84,9 @@ func (s *Store) UpsertOperationProgress(ctx context.Context, progress domain.Bac
 	return tx.Commit(ctx)
 }
 
-// UpsertOperationResult writes the terminal record and indexes its snapshot in
-// the same transaction. A duplicate delivery simply rewrites the same terminal
-// values; a failed index write rolls the result back for replay.
+// UpsertOperationResult writes the first terminal state and indexes its snapshot
+// in the same transaction. A duplicate or late result is acknowledged without
+// rewriting a terminal row; a failed index write rolls the result back for replay.
 func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupOperationResult) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -104,15 +104,21 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 		return err
 	}
 	finished := result.FinishedAt
-	if _, err = tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,
-		scheduled_at,started_at,finished_at,exit_code,error_code,snapshot_id,files_done,bytes_done,created_at,updated_at)
-		values($1,$2,$3,'BACKUP','SCHEDULED',$4,$5,'',$6,$6,$7,$8,$9,$10,$11,$12,$7,$7)
+	tag, err := tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,
+		scheduled_at,started_at,finished_at,exit_code,error_code,snapshot_id,created_at,updated_at)
+		values($1,$2,$3,'BACKUP','SCHEDULED',$4,$5,'',$6,$6,$7,$8,$9,$10,$7,$7)
 		on conflict (id) do update set status=excluded.status,finished_at=excluded.finished_at,exit_code=excluded.exit_code,
-			error_code=excluded.error_code,snapshot_id=excluded.snapshot_id,files_done=excluded.files_done,
-			bytes_done=excluded.bytes_done,updated_at=excluded.updated_at`,
+			error_code=excluded.error_code,snapshot_id=excluded.snapshot_id,updated_at=excluded.updated_at
+		where backup_operations.finished_at is null`,
 		result.OperationID, result.PlanID, result.AgentID, result.Status, result.PlanRevision, result.ScheduledAt,
-		finished, result.ExitCode, result.ErrorCode, result.SnapshotID, result.FilesDone, result.BytesDone); err != nil {
+		finished, result.ExitCode, result.ErrorCode, result.SnapshotID)
+	if err != nil {
 		return persistenceError(err)
+	}
+	// A terminal row is authoritative: duplicate or late results may be
+	// acknowledged, but must not rewrite it or regress plan health.
+	if tag.RowsAffected() == 0 {
+		return tx.Commit(ctx)
 	}
 	health := ""
 	switch result.Status {
@@ -132,7 +138,7 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 			values($1,$2,$3,$4,$5,$6,$7,now(),$8,$9)
 			on conflict (plan_id,snapshot_id) do nothing`,
 			result.PlanID, result.SnapshotID, result.AgentID, hostID, repositoryID,
-			result.OperationID, finished, result.FilesDone, result.BytesDone); err != nil {
+			result.OperationID, finished, result.FilesNew, result.DataAdded); err != nil {
 			return persistenceError(err)
 		}
 	}
@@ -237,7 +243,7 @@ func (s *Store) PendingCancelOperations(ctx context.Context, agentID uuid.UUID) 
 func (s *Store) RejectManualOperation(ctx context.Context, id uuid.UUID, now time.Time) error {
 	_, err := s.pool.Exec(ctx, `update backup_operations
 		set status='FAILED',error_code='AGENT_REJECTED',finished_at=$2,updated_at=$2
-		where id=$1 and source='MANUAL' and status='RUNNING' and finished_at is null`, id, now)
+		where id=$1 and source='MANUAL' and status in ('QUEUED','RUNNING','CANCEL_REQUESTED') and finished_at is null`, id, now)
 	return err
 }
 
