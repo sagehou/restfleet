@@ -7,7 +7,7 @@
 - 契约来源：`api/openapi/restfleet-v1.yaml`；
 - 错误：`application/problem+json`，遵循 RFC 9457；
 - 时间：RFC 3339 UTC；
-- ID：UUIDv7；Snapshot 使用完整 SHA-256 hex；
+- ID：UUIDv7；Snapshot 使用完整 SHA-256 hex；Agent 定时任务的 `operation_id` 例外，使用确定性 UUIDv5（ADR-0037）；
 - 分页：opaque cursor，不使用不稳定的大 offset；
 - 写入幂等：适用端点要求 `Idempotency-Key`；
 - 并发更新：ETag + `If-Match`；

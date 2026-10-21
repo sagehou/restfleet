@@ -85,10 +85,13 @@ func newBackupSession(ctx context.Context, binding Binding, socket string,
 	if !ok || !deadline.After(time.Now()) || ctx.Err() != nil || audit == nil {
 		return nil, nil, ErrInvalidSession
 	}
-	for _, id := range []uuid.UUID{binding.HostID, binding.RepositoryID, binding.GatewayID, binding.OperationID} {
+	for _, id := range []uuid.UUID{binding.HostID, binding.RepositoryID, binding.GatewayID} {
 		if id.Version() != 7 || id.Variant() != uuid.RFC4122 {
 			return nil, nil, ErrInvalidSession
 		}
+	}
+	if !domain.ValidOperationID(binding.OperationID) {
+		return nil, nil, ErrInvalidSession
 	}
 	if !privateSocket(socket) {
 		return nil, nil, ErrInvalidSession

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 )
 
 // These records own live routes and bounded request deduplication, not jobs or
@@ -64,8 +65,8 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		s.rejectSession(w, r, http.StatusForbidden)
 		return
 	}
-	repository, validRepo := sessionUUID(parts[4])
-	operation, validOperation := sessionUUID(parts[6])
+	repository, validRepo := sessionRepositoryUUID(parts[4])
+	operation, validOperation := sessionOperationUUID(parts[6])
 	if !validRepo || !validOperation {
 		s.rejectSession(w, r, http.StatusBadRequest)
 		return
@@ -121,9 +122,14 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	s.sessionResponse(w, backup, http.StatusOK)
 }
 
-func sessionUUID(raw string) (uuid.UUID, bool) {
+func sessionRepositoryUUID(raw string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(raw)
 	return id, err == nil && id.String() == raw && id.Version() == 7 && id.Variant() == uuid.RFC4122
+}
+
+func sessionOperationUUID(raw string) (uuid.UUID, bool) {
+	id, err := uuid.Parse(raw)
+	return id, err == nil && id.String() == raw && domain.ValidOperationID(id)
 }
 
 func (s *Service) rejectSession(w http.ResponseWriter, r *http.Request, status int) {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 )
 
 var ErrGatewaySession = errors.New("gateway backup session unavailable")
@@ -32,7 +33,7 @@ type gatewaySessionResponse struct {
 func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, deadline time.Time,
 	run func(context.Context, string) error,
 ) (result error) {
-	if operation.Version() != 7 || operation.Variant() != uuid.RFC4122 || run == nil || !deadline.After(time.Now()) || ctx.Err() != nil {
+	if !domain.ValidOperationID(operation) || run == nil || !deadline.After(time.Now()) || ctx.Err() != nil {
 		return ErrGatewaySession
 	}
 	ctx, cancel := context.WithDeadline(ctx, deadline)

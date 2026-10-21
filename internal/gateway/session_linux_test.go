@@ -447,6 +447,28 @@ func TestSessionCloseCancelsAndJoinsBackendRequest(t *testing.T) {
 	}
 }
 
+func TestSessionAcceptsScheduledOperationKey(t *testing.T) {
+	binding := bindingFixture()
+	binding.OperationID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("plan|2026-10-21T00:00:00Z"))
+	newSession(t, socketServer(t, &fakeBackend{objects: map[string]string{}}), binding, acceptAudit)
+}
+
+func TestSessionUUIDsSeparateRepositoryAndOperationVersions(t *testing.T) {
+	scheduled := uuid.NewSHA1(uuid.NameSpaceOID, []byte("plan|2026-10-21T00:00:00Z"))
+	if _, ok := sessionOperationUUID(scheduled.String()); !ok {
+		t.Fatal("scheduled operation UUIDv5 rejected")
+	}
+	if _, ok := sessionRepositoryUUID(scheduled.String()); ok {
+		t.Fatal("UUIDv5 accepted as repository ID")
+	}
+	if _, ok := sessionOperationUUID(uuid.New().String()); ok {
+		t.Fatal("random UUIDv4 accepted as operation ID")
+	}
+	if _, ok := sessionOperationUUID(uuid.Must(uuid.NewV7()).String()); !ok {
+		t.Fatal("manual operation UUIDv7 rejected")
+	}
+}
+
 func TestSessionRejectsUnsafeConstructor(t *testing.T) {
 	socket := socketServer(t, &fakeBackend{objects: map[string]string{}})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

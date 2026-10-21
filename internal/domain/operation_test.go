@@ -1,6 +1,10 @@
 package domain
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/google/uuid"
+)
 
 func TestOperationTransitions(t *testing.T) {
 	edges := map[string][]string{
@@ -30,5 +34,20 @@ func TestOperationTransitions(t *testing.T) {
 	}
 	if ValidCredentialTestCode("canary-secret") {
 		t.Fatal("arbitrary error persisted")
+	}
+}
+
+func TestValidOperationIDAcceptsScheduledKey(t *testing.T) {
+	scheduled := uuid.NewSHA1(uuid.NameSpaceOID, []byte("plan|2026-10-21T00:00:00Z"))
+	manual := uuid.Must(uuid.NewV7())
+	for _, id := range []uuid.UUID{scheduled, manual} {
+		if !ValidOperationID(id) {
+			t.Fatalf("valid operation ID %s rejected", id)
+		}
+	}
+	for _, id := range []uuid.UUID{uuid.Nil, uuid.New(), uuid.NewMD5(uuid.NameSpaceOID, []byte("v3"))} {
+		if ValidOperationID(id) {
+			t.Fatalf("non-operation UUID %s accepted", id)
+		}
 	}
 }

@@ -12,7 +12,7 @@
 
 ## 2. 标识与通用字段
 
-所有 RestFleet 公共对象 ID 使用 UUIDv7，小写标准字符串。Restic snapshot ID 保持完整 64 位 SHA-256 hex。
+所有 RestFleet 公共对象 ID 使用 UUIDv7，小写标准字符串。Restic snapshot ID 保持完整 64 位 SHA-256 hex。唯一例外是 Agent 定时任务的操作 ID：它是由 `plan_id + scheduled_at` 派生的确定性 UUIDv5 去重键（ADR-0037）；手动操作和其他公共 ID 仍为 UUIDv7。
 
 通用字段：
 

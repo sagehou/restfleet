@@ -22,7 +22,7 @@ Agent 本地状态仍使用 bbolt，与控制面数据库选择无关。
 
 - PostgreSQL 16+；
 - 所有时间 `timestamptz`，应用写 UTC；
-- 公共 ID `uuid`，应用生成 UUIDv7；
+- 公共 ID `uuid`，应用生成 UUIDv7；例外是 Agent 定时任务的 `operation_id`，允许由 `plan_id + scheduled_at` 派生的 UUIDv5 确定性键（ADR-0037）；
 - enum 优先 `text + CHECK` 或 lookup constraints，便于滚动迁移；
 - 金额/字节/计数使用 `bigint` 并检查非负；
 - secret plaintext 禁止入库；
