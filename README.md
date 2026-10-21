@@ -2,7 +2,17 @@
 
 RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面。它通过轻量 Agent 统一下发备份计划、采集运行状态、浏览快照、触发恢复并集中执行仓库维护，同时把 rclone 与云存储凭据严格留在中心节点。
 
-> 当前 M0–M3 已完成，M4 正在收敛：已有凭据管理、中心仓库初始化、Agent 凭据交付/ACK、复用 Agent mTLS 的 Gateway 会话入口、持续授权、可靠回写、正常停止清理及显式启动交接。Repository READY 已接入当前授权与近期真实后端探测，专门运行验收仍待完成。受控故障恢复、期限前换运行及 M5–M12 的功能仍需按计划实施。
+> 当前进度（2026-10-21）：M0–M3 完成；M4 三项交付源码已合入，运行验收未完成；M5–M8 为部分实现，其中定时备份链路和快照扫描落库存在 P0 阻塞，尚不能视为可用；M9–M12 未开工。详细状态、阻塞项与下一步见 [当前开发状态](docs/development/current-state.md)。
+
+| 里程碑 | 状态 | 摘要 |
+|---|---|---|
+| M0–M3 | 完成 | 骨架、认证、Host/enrollment、心跳/库存/desired state |
+| M4 | 源码已合入，验收未完成 | 凭据、仓库初始化、Gateway 会话/授权/轮换恢复源码已入 `main`；真实三后端、生产 mTLS、续证/吊销与 READY 降级未验收 |
+| M5 | 部分 | 模板、Plan、状态机、本地调度核心已接入；定时执行被 M6 的操作 ID 校验阻断，`PENDING_APPLY` 仍会被下发 |
+| M6 | 部分 | 手动备份源码链路已接通；定时路径存在 P0 阻断，结果统计、取消/拒绝与崩溃恢复仍有缺陷 |
+| M7 | 部分 | 终态健康与仪表盘计数；OVERDUE/NEVER_RUN/PAUSED、next-run/last-success、Attention Queue 未实现 |
+| M8 | 部分 | 快照索引/列表/浏览 UI 已接入；扫描结果因误用 provision 锁无法落库，周期索引与 UNMANAGED 未实现 |
+| M9–M12 | 未开工 | 下载、恢复、保留/维护、通知与发布 |
 
 开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
 
