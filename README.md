@@ -8,10 +8,10 @@ RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面
 |---|---|---|
 | M0–M3 | 完成 | 骨架、认证、Host/enrollment、心跳/库存/desired state |
 | M4 | 源码已合入，验收部分暂缓 | 凭据、仓库初始化、Gateway 会话/授权/轮换恢复源码已入 `main`；READY 正/负向已有 CI 证据；真实三后端与部署态轮换/恢复按用户决定暂缓（不在 GitHub 保存凭据） |
-| M5 | 部分 | 模板、Plan、状态机、本地调度核心已接入；定时 operation ID、PENDING_APPLY、状态机绕过与 accepted_revision 已修复；调度器 jitter/DST 与专项测试待补 |
-| M6 | 部分 | 手动与定时上报、终态 guard、拒绝闭环、取消在途作业、崩溃恢复（pending_result_ids/LOST）已修复；日志流/背压与专项测试待补 |
-| M7 | 部分 | 终态健康与仪表盘计数；OVERDUE/NEVER_RUN/PAUSED、next-run/last-success、Attention Queue 未实现 |
-| M8 | 部分 | 索引/列表/浏览 UI 已接入；扫描落库已修复；周期索引、UNMANAGED、cursor 与缓存清理未实现 |
+| M5 | 部分 | 模板、Plan、状态机、本地调度核心已接入；PENDING_APPLY、状态机绕过、accepted_revision、jitter/DST 已修复；SCH/AGT/API 专项测试待补 |
+| M6 | 部分 | 手动与定时上报、终态 guard、取消竞态、崩溃恢复、调度器持久化已修复；结果/日志背压与专项测试待补 |
+| M7 | 部分 | NEVER_RUN/PAUSED/OVERDUE、next-run/last-success、unhealthy 计数已接入；Attention Queue 与分项指标待补 |
+| M8 | 部分 | 索引/列表/浏览 UI、缓存边界/清理已接入；周期索引、UNMANAGED、cursor/continuation 待补 |
 | M9–M12 | 未开工 | 下载、恢复、保留/维护、通知与发布 |
 
 开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
