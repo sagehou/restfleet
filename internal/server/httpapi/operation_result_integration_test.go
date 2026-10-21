@@ -12,7 +12,7 @@ import (
 )
 
 func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
-	store, pool, _, _, enrolled, repository := deliveryFixture(t, "onedrive")
+	store, pool, _, enrolled, repository, _ := deliveryFixture(t, "onedrive")
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	var userID uuid.UUID
