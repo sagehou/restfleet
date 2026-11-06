@@ -926,7 +926,10 @@ export interface components {
             schedule_timezone: string;
             /** @default 0 */
             jitter_seconds: number;
-            /** @default 900 */
+            /**
+             * @description Catch-up grace after downtime or a delayed scheduler loop. Zero disables catch-up; an ordinary poll may wake up to one poll interval plus one second late.
+             * @default 900
+             */
             misfire_grace_seconds: number;
             retry_policy?: components["schemas"]["BackupRetryPolicy"];
             /** Format: uuid */
@@ -1007,8 +1010,11 @@ export interface components {
              * @description Last revision acknowledged by the Agent.
              */
             accepted_revision: number;
-            /** @enum {string} */
-            backup_health: "UNKNOWN" | "HEALTHY" | "OVERDUE" | "FAILED" | "NEVER_RUN" | "PAUSED";
+            /**
+             * @description WARNING means the latest relevant backup completed with warnings and counts as unhealthy on the dashboard.
+             * @enum {string}
+             */
+            backup_health: "UNKNOWN" | "HEALTHY" | "WARNING" | "OVERDUE" | "FAILED" | "NEVER_RUN" | "PAUSED";
             /** @description Allowed JSON merge-patch subset stored with the plan. */
             overrides?: {
                 [key: string]: unknown;

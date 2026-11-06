@@ -488,6 +488,7 @@ const (
 	PlanBackupHealthOVERDUE  PlanBackupHealth = "OVERDUE"
 	PlanBackupHealthPAUSED   PlanBackupHealth = "PAUSED"
 	PlanBackupHealthUNKNOWN  PlanBackupHealth = "UNKNOWN"
+	PlanBackupHealthWARNING  PlanBackupHealth = "WARNING"
 )
 
 // Valid indicates whether the value is a known member of the PlanBackupHealth enum.
@@ -504,6 +505,8 @@ func (e PlanBackupHealth) Valid() bool {
 	case PlanBackupHealthPAUSED:
 		return true
 	case PlanBackupHealthUNKNOWN:
+		return true
+	case PlanBackupHealthWARNING:
 		return true
 	default:
 		return false
@@ -1050,13 +1053,15 @@ type Plan struct {
 	// AcceptedRevision Last revision acknowledged by the Agent.
 	AcceptedRevision int64              `json:"accepted_revision"`
 	AgentId          openapi_types.UUID `json:"agent_id"`
-	BackupHealth     PlanBackupHealth   `json:"backup_health"`
-	CreatedAt        time.Time          `json:"created_at"`
-	DesiredRevision  int64              `json:"desired_revision"`
-	EffectiveConfig  TemplateConfig     `json:"effective_config"`
-	HostId           openapi_types.UUID `json:"host_id"`
-	Id               openapi_types.UUID `json:"id"`
-	Name             string             `json:"name"`
+
+	// BackupHealth WARNING means the latest relevant backup completed with warnings and counts as unhealthy on the dashboard.
+	BackupHealth    PlanBackupHealth   `json:"backup_health"`
+	CreatedAt       time.Time          `json:"created_at"`
+	DesiredRevision int64              `json:"desired_revision"`
+	EffectiveConfig TemplateConfig     `json:"effective_config"`
+	HostId          openapi_types.UUID `json:"host_id"`
+	Id              openapi_types.UUID `json:"id"`
+	Name            string             `json:"name"`
 
 	// Overrides Allowed JSON merge-patch subset stored with the plan.
 	Overrides        *map[string]interface{} `json:"overrides,omitempty"`
@@ -1067,7 +1072,7 @@ type Plan struct {
 	UpdatedAt        time.Time               `json:"updated_at"`
 }
 
-// PlanBackupHealth defines model for Plan.BackupHealth.
+// PlanBackupHealth WARNING means the latest relevant backup completed with warnings and counts as unhealthy on the dashboard.
 type PlanBackupHealth string
 
 // PlanStatus defines model for Plan.Status.
@@ -1307,10 +1312,12 @@ type TemplateApplyResponse struct {
 
 // TemplateConfig defines model for TemplateConfig.
 type TemplateConfig struct {
-	EnabledByDefault    *bool                 `json:"enabled_by_default,omitempty"`
-	ExcludeCaches       *bool                 `json:"exclude_caches,omitempty"`
-	ExcludePatterns     *[]string             `json:"exclude_patterns,omitempty"`
-	JitterSeconds       *int                  `json:"jitter_seconds,omitempty"`
+	EnabledByDefault *bool     `json:"enabled_by_default,omitempty"`
+	ExcludeCaches    *bool     `json:"exclude_caches,omitempty"`
+	ExcludePatterns  *[]string `json:"exclude_patterns,omitempty"`
+	JitterSeconds    *int      `json:"jitter_seconds,omitempty"`
+
+	// MisfireGraceSeconds Catch-up grace after downtime or a delayed scheduler loop. Zero disables catch-up; an ordinary poll may wake up to one poll interval plus one second late.
 	MisfireGraceSeconds *int                  `json:"misfire_grace_seconds,omitempty"`
 	OneFileSystem       *bool                 `json:"one_file_system,omitempty"`
 	Paths               []string              `json:"paths"`

@@ -218,7 +218,7 @@ func (s *Store) UpdatePlanStatus(ctx context.Context, p domain.Plan, expectedRev
 	if currentStatus != expectedStatus {
 		return domain.Plan{}, domain.ErrPlanStateInvalid
 	}
-	if _, err = tx.Exec(ctx, `update plans set status=$2,updated_at=$3,
+	if err = tx.QueryRow(ctx, `update plans set status=$2,updated_at=$3,
 		backup_health=case
 			when $2='PAUSED' then 'PAUSED'
 			when $2='ACTIVE' then coalesce((
@@ -233,7 +233,7 @@ func (s *Store) UpdatePlanStatus(ctx context.Context, p domain.Plan, expectedRev
 			),case when last_success_at is null then 'NEVER_RUN' else 'HEALTHY' end)
 			else backup_health end,
 		next_run_at=case when $2='PAUSED' then null else next_run_at end
-		where id=$1`, p.ID, p.Status, p.UpdatedAt); err != nil {
+		where id=$1 returning backup_health`, p.ID, p.Status, p.UpdatedAt).Scan(&p.BackupHealth); err != nil {
 		return domain.Plan{}, persistenceError(err)
 	}
 	if err = appendAudit(ctx, tx, audit); err != nil {
