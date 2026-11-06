@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/base64"
+ "io"
 	"net/http"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -75,6 +76,9 @@ func (a *API) CancelBackupOperation(w http.ResponseWriter, r *http.Request, oper
 	if !ok {
 		return
 	}
+ if r.URL.RawQuery!="" || len(r.Header.Values("Idempotency-Key"))!=1 {
+  a.problem(w,r,http.StatusBadRequest,"INVALID_REQUEST","Invalid request","The request is invalid.",nil);return
+ }
 	var body BackupOperationCancel
 	if r.ContentLength != 0 {
 		if err := decodeJSON(w, r, &body); err != nil {
@@ -86,7 +90,7 @@ func (a *API) CancelBackupOperation(w http.ResponseWriter, r *http.Request, oper
 	if body.Reason != nil {
 		reason = *body.Reason
 	}
-	operation, err := a.control.CancelBackupOperation(r.Context(), operationID, reason, actor.User, requestMeta(r))
+	operation, err := a.control.CancelBackupOperation(r.Context(), operationID, reason, params.IdempotencyKey, actor.User, requestMeta(r))
 	if err != nil {
 		a.fleetProblem(w, r, err)
 		return
@@ -99,11 +103,10 @@ func (a *API) RetryBackupOperation(w http.ResponseWriter, r *http.Request, opera
 	if !ok {
 		return
 	}
-	if r.URL.RawQuery != "" {
-		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
-		return
-	}
-	operation, err := a.control.RetryBackupOperation(r.Context(), operationID, actor.User, requestMeta(r))
+	if !a.validBackupActionRequest(w,r) {
+  return
+ }
+ operation, err := a.control.RetryBackupOperation(r.Context(), operationID, params.IdempotencyKey, actor.User, requestMeta(r))
 	if err != nil {
 		a.fleetProblem(w, r, err)
 		return
@@ -193,14 +196,22 @@ func (a *API) BackupPlanNow(w http.ResponseWriter, r *http.Request, planID opena
 	if !ok {
 		return
 	}
-	if r.URL.RawQuery != "" {
-		a.problem(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request", "The request is invalid.", nil)
-		return
-	}
-	operation, err := a.control.QueueBackupNow(r.Context(), planID, actor.User, requestMeta(r))
+	if !a.validBackupActionRequest(w,r){return}
+	operation, err := a.control.QueueBackupNow(r.Context(), planID, params.IdempotencyKey, actor.User, requestMeta(r))
 	if err != nil {
 		a.fleetProblem(w, r, err)
 		return
 	}
 	a.json(w, http.StatusAccepted, backupOperationResponse(operation))
+}
+
+func (a *API) validBackupActionRequest(w http.ResponseWriter,r *http.Request) bool {
+ if r.URL.RawQuery!="" || len(r.Header.Values("Idempotency-Key"))!=1 {
+  a.problem(w,r,http.StatusBadRequest,"INVALID_REQUEST","Invalid request","The request is invalid.",nil);return false
+ }
+ if r.Body!=nil {
+  body,err:=io.ReadAll(io.LimitReader(r.Body,1))
+  if err!=nil || len(body)!=0 {a.problem(w,r,http.StatusBadRequest,"INVALID_REQUEST","Invalid request","This endpoint accepts no request body.",nil);return false}
+ }
+ return true
 }

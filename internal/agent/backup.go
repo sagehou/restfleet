@@ -33,12 +33,28 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 	ctx,cancel:=context.WithDeadline(ctx,deadline)
 	defer cancel()
 	if plan.Execution!=nil {
-		if err:=e.State.runHooks(ctx,plan.Execution.PreHookIDs);err!=nil {return OperationOutcome{Status:OperationFailed,ErrorCode:"PRE_HOOK_FAILED"}}
+		if len(plan.Execution.PreHookIDs)>0 {if err:=e.State.operationLog(operation,"pre_hook","INFO","HOOK_STARTED",0,0);err!=nil{return OperationOutcome{Status:OperationFailed,ErrorCode:"STATE_STORAGE_UNAVAILABLE"}}}
+		if err:=e.State.runHooks(ctx,plan.Execution.PreHookIDs);err!=nil {
+			if errors.Is(ctx.Err(),context.DeadlineExceeded){return OperationOutcome{Status:OperationFailed,ErrorCode:"BACKUP_TIMED_OUT"}}
+			if ctx.Err()!=nil{return OperationOutcome{Status:OperationCanceled,ErrorCode:"CANCELED"}}
+			return OperationOutcome{Status:OperationFailed,ErrorCode:"PRE_HOOK_FAILED"}
+		}
+		if len(plan.Execution.PreHookIDs)>0 {if err:=e.State.operationLog(operation,"pre_hook","INFO","HOOK_FINISHED",0,0);err!=nil{return OperationOutcome{Status:OperationFailed,ErrorCode:"STATE_STORAGE_UNAVAILABLE"}}}
 		defer func(){
-			if ctx.Err()==nil {
-				if err:=e.State.runHooks(ctx,plan.Execution.PostHookIDs);err!=nil && outcome.Status==OperationSucceeded {
-					outcome.Status,outcome.ErrorCode=OperationSucceededWarnings,"POST_HOOK_FAILED"
+			if ctx.Err()==nil && len(plan.Execution.PostHookIDs)>0 {
+				if err:=e.State.operationLog(operation,"post_hook","INFO","HOOK_STARTED",0,0);err!=nil{outcome.Status,outcome.ErrorCode=OperationFailed,"STATE_STORAGE_UNAVAILABLE";return}
+				code,level:="HOOK_FINISHED","INFO"
+				if err:=e.State.runHooks(ctx,plan.Execution.PostHookIDs);err!=nil {
+					if ctx.Err()!=nil {
+						outcome.Status,outcome.ErrorCode=OperationCanceled,"CANCELED"
+						if errors.Is(ctx.Err(),context.DeadlineExceeded){outcome.Status,outcome.ErrorCode=OperationFailed,"BACKUP_TIMED_OUT"}
+						return
+					}
+					code,level="POST_HOOK_FAILED","WARN"
+					if outcome.Status==OperationSucceeded {outcome.Status,outcome.ErrorCode=OperationSucceededWarnings,"POST_HOOK_FAILED"}
+					if outcome.Summary!=nil{outcome.Summary.WarningCount++}
 				}
+				if err:=e.State.operationLog(operation,"post_hook",level,code,0,0);err!=nil{outcome.Status,outcome.ErrorCode=OperationFailed,"STATE_STORAGE_UNAVAILABLE"}
 			}
 		}()
 	}
@@ -286,8 +302,10 @@ func (p *progressSink) consume(line []byte) {
 		}
 		p.bytes=event.BytesDone
 		p.persist()
+		if p.state!=nil {if err:=p.state.operationLog(p.operation,"backup","INFO","BACKUP_SUMMARY",p.files,p.bytes);err!=nil{p.fail("STATE_STORAGE_UNAVAILABLE")}}
 	case "error":
 		p.warnings++
+		if p.state!=nil {if err:=p.state.operationLog(p.operation,"backup","WARN","ENGINE_READ_ERROR",p.files,p.bytes);err!=nil{p.fail("STATE_STORAGE_UNAVAILABLE")}}
 	}
 }
 
@@ -308,5 +326,7 @@ func (p *progressSink) persist() {
 		}
 	}); err != nil {
 		p.fail("STATE_STORAGE_UNAVAILABLE")
+		return
 	}
+	if err:=p.state.operationLog(p.operation,"backup","INFO","BACKUP_PROGRESS",p.files,p.bytes);err!=nil{p.fail("STATE_STORAGE_UNAVAILABLE")}
 }

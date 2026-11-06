@@ -33,11 +33,11 @@ func templateConfigResponse(c domain.TemplateConfig) TemplateConfig {
 	}
 	if c.RetryPolicy != nil {
 		p := c.RetryPolicy
-		config.RetryPolicy = &BackupRetryPolicy{InitialBackoffSeconds:&p.InitialBackoffSeconds,MaxAttempts:&p.MaxAttempts,MaxBackoffSeconds:&p.MaxBackoffSeconds}
+		config.RetryPolicy = &BackupRetryPolicy{InitialBackoffSeconds: &p.InitialBackoffSeconds, MaxAttempts: &p.MaxAttempts, MaxBackoffSeconds: &p.MaxBackoffSeconds}
 	}
 	if c.ResourceLimits != nil {
 		p := c.ResourceLimits
-		config.ResourceLimits = &BackupResourceLimits{LimitDownloadKib:&p.LimitDownloadKiB,LimitUploadKib:&p.LimitUploadKiB,MaxDurationSeconds:&p.MaxDurationSeconds,ReadConcurrency:&p.ReadConcurrency}
+		config.ResourceLimits = &BackupResourceLimits{LimitDownloadKib: &p.LimitDownloadKiB, LimitUploadKib: &p.LimitUploadKiB, MaxDurationSeconds: &p.MaxDurationSeconds, ReadConcurrency: &p.ReadConcurrency}
 	}
 	if c.RetentionPolicyID != nil {
 		retention := *c.RetentionPolicyID
@@ -80,11 +80,11 @@ func templateConfigRequest(request TemplateConfig) domain.TemplateConfig {
 	}
 	if request.RetryPolicy != nil {
 		p := request.RetryPolicy
-		config.RetryPolicy = &domain.BackupRetryPolicy{InitialBackoffSeconds:intValue(p.InitialBackoffSeconds),MaxAttempts:intValue(p.MaxAttempts),MaxBackoffSeconds:intValue(p.MaxBackoffSeconds)}
+		config.RetryPolicy = &domain.BackupRetryPolicy{InitialBackoffSeconds: intValue(p.InitialBackoffSeconds), MaxAttempts: intValue(p.MaxAttempts), MaxBackoffSeconds: intValue(p.MaxBackoffSeconds)}
 	}
 	if request.ResourceLimits != nil {
 		p := request.ResourceLimits
-		config.ResourceLimits = &domain.BackupResourceLimits{LimitDownloadKiB:intValue(p.LimitDownloadKib),LimitUploadKiB:intValue(p.LimitUploadKib),MaxDurationSeconds:intValue(p.MaxDurationSeconds),ReadConcurrency:intValue(p.ReadConcurrency)}
+		config.ResourceLimits = &domain.BackupResourceLimits{LimitDownloadKiB: intValue(p.LimitDownloadKib), LimitUploadKiB: intValue(p.LimitUploadKib), MaxDurationSeconds: intValue(p.MaxDurationSeconds), ReadConcurrency: intValue(p.ReadConcurrency)}
 	}
 	if request.RetentionPolicyId != nil {
 		retention := *request.RetentionPolicyId
@@ -94,7 +94,9 @@ func templateConfigRequest(request TemplateConfig) domain.TemplateConfig {
 }
 
 func intValue(value *int) int {
-	if value==nil {return 0}
+	if value == nil {
+		return 0
+	}
 	return *value
 }
 

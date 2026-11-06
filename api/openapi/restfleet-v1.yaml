@@ -961,6 +961,33 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/backup-operations/{operation_id}/logs:
+    parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listBackupOperationLogs
+      description: Ordered typed events; raw engine or Hook output is never exposed.
+      parameters:
+        - name: after_sequence
+          in: query
+          schema: { type: integer, format: int64, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        "200":
+          description: One bounded log page with a monotonic continuation cursor.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupLogPage" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/backup-operations/{operation_id}/cancel:
     parameters:
       - name: operation_id
@@ -972,6 +999,7 @@ paths:
       description: Closes a queued run immediately or asks the Agent to stop a running one.
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: false
         content:
@@ -1002,6 +1030,7 @@ paths:
       description: Creates a new manual operation linked to the terminal operation.
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
       responses:
         "202":
           description: Retry queued.
@@ -1616,6 +1645,28 @@ components:
         backup_end: { type: string, format: date-time }
         total_duration: { type: number, format: double, minimum: 0 }
         warning_count: { type: integer, format: int64, minimum: 0 }
+    BackupLogEntry:
+      type: object
+      additionalProperties: false
+      required: [sequence, observed_at, section, level, code, files_done, bytes_done]
+      properties:
+        sequence: { type: integer, format: int64, minimum: 1 }
+        observed_at: { type: string, format: date-time }
+        section: { type: string, enum: [backup, pre_hook, post_hook, agent] }
+        level: { type: string, enum: [INFO, WARN, ERROR] }
+        code: { type: string, minLength: 1, maxLength: 64 }
+        files_done: { type: integer, format: int64, minimum: 0 }
+        bytes_done: { type: integer, format: int64, minimum: 0 }
+    BackupLogPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_sequence]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/BackupLogEntry" }
+        next_sequence: { type: integer, format: int64, minimum: 0 }
     BackupOperationCancel:
       type: object
       additionalProperties: false

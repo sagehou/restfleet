@@ -1822,9 +1822,12 @@ type JobDispatch struct {
 	PlanRevision int64                  `protobuf:"varint,8,opt,name=plan_revision,json=planRevision,proto3" json:"plan_revision,omitempty"`
 	ConfigHash   string                 `protobuf:"bytes,9,opt,name=config_hash,json=configHash,proto3" json:"config_hash,omitempty"`
 	// payload is type-specific and must not contain secrets.
-	Payload       []byte `protobuf:"bytes,10,opt,name=payload,proto3" json:"payload,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Payload           []byte `protobuf:"bytes,10,opt,name=payload,proto3" json:"payload,omitempty"`
+	ParentOperationId string `protobuf:"bytes,11,opt,name=parent_operation_id,json=parentOperationId,proto3" json:"parent_operation_id,omitempty"`
+	RootOperationId   string `protobuf:"bytes,12,opt,name=root_operation_id,json=rootOperationId,proto3" json:"root_operation_id,omitempty"`
+	Attempt           int32  `protobuf:"varint,13,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *JobDispatch) Reset() {
@@ -1925,6 +1928,27 @@ func (x *JobDispatch) GetPayload() []byte {
 		return x.Payload
 	}
 	return nil
+}
+
+func (x *JobDispatch) GetParentOperationId() string {
+	if x != nil {
+		return x.ParentOperationId
+	}
+	return ""
+}
+
+func (x *JobDispatch) GetRootOperationId() string {
+	if x != nil {
+		return x.RootOperationId
+	}
+	return ""
+}
+
+func (x *JobDispatch) GetAttempt() int32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
 }
 
 type JobAccepted struct {
@@ -2202,20 +2226,23 @@ func (x *JobResultAccepted) GetOperationId() string {
 // JobProgress mirrors Restic status messages; sequence is monotonic per
 // operation and may be coalesced when the connection is slow.
 type JobProgress struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Sequence      uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	PlanId        string                 `protobuf:"bytes,11,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
-	PlanRevision  int64                  `protobuf:"varint,12,opt,name=plan_revision,json=planRevision,proto3" json:"plan_revision,omitempty"`
-	ScheduledAt   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=scheduled_at,json=scheduledAt,proto3" json:"scheduled_at,omitempty"`
-	Stage         string                 `protobuf:"bytes,3,opt,name=stage,proto3" json:"stage,omitempty"`
-	FilesDone     int64                  `protobuf:"varint,4,opt,name=files_done,json=filesDone,proto3" json:"files_done,omitempty"`
-	TotalFiles    int64                  `protobuf:"varint,5,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`
-	BytesDone     int64                  `protobuf:"varint,6,opt,name=bytes_done,json=bytesDone,proto3" json:"bytes_done,omitempty"`
-	TotalBytes    int64                  `protobuf:"varint,7,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`
-	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	OperationId       string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Sequence          uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	PlanId            string                 `protobuf:"bytes,11,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	PlanRevision      int64                  `protobuf:"varint,12,opt,name=plan_revision,json=planRevision,proto3" json:"plan_revision,omitempty"`
+	ScheduledAt       *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=scheduled_at,json=scheduledAt,proto3" json:"scheduled_at,omitempty"`
+	ParentOperationId string                 `protobuf:"bytes,14,opt,name=parent_operation_id,json=parentOperationId,proto3" json:"parent_operation_id,omitempty"`
+	RootOperationId   string                 `protobuf:"bytes,15,opt,name=root_operation_id,json=rootOperationId,proto3" json:"root_operation_id,omitempty"`
+	Attempt           int32                  `protobuf:"varint,16,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	Stage             string                 `protobuf:"bytes,3,opt,name=stage,proto3" json:"stage,omitempty"`
+	FilesDone         int64                  `protobuf:"varint,4,opt,name=files_done,json=filesDone,proto3" json:"files_done,omitempty"`
+	TotalFiles        int64                  `protobuf:"varint,5,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`
+	BytesDone         int64                  `protobuf:"varint,6,opt,name=bytes_done,json=bytesDone,proto3" json:"bytes_done,omitempty"`
+	TotalBytes        int64                  `protobuf:"varint,7,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`
+	ObservedAt        *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *JobProgress) Reset() {
@@ -2283,6 +2310,27 @@ func (x *JobProgress) GetScheduledAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *JobProgress) GetParentOperationId() string {
+	if x != nil {
+		return x.ParentOperationId
+	}
+	return ""
+}
+
+func (x *JobProgress) GetRootOperationId() string {
+	if x != nil {
+		return x.RootOperationId
+	}
+	return ""
+}
+
+func (x *JobProgress) GetAttempt() int32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
 func (x *JobProgress) GetStage() string {
 	if x != nil {
 		return x.Stage
@@ -2326,21 +2374,25 @@ func (x *JobProgress) GetObservedAt() *timestamppb.Timestamp {
 }
 
 type JobResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	PlanId        string                 `protobuf:"bytes,11,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
-	PlanRevision  int64                  `protobuf:"varint,12,opt,name=plan_revision,json=planRevision,proto3" json:"plan_revision,omitempty"`
-	ScheduledAt   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=scheduled_at,json=scheduledAt,proto3" json:"scheduled_at,omitempty"`
-	ErrorCode     string                 `protobuf:"bytes,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
-	ExitCode      int64                  `protobuf:"varint,4,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
-	SnapshotId    string                 `protobuf:"bytes,5,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
-	FilesNew      int64                  `protobuf:"varint,6,opt,name=files_new,json=filesNew,proto3" json:"files_new,omitempty"`
-	DataAdded     int64                  `protobuf:"varint,7,opt,name=data_added,json=dataAdded,proto3" json:"data_added,omitempty"`
-	FinishedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
-	Warnings      []string               `protobuf:"bytes,9,rep,name=warnings,proto3" json:"warnings,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	OperationId       string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Status            string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	PlanId            string                 `protobuf:"bytes,11,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	PlanRevision      int64                  `protobuf:"varint,12,opt,name=plan_revision,json=planRevision,proto3" json:"plan_revision,omitempty"`
+	ScheduledAt       *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=scheduled_at,json=scheduledAt,proto3" json:"scheduled_at,omitempty"`
+	ParentOperationId string                 `protobuf:"bytes,14,opt,name=parent_operation_id,json=parentOperationId,proto3" json:"parent_operation_id,omitempty"`
+	RootOperationId   string                 `protobuf:"bytes,15,opt,name=root_operation_id,json=rootOperationId,proto3" json:"root_operation_id,omitempty"`
+	Attempt           int32                  `protobuf:"varint,16,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	SummaryJson       []byte                 `protobuf:"bytes,17,opt,name=summary_json,json=summaryJson,proto3" json:"summary_json,omitempty"`
+	ErrorCode         string                 `protobuf:"bytes,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	ExitCode          int64                  `protobuf:"varint,4,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	SnapshotId        string                 `protobuf:"bytes,5,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	FilesNew          int64                  `protobuf:"varint,6,opt,name=files_new,json=filesNew,proto3" json:"files_new,omitempty"`
+	DataAdded         int64                  `protobuf:"varint,7,opt,name=data_added,json=dataAdded,proto3" json:"data_added,omitempty"`
+	FinishedAt        *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	Warnings          []string               `protobuf:"bytes,9,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *JobResult) Reset() {
@@ -2404,6 +2456,34 @@ func (x *JobResult) GetPlanRevision() int64 {
 func (x *JobResult) GetScheduledAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ScheduledAt
+	}
+	return nil
+}
+
+func (x *JobResult) GetParentOperationId() string {
+	if x != nil {
+		return x.ParentOperationId
+	}
+	return ""
+}
+
+func (x *JobResult) GetRootOperationId() string {
+	if x != nil {
+		return x.RootOperationId
+	}
+	return ""
+}
+
+func (x *JobResult) GetAttempt() int32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
+func (x *JobResult) GetSummaryJson() []byte {
+	if x != nil {
+		return x.SummaryJson
 	}
 	return nil
 }
@@ -2630,7 +2710,7 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x1aCredentialRevisionAccepted\x12\x1f\n" +
 	"\vdelivery_id\x18\x01 \x01(\tR\n" +
 	"deliveryId\x12\x1a\n" +
-	"\brevision\x18\x02 \x01(\x03R\brevision\"\x82\x03\n" +
+	"\brevision\x18\x02 \x01(\x03R\brevision\"\xf8\x03\n" +
 	"\vJobDispatch\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12\x12\n" +
@@ -2645,7 +2725,10 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\vconfig_hash\x18\t \x01(\tR\n" +
 	"configHash\x12\x18\n" +
 	"\apayload\x18\n" +
-	" \x01(\fR\apayload\"G\n" +
+	" \x01(\fR\apayload\x12.\n" +
+	"\x13parent_operation_id\x18\v \x01(\tR\x11parentOperationId\x12*\n" +
+	"\x11root_operation_id\x18\f \x01(\tR\x0frootOperationId\x12\x18\n" +
+	"\aattempt\x18\r \x01(\x05R\aattempt\"G\n" +
 	"\vJobAccepted\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\tR\voperationId\"f\n" +
@@ -2662,13 +2745,16 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x11JobCancelAccepted\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\"6\n" +
 	"\x11JobResultAccepted\x12!\n" +
-	"\foperation_id\x18\x01 \x01(\tR\voperationId\"\x9c\x03\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\"\x92\x04\n" +
 	"\vJobProgress\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1a\n" +
 	"\bsequence\x18\x02 \x01(\x04R\bsequence\x12\x17\n" +
 	"\aplan_id\x18\v \x01(\tR\x06planId\x12#\n" +
 	"\rplan_revision\x18\f \x01(\x03R\fplanRevision\x12=\n" +
-	"\fscheduled_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vscheduledAt\x12\x14\n" +
+	"\fscheduled_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vscheduledAt\x12.\n" +
+	"\x13parent_operation_id\x18\x0e \x01(\tR\x11parentOperationId\x12*\n" +
+	"\x11root_operation_id\x18\x0f \x01(\tR\x0frootOperationId\x12\x18\n" +
+	"\aattempt\x18\x10 \x01(\x05R\aattempt\x12\x14\n" +
 	"\x05stage\x18\x03 \x01(\tR\x05stage\x12\x1d\n" +
 	"\n" +
 	"files_done\x18\x04 \x01(\x03R\tfilesDone\x12\x1f\n" +
@@ -2679,13 +2765,17 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\vtotal_bytes\x18\a \x01(\x03R\n" +
 	"totalBytes\x12;\n" +
 	"\vobserved_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"observedAt\"\xb5\x03\n" +
+	"observedAt\"\xce\x04\n" +
 	"\tJobResult\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x17\n" +
 	"\aplan_id\x18\v \x01(\tR\x06planId\x12#\n" +
 	"\rplan_revision\x18\f \x01(\x03R\fplanRevision\x12=\n" +
-	"\fscheduled_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vscheduledAt\x12\x1d\n" +
+	"\fscheduled_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vscheduledAt\x12.\n" +
+	"\x13parent_operation_id\x18\x0e \x01(\tR\x11parentOperationId\x12*\n" +
+	"\x11root_operation_id\x18\x0f \x01(\tR\x0frootOperationId\x12\x18\n" +
+	"\aattempt\x18\x10 \x01(\x05R\aattempt\x12!\n" +
+	"\fsummary_json\x18\x11 \x01(\fR\vsummaryJson\x12\x1d\n" +
 	"\n" +
 	"error_code\x18\x03 \x01(\tR\terrorCode\x12\x1b\n" +
 	"\texit_code\x18\x04 \x01(\x03R\bexitCode\x12\x1f\n" +

@@ -77,5 +77,5 @@ func run() error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	return agent.Run(ctx, state, agent.RunConfig{Version: buildinfo.Version,HooksFile:*hooksFile})
+	return agent.Run(ctx, state, agent.RunConfig{Version: buildinfo.Version, HooksFile: *hooksFile})
 }

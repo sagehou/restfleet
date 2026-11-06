@@ -257,33 +257,36 @@ func (s *Store) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, er
 }
 
 // CreateManualOperation queues a user-triggered backup for one Agent.
-func (s *Store) CreateManualOperation(ctx context.Context, operation domain.BackupOperation, audit domain.AuditEvent) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	plan, err := scanPlan(tx.QueryRow(ctx, "select "+planColumns+" from plans where id=$1 and archived_at is null for update", operation.PlanID))
-	if err != nil {
-		return err
-	}
-	if plan.Status != "ACTIVE" {
-		return domain.ErrPlanStateInvalid
-	}
-	if plan.DesiredRevision != operation.PlanRevision || plan.ConfigHash != operation.ConfigHash || plan.AgentID != operation.AgentID {
-		return domain.ErrRevisionConflict
-	}
-	_, err = tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,created_at,updated_at,parent_operation_id,root_operation_id,attempt)
-		values($1,$2,$3,'BACKUP','MANUAL','QUEUED',$4,$5,$6,$7,$7,$8,$9,greatest($10,1))`,
-		operation.ID, operation.PlanID, operation.AgentID, operation.PlanRevision, operation.ConfigHash,
-		operation.ScheduledAt, operation.CreatedAt, optionalUUID(operation.ParentOperationID), optionalUUID(operation.RootOperationID),operation.Attempt)
-	if err != nil {
-		return persistenceError(err)
-	}
-	if err := appendAudit(ctx, tx, audit); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+func (s *Store) CreateManualOperation(ctx context.Context,operation domain.BackupOperation,request domain.BackupRequestKey,audit domain.AuditEvent) (domain.BackupOperation,error) {
+ tx,err:=s.pool.Begin(ctx);if err!=nil{return operation,err};defer func(){_=tx.Rollback(ctx)}()
+ original,found,err:=lockBackupRequest(ctx,tx,request)
+ if err!=nil{return operation,err};if found{return original,tx.Commit(ctx)}
+ if operation.ParentOperationID!=nil {
+  previous,err:=scanBackupOperation(tx.QueryRow(ctx,"select "+backupOperationColumns+" from backup_operations where id=$1 for share",*operation.ParentOperationID))
+  if err!=nil{return operation,err}
+  if !domain.OperationTerminal(previous.Status){return operation,domain.ErrOperationNotTerminal}
+  if previous.Attempt>=10000{return operation,domain.ErrOperationTransition}
+  operation.PlanID=previous.PlanID
+  operation.RootOperationID=previous.RootOperationID
+  if operation.RootOperationID==nil{operation.RootOperationID=&previous.ID}
+  operation.Attempt=previous.Attempt+1
+ }
+ plan,err:=scanPlan(tx.QueryRow(ctx,"select "+planColumns+" from plans where id=$1 and archived_at is null for update",operation.PlanID))
+ if err!=nil{return operation,err}
+ if plan.Status!="ACTIVE"{return operation,domain.ErrPlanStateInvalid}
+ if err:=tx.QueryRow(ctx,"select clock_timestamp()").Scan(&operation.CreatedAt);err!=nil{return operation,err}
+ operation.AgentID,operation.PlanRevision,operation.ConfigHash=plan.AgentID,plan.DesiredRevision,plan.ConfigHash
+ operation.Type,operation.Source,operation.Status="BACKUP","MANUAL","QUEUED"
+ operation.UpdatedAt=operation.CreatedAt
+ operation.ScheduledAt=&operation.CreatedAt
+ if operation.Attempt==0{operation.Attempt=1}
+ _,err=tx.Exec(ctx,`insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,created_at,updated_at,parent_operation_id,root_operation_id,attempt)
+  values($1,$2,$3,'BACKUP','MANUAL','QUEUED',$4,$5,$6,$6,$6,$7,$8,$9)`,operation.ID,operation.PlanID,operation.AgentID,operation.PlanRevision,operation.ConfigHash,
+  operation.CreatedAt,operation.ParentOperationID,operation.RootOperationID,operation.Attempt)
+ if err!=nil{return operation,persistenceError(err)}
+ if err:=appendAudit(ctx,tx,audit);err!=nil{return operation,err}
+ if err:=saveBackupRequest(ctx,tx,request,operation);err!=nil{return operation,err}
+ return operation,tx.Commit(ctx)
 }
 
 // CancelBackupOperation closes an operation the dispatcher has not claimed and
@@ -291,13 +294,16 @@ func (s *Store) CreateManualOperation(ctx context.Context, operation domain.Back
 // QUEUED row can be closed safely; a claimed row must stay non-terminal until
 // the Agent proves it stopped, so a concurrent dispatch can never execute
 // unnoticed. The terminal result remains authoritative.
-func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason string, now time.Time, audit domain.AuditEvent) (domain.BackupOperation, error) {
+func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason string, now time.Time, request domain.BackupRequestKey, audit domain.AuditEvent) (domain.BackupOperation, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return domain.BackupOperation{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	operation, err := scanBackupOperation(tx.QueryRow(ctx, "select "+backupOperationColumns+" from backup_operations where id=$1 for update", id))
+ original,found,err:=lockBackupRequest(ctx,tx,request)
+ if err!=nil{return domain.BackupOperation{},err};if found{return original,tx.Commit(ctx)}
+ reason="USER_CANCELED"
+ operation, err := scanBackupOperation(tx.QueryRow(ctx, "select "+backupOperationColumns+" from backup_operations where id=$1 for update", id))
 	if err != nil {
 		return domain.BackupOperation{}, err
 	}
@@ -308,10 +314,11 @@ func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason 
 		if err := appendAudit(ctx, tx, audit); err != nil {
 			return domain.BackupOperation{}, err
 		}
+		if err:=saveBackupRequest(ctx,tx,request,operation);err!=nil{return operation,err}
 		return operation, tx.Commit(ctx)
 	case "QUEUED":
 		if operation.DispatchedAt == nil {
-			operation.Status, operation.FinishedAt = "CANCELED", &now
+			operation.Status, operation.FinishedAt,operation.ErrorCode = "CANCELED", &now,"CANCELED"
 			break
 		}
 		operation.Status = "CANCEL_REQUESTED"
@@ -330,6 +337,7 @@ func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason 
 	if err := appendAudit(ctx, tx, audit); err != nil {
 		return domain.BackupOperation{}, err
 	}
+	if err:=saveBackupRequest(ctx,tx,request,operation);err!=nil{return operation,err}
 	return operation, tx.Commit(ctx)
 }
 

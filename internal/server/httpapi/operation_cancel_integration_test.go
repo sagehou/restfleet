@@ -63,7 +63,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 
 	// Cancel commits before the dispatcher claims the row: no dispatch may occur.
 	neverDispatched := insertOperation()
-	canceled, err := store.CancelBackupOperation(ctx, neverDispatched, "stop before start", now, audit("BACKUP_OPERATION_CANCEL", neverDispatched))
+	canceled, err := store.CancelBackupOperation(ctx, neverDispatched, "stop before start", now, testBackupRequest(neverDispatched.String()), audit("BACKUP_OPERATION_CANCEL", neverDispatched))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 	if claimed.ID != claimedID || claimed.DispatchedAt == nil {
 		t.Fatal("claim did not mark dispatched_at")
 	}
-	canceled, err = store.CancelBackupOperation(ctx, claimedID, "stop in flight", now.Add(3*time.Second), audit("BACKUP_OPERATION_CANCEL", claimedID))
+	canceled, err = store.CancelBackupOperation(ctx, claimedID, "stop in flight", now.Add(3*time.Second), testBackupRequest(claimedID.String()), audit("BACKUP_OPERATION_CANCEL", claimedID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 	if _, ok, err := store.ClaimManualOperationDispatch(ctx, enrolled.AgentId, now.Add(4*time.Second), 15*time.Second); err != nil || !ok {
 		t.Fatalf("second queued operation was not claimed: %v", err)
 	}
-	if _, err := store.CancelBackupOperation(ctx, undeliveredID, "stop undelivered", now.Add(5*time.Second), audit("BACKUP_OPERATION_CANCEL", undeliveredID)); err != nil {
+	if _, err := store.CancelBackupOperation(ctx, undeliveredID, "stop undelivered", now.Add(5*time.Second), testBackupRequest(undeliveredID.String()), audit("BACKUP_OPERATION_CANCEL", undeliveredID)); err != nil {
 		t.Fatal(err)
 	}
 	if closed, err := store.CloseUnstartedCancellations(ctx, now.Add(time.Minute), now.Add(2*time.Minute)); err != nil || closed != 1 {
@@ -145,7 +145,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), "drop trigger if exists reject_manual_backup on audit_events; drop function if exists reject_manual_backup_audit()")
 	})
 	protected := insertOperation()
-	if _, err := store.CancelBackupOperation(ctx, protected, "audit must succeed", now, audit("BACKUP_OPERATION_CANCEL", protected)); err == nil {
+	if _, err := store.CancelBackupOperation(ctx, protected, "audit must succeed", now, testBackupRequest(protected.String()), audit("BACKUP_OPERATION_CANCEL", protected)); err == nil {
 		t.Fatal("cancel succeeded without audit")
 	}
 	if got := status(protected); got != "QUEUED" {
@@ -155,7 +155,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 		id := uuid.Must(uuid.NewV7())
 		operation := domain.BackupOperation{ID: id, PlanID: planID, AgentID: enrolled.AgentId,
 			PlanRevision: 1, ConfigHash: hash, ScheduledAt: &now, CreatedAt: now}
-		if err := store.CreateManualOperation(ctx, operation, audit(action, id)); err == nil {
+		if _,err := store.CreateManualOperation(ctx, operation, testBackupRequest(id.String()), audit(action, id)); err == nil {
 			t.Fatal("manual backup succeeded without audit")
 		}
 		var count int

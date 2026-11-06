@@ -154,14 +154,16 @@ type RunConfig struct {
 	Version string
 	// ResticBinary defaults to "restic" from PATH.
 	ResticBinary string
-	HooksFile string
+	HooksFile    string
 }
 
 func Run(ctx context.Context, state *State, config RunConfig) error {
-	hooks,err:=LoadHooks(config.HooksFile)
-	if err!=nil{return err}
+	hooks, err := LoadHooks(config.HooksFile)
+	if err != nil {
+		return err
+	}
 	state.schedulerMu.Lock()
-	state.hooks=hooks
+	state.hooks = hooks
 	state.schedulerMu.Unlock()
 	binary := config.ResticBinary
 	if binary == "" {

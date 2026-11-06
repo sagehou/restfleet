@@ -738,7 +738,10 @@ type AgentRevoke struct {
 
 // BackupOperation defines model for BackupOperation.
 type BackupOperation struct {
-	AgentId           openapi_types.UUID    `json:"agent_id"`
+	AgentId openapi_types.UUID `json:"agent_id"`
+
+	// Attempt Execution attempt within the retry chain.
+	Attempt           *int                  `json:"attempt,omitempty"`
 	BytesDone         *int64                `json:"bytes_done,omitempty"`
 	CancelReason      *string               `json:"cancel_reason,omitempty"`
 	CancelRequestedAt *time.Time            `json:"cancel_requested_at,omitempty"`
@@ -757,6 +760,7 @@ type BackupOperation struct {
 	Source            BackupOperationSource `json:"source"`
 	StartedAt         *time.Time            `json:"started_at,omitempty"`
 	Status            BackupOperationStatus `json:"status"`
+	Summary           *BackupSummary        `json:"summary,omitempty"`
 	TotalBytes        *int64                `json:"total_bytes,omitempty"`
 	TotalFiles        *int64                `json:"total_files,omitempty"`
 	Type              BackupOperationType   `json:"type"`
@@ -796,6 +800,24 @@ type BackupRetryPolicy struct {
 	InitialBackoffSeconds *int `json:"initial_backoff_seconds,omitempty"`
 	MaxAttempts           *int `json:"max_attempts,omitempty"`
 	MaxBackoffSeconds     *int `json:"max_backoff_seconds,omitempty"`
+}
+
+// BackupSummary defines model for BackupSummary.
+type BackupSummary struct {
+	BackupEnd           *time.Time `json:"backup_end,omitempty"`
+	BackupStart         *time.Time `json:"backup_start,omitempty"`
+	DataAdded           int64      `json:"data_added"`
+	DataAddedPacked     int64      `json:"data_added_packed"`
+	DirsChanged         int64      `json:"dirs_changed"`
+	DirsNew             int64      `json:"dirs_new"`
+	DirsUnmodified      int64      `json:"dirs_unmodified"`
+	FilesChanged        int64      `json:"files_changed"`
+	FilesNew            int64      `json:"files_new"`
+	FilesUnmodified     int64      `json:"files_unmodified"`
+	TotalBytesProcessed int64      `json:"total_bytes_processed"`
+	TotalDuration       float64    `json:"total_duration"`
+	TotalFilesProcessed int64      `json:"total_files_processed"`
+	WarningCount        int64      `json:"warning_count"`
 }
 
 // BootstrapRequest defines model for BootstrapRequest.

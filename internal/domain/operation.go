@@ -92,6 +92,13 @@ func ValidCredentialTestCode(code string) bool {
 	return false
 }
 
+// BackupRequestKey contains hashes only; raw HTTP keys and reasons are not persisted.
+type BackupRequestKey struct {
+ Scope [32]byte
+ Key [32]byte
+ Body [32]byte
+}
+
 // BackupOperation is one scheduled backup run reported by an Agent. Credential
 // test operations keep their own narrower table and type.
 type BackupOperation struct {

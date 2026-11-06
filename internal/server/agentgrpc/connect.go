@@ -86,7 +86,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			ConnectionId: connectionID.String(), SelectedProtocolVersion: selected,
 			ServerTime: timestamppb.Now(), HeartbeatIntervalSeconds: s.heartbeatSeconds,
 			DesiredConfigRevision: agent.DesiredRevision, MinimumAgentVersion: "0.1.0",
-			ServerCapabilities: []string{domain.JobResultAckCapability, domain.JobCancelCapability},
+			ServerCapabilities: []string{domain.JobResultAckCapability, domain.JobCancelCapability,domain.BackupLogsCapability},
 		}},
 	}); err != nil {
 		return err
@@ -101,6 +101,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 	identityCapable := slices.Contains(hello.GetCapabilities(), domain.RepositoryIdentityCapability)
 	resultAckCapable := slices.Contains(hello.GetCapabilities(), domain.JobResultAckCapability)
 	cancelCapable := slices.Contains(hello.GetCapabilities(), domain.JobCancelCapability)
+	logsCapable := slices.Contains(hello.GetCapabilities(),domain.BackupLogsCapability)
 	if credentialCapable {
 		if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, true, identityCapable); err != nil {
 			return err
@@ -207,6 +208,22 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				}
 				return status.Error(codes.Unavailable, "job progress persistence failed")
 			}
+		case message.GetJobLogChunk()!=nil:
+			chunk:=message.GetJobLogChunk()
+			id,err:=uuid.Parse(chunk.GetOperationId())
+			if !logsCapable || err!=nil || !domain.ValidOperationID(id) || len(chunk.GetEntriesJson())>domain.MaxBackupLogChunkBytes{return s.invalidMessage(stream,meta,"JOB_LOG_INVALID")}
+			var entries []domain.BackupLogEntry
+			decoder:=json.NewDecoder(bytes.NewReader(chunk.GetEntriesJson()));decoder.DisallowUnknownFields()
+			if decoder.Decode(&entries)!=nil || len(entries)==0 || len(entries)>200 || entries[0].Sequence!=chunk.GetFirstSequence() || entries[len(entries)-1].Sequence!=chunk.GetLastSequence(){return s.invalidMessage(stream,meta,"JOB_LOG_INVALID")}
+			var extra any
+			if decoder.Decode(&extra)!=io.EOF{return s.invalidMessage(stream,meta,"JOB_LOG_INVALID")}
+			ack,err:=s.control.RecordOperationLogs(stream.Context(),agentID,id,entries)
+			if err!=nil {
+				var validation *control.ValidationError
+				if errors.As(err,&validation) || errors.Is(err,domain.ErrPlanBindingInvalid) || errors.Is(err,domain.ErrOperationTransition){return s.invalidMessage(stream,meta,"JOB_LOG_INVALID")}
+				return status.Error(codes.Unavailable,"job log persistence failed")
+			}
+			if err:=sendServerMessage(stream,&serverSequence,selected,&agentv1.ServerToAgent{Payload:&agentv1.ServerToAgent_JobLogAccepted{JobLogAccepted:&agentv1.JobLogAccepted{OperationId:id.String(),ThroughSequence:ack}}});err!=nil{return err}
 		case message.GetJobResult() != nil:
 			result := message.GetJobResult()
 			operationID, opErr := uuid.Parse(result.GetOperationId())

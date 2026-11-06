@@ -28,38 +28,38 @@ const (
 	// maxPendingResultIDs mirrors the Server Hello bound. Extra results are
 	// still replayed after Welcome, so the cap never drops a result.
 	maxPendingResultIDs = 100
-	maxReportsPerBatch = 32
+	maxReportsPerBatch  = 32
 	resultRetryInterval = 30 * time.Second
 )
 
 // OperationRecord is the durable local view of one scheduled run. It exists
 // before Restic starts so a crash cannot silently lose an execution.
 type OperationRecord struct {
-	ID             uuid.UUID `json:"id"`
-	PlanID         uuid.UUID `json:"plan_id"`
-	PlanRevision   int64     `json:"plan_revision"`
-	ConfigHash     string    `json:"config_hash"`
-	ScheduledAt    time.Time `json:"scheduled_at"`
-	StartedAt      time.Time `json:"started_at,omitempty"`
-	FinishedAt     time.Time `json:"finished_at,omitempty"`
-	Status         string    `json:"status"`
-	ExitCode       int       `json:"exit_code,omitempty"`
-	ErrorCode      string    `json:"error_code,omitempty"`
-	SnapshotID     string    `json:"snapshot_id,omitempty"`
-	FilesDone      int64     `json:"files_done"`
-	TotalFiles     int64     `json:"total_files"`
-	BytesDone      int64     `json:"bytes_done"`
-	TotalBytes     int64     `json:"total_bytes"`
-	FilesNew       int64     `json:"files_new,omitempty"`
-	DataAdded      int64     `json:"data_added,omitempty"`
-	Uploaded       bool      `json:"uploaded,omitempty"`
-	LastReportedAt time.Time `json:"last_reported_at,omitempty"`
-	ParentOperationID uuid.UUID `json:"parent_operation_id,omitempty"`
-	RootOperationID uuid.UUID `json:"root_operation_id,omitempty"`
-	Attempt int `json:"attempt,omitempty"`
-	RetryAt time.Time `json:"retry_at,omitempty"`
-	Deadline time.Time `json:"deadline,omitempty"`
-	Summary *domain.BackupSummary `json:"summary,omitempty"`
+	ID                uuid.UUID             `json:"id"`
+	PlanID            uuid.UUID             `json:"plan_id"`
+	PlanRevision      int64                 `json:"plan_revision"`
+	ConfigHash        string                `json:"config_hash"`
+	ScheduledAt       time.Time             `json:"scheduled_at"`
+	StartedAt         time.Time             `json:"started_at,omitempty"`
+	FinishedAt        time.Time             `json:"finished_at,omitempty"`
+	Status            string                `json:"status"`
+	ExitCode          int                   `json:"exit_code,omitempty"`
+	ErrorCode         string                `json:"error_code,omitempty"`
+	SnapshotID        string                `json:"snapshot_id,omitempty"`
+	FilesDone         int64                 `json:"files_done"`
+	TotalFiles        int64                 `json:"total_files"`
+	BytesDone         int64                 `json:"bytes_done"`
+	TotalBytes        int64                 `json:"total_bytes"`
+	FilesNew          int64                 `json:"files_new,omitempty"`
+	DataAdded         int64                 `json:"data_added,omitempty"`
+	Uploaded          bool                  `json:"uploaded,omitempty"`
+	LastReportedAt    time.Time             `json:"last_reported_at,omitempty"`
+	ParentOperationID uuid.UUID             `json:"parent_operation_id,omitempty"`
+	RootOperationID   uuid.UUID             `json:"root_operation_id,omitempty"`
+	Attempt           int                   `json:"attempt,omitempty"`
+	RetryAt           time.Time             `json:"retry_at,omitempty"`
+	Deadline          time.Time             `json:"deadline,omitempty"`
+	Summary           *domain.BackupSummary `json:"summary,omitempty"`
 }
 
 // Terminal reports whether the record reached a final state.
@@ -359,10 +359,12 @@ func (s *State) ReportableOperations(now time.Time, progressInterval time.Durati
 			if err := json.Unmarshal(value, &record); err != nil {
 				return err
 			}
-			if record.ParentOperationID!=uuid.Nil {
-				parent:=bucket.Get(record.ParentOperationID[:])
+			if record.ParentOperationID != uuid.Nil {
+				parent := bucket.Get(record.ParentOperationID[:])
 				var previous OperationRecord
-				if parent!=nil && (json.Unmarshal(parent,&previous)!=nil || !previous.Uploaded) {return nil}
+				if parent != nil && (json.Unmarshal(parent, &previous) != nil || !previous.Uploaded) {
+					return nil
+				}
 			}
 			switch {
 			case record.Terminal() && !record.Uploaded && (progressInterval == 0 || now.Sub(record.LastReportedAt) >= resultRetryInterval):

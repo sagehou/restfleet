@@ -31,20 +31,20 @@ func (e *TemplateError) Error() string { return e.Field + ": " + e.Code }
 
 // TemplateConfig is one immutable, validated revision body.
 type TemplateConfig struct {
-	Paths               []string       `json:"paths"`
-	ExcludePatterns     []string       `json:"exclude_patterns"`
-	ExcludeCaches       bool           `json:"exclude_caches"`
-	OneFileSystem       bool           `json:"one_file_system"`
-	ScheduleCron        string         `json:"schedule_cron"`
-	ScheduleTimezone    string         `json:"schedule_timezone"`
-	JitterSeconds       int            `json:"jitter_seconds"`
-	MisfireGraceSeconds int            `json:"misfire_grace_seconds"`
-	RetryPolicy         *BackupRetryPolicy `json:"retry_policy"`
-	RetentionPolicyID   *uuid.UUID     `json:"retention_policy_id"`
-	PreHookIDs          []uuid.UUID    `json:"pre_hook_ids"`
-	PostHookIDs         []uuid.UUID    `json:"post_hook_ids"`
+	Paths               []string              `json:"paths"`
+	ExcludePatterns     []string              `json:"exclude_patterns"`
+	ExcludeCaches       bool                  `json:"exclude_caches"`
+	OneFileSystem       bool                  `json:"one_file_system"`
+	ScheduleCron        string                `json:"schedule_cron"`
+	ScheduleTimezone    string                `json:"schedule_timezone"`
+	JitterSeconds       int                   `json:"jitter_seconds"`
+	MisfireGraceSeconds int                   `json:"misfire_grace_seconds"`
+	RetryPolicy         *BackupRetryPolicy    `json:"retry_policy"`
+	RetentionPolicyID   *uuid.UUID            `json:"retention_policy_id"`
+	PreHookIDs          []uuid.UUID           `json:"pre_hook_ids"`
+	PostHookIDs         []uuid.UUID           `json:"post_hook_ids"`
 	ResourceLimits      *BackupResourceLimits `json:"resource_limits"`
-	EnabledByDefault    bool           `json:"enabled_by_default"`
+	EnabledByDefault    bool                  `json:"enabled_by_default"`
 }
 
 // CanonicalJSON returns the deterministic encoding used for config_hash.

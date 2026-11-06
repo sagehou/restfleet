@@ -537,3 +537,7 @@ RestFleet 管理自己的备份不能形成循环依赖：
 - audit role 无 UPDATE/DELETE 权限；
 - full snapshot index 失败不标记 snapshots missing；
 - cursor pagination 在并发插入下无重复/大面积遗漏。
+
+## 可靠备份反馈（schema 28）
+
+`backup_operations` MUST 保存有界 attempt 与可选完整 summary；`plans.last_result_at` MUST 防止旧结果补报降低最新健康。`backup_operation_log_heads` 保存最高连续序列和累计字节，`backup_operation_logs` 以 `(operation_id, sequence)` 唯一追加；两者 MUST 绑定现有 Operation，ACK 仅在提交后发出。`backup_operation_requests` MUST 保存 actor/route scope、key/body hash、Operation 外键与脱敏响应快照，保留至少 24h；幂等记录、业务和审计 MUST 同事务。应用角色不得删除日志、绕开绑定或随意改终态，见 ADR-0040。

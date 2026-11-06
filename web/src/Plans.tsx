@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import type { components } from './api/schema'
 import { ApiError, csrfToken, errorMessage, requestJSON } from './api/client'
 import { describeCron } from './cron'
@@ -33,6 +33,7 @@ export function Plans({ hosts, canManage, onUnauthorized }: Props) {
   const [creating, setCreating] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const backupKeys = useRef(new Map<string, string>())
   const [message, setMessage] = useState('')
 
   const handleError = useCallback((error: unknown) => {
@@ -125,11 +126,14 @@ export function Plans({ hosts, canManage, onUnauthorized }: Props) {
     if (busy) return
     setBusy(true)
     setMessage('')
+    let key = backupKeys.current.get(plan.id)
+    if (!key) { key = crypto.randomUUID(); backupKeys.current.set(plan.id, key) }
     try {
       const operation = await requestJSON<components['schemas']['BackupOperation']>(`${endpoint}/${plan.id}/backup`, {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken(), 'Idempotency-Key': crypto.randomUUID() },
+        headers: { 'X-CSRF-Token': csrfToken(), 'Idempotency-Key': key },
       })
+      backupKeys.current.delete(plan.id)
       setMessage(`已排队手动备份，操作 ${operation.id.slice(0, 8)}；Agent 下次心跳时执行。`)
     } catch (error) { handleError(error) }
     finally { setBusy(false) }

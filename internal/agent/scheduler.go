@@ -175,7 +175,18 @@ func (s *State) executeOperation(ctx context.Context, executor PlanExecutor, pla
 		defer s.workers.Done()
 		defer endRun()
 		for {
-		outcome := executor.Execute(runCtx, plan, record.ID, record.ScheduledAt, deadline)
+		outcome:=OperationOutcome{Status:OperationFailed,ErrorCode:"STATE_STORAGE_UNAVAILABLE"}
+		if err:=s.operationLog(record.ID,"backup","INFO","BACKUP_STARTED",0,0);err==nil {
+			outcome = executor.Execute(runCtx, plan, record.ID, record.ScheduledAt, deadline)
+		}
+		code,level:=outcome.ErrorCode,"ERROR"
+		switch outcome.Status {
+		case OperationSucceeded:code,level="BACKUP_SUCCEEDED","INFO"
+		case OperationSucceededWarnings:code,level="BACKUP_SUCCEEDED_WITH_WARNINGS","WARN"
+		case OperationCanceled:code="CANCELED"
+		}
+		if code==""{code="BACKUP_FAILED"}
+		if err:=s.operationLog(record.ID,"backup",level,code,outcome.FilesDone,outcome.BytesDone);err!=nil {outcome.Status,outcome.ErrorCode=OperationFailed,"STATE_STORAGE_UNAVAILABLE"}
 		record.Status = outcome.Status
 		record.ExitCode = outcome.ExitCode
 		record.ErrorCode = outcome.ErrorCode
@@ -201,6 +212,7 @@ func (s *State) executeOperation(ctx context.Context, executor PlanExecutor, pla
 		case <-runCtx.Done():
 			timer.Stop()
 			record.Status,record.ErrorCode,record.FinishedAt=OperationCanceled,"CANCELED",time.Now().UTC()
+			_ = s.operationLog(record.ID,"backup","ERROR",record.ErrorCode,0,0)
 			if err:=s.PutOperation(record);err!=nil && onError!=nil{onError(err)}
 			return
 		case <-timer.C:
@@ -210,6 +222,7 @@ func (s *State) executeOperation(ctx context.Context, executor PlanExecutor, pla
 		if err==nil && found {for _,candidate:=range active.Plans {current=current || candidate.PlanID==plan.PlanID && candidate.Revision==plan.Revision && candidate.ConfigHash==plan.ConfigHash}}
 		if !current || !time.Now().Before(deadline) {
 			record.Status,record.ErrorCode,record.FinishedAt=OperationCanceled,"CONFIG_SUPERSEDED",time.Now().UTC()
+			_ = s.operationLog(record.ID,"backup","ERROR",record.ErrorCode,0,0)
 			if err:=s.PutOperation(record);err!=nil && onError!=nil{onError(err)}
 			return
 		}

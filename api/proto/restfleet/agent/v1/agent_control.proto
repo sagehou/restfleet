@@ -25,6 +25,7 @@ message AgentToServer {
     CredentialRevisionAccepted credential_revision_accepted = 16;
     JobAccepted job_accepted = 17;
     JobRejected job_rejected = 18;
+    JobLogChunk job_log_chunk = 22;
     JobProgress job_progress = 19;
     JobResult job_result = 20;
     JobCancelAccepted job_cancel_accepted = 21;
@@ -44,6 +45,7 @@ message ServerToAgent {
     JobDispatch job_dispatch = 14;
     JobCancel job_cancel = 15;
     JobResultAccepted job_result_accepted = 16;
+    JobLogAccepted job_log_accepted = 17;
   }
 }
 
@@ -241,6 +243,19 @@ message JobCancelAccepted {
 // The Agent keeps the result pending until this message arrives.
 message JobResultAccepted {
   string operation_id = 1;
+}
+
+message JobLogChunk {
+  string operation_id = 1;
+  uint64 first_sequence = 2;
+  uint64 last_sequence = 3;
+  // <=32KiB, <=200 contiguous typed BackupLogEntry objects; no raw output.
+  bytes entries_json = 4;
+}
+
+message JobLogAccepted {
+  string operation_id = 1;
+  uint64 through_sequence = 2;
 }
 
 // JobProgress mirrors Restic status messages; sequence is monotonic per

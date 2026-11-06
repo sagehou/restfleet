@@ -67,6 +67,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 				"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability, domain.RepositoryIdentityCapability,
 				domain.JobResultAckCapability, domain.JobCancelCapability,
 				domain.BackupExecutionCapability,
+				domain.BackupLogsCapability,
 			},
 			LocalTime: timestamppb.Now(),
 		}},
@@ -85,6 +86,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	serverSequence := response.GetSequence()
 	clockOffset := welcome.GetServerTime().AsTime().Sub(time.Now().UTC())
 	resultAck := slices.Contains(welcome.GetServerCapabilities(), domain.JobResultAckCapability)
+	logAck := slices.Contains(welcome.GetServerCapabilities(), domain.BackupLogsCapability)
 
 	if pending, ok, err := state.PendingConfigResult(); err != nil {
 		return true, err
@@ -120,6 +122,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	if err := reportOperations(stream, &agentSequence, protocol, state, 0, resultAck); err != nil {
 		return true, err
 	}
+	if logAck {if err:=reportLogs(stream,&agentSequence,protocol,state,true);err!=nil{return true,err}}
 
 	for {
 		select {
@@ -141,6 +144,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 			if err := reportOperations(stream, &agentSequence, protocol, state, 5*time.Second, resultAck); err != nil {
 				return true, err
 			}
+			if logAck {if err:=reportLogs(stream,&agentSequence,protocol,state,false);err!=nil{return true,err}}
 		case <-rotationTimer.C:
 			privateKey, err := LoadOrCreatePrivateKey(state)
 			if err != nil {
@@ -212,6 +216,11 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 				if err := state.MarkOperationUploaded(operationID); err != nil {
 					return true, err
 				}
+			case message.GetJobLogAccepted()!=nil:
+				ack:=message.GetJobLogAccepted()
+				id,err:=uuid.Parse(ack.GetOperationId())
+				if err!=nil || !logAck{return true,errors.New("invalid log acknowledgement")}
+				if err:=state.acknowledgeLogs(id,ack.GetThroughSequence());err!=nil{return true,err}
 			case message.GetCertificateRotationResponse() != nil && rotationPending:
 				return true, saveRotation(state, identity, message)
 			default:

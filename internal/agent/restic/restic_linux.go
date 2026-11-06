@@ -10,15 +10,15 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -30,19 +30,19 @@ import (
 
 // BackupRequest is the effective, already-validated plan config for one run.
 type BackupRequest struct {
-	Repository      string
-	PasswordFile    string
-	HostID          uuid.UUID
-	PlanID          uuid.UUID
-	Paths           []string
-	ExcludePatterns []string
-	ExcludeCaches   bool
-	OneFileSystem   bool
-	SkipIfUnchanged bool
-	LimitUploadKiB int
+	Repository       string
+	PasswordFile     string
+	HostID           uuid.UUID
+	PlanID           uuid.UUID
+	Paths            []string
+	ExcludePatterns  []string
+	ExcludeCaches    bool
+	OneFileSystem    bool
+	SkipIfUnchanged  bool
+	LimitUploadKiB   int
 	LimitDownloadKiB int
-	ReadConcurrency int
-	CacheDirectory string
+	ReadConcurrency  int
+	CacheDirectory   string
 	// TLSClientCertFile holds the combined client certificate and key for the
 	// Gateway REST endpoint; CACertFile pins the Gateway CA.
 	TLSClientCertFile string
@@ -158,10 +158,18 @@ func BackupArgs(request BackupRequest, prepared PreparedFiles) ([]string, error)
 	if request.SkipIfUnchanged {
 		args = append(args, "--skip-if-unchanged")
 	}
-	if request.CacheDirectory!="" {args=append(args,"--cache-dir",request.CacheDirectory)}
-	if request.LimitUploadKiB>0 {args=append(args,"--limit-upload",strconv.Itoa(request.LimitUploadKiB))}
-	if request.LimitDownloadKiB>0 {args=append(args,"--limit-download",strconv.Itoa(request.LimitDownloadKiB))}
-	if request.ReadConcurrency>0 {args=append(args,"--read-concurrency",strconv.Itoa(request.ReadConcurrency))}
+	if request.CacheDirectory != "" {
+		args = append(args, "--cache-dir", request.CacheDirectory)
+	}
+	if request.LimitUploadKiB > 0 {
+		args = append(args, "--limit-upload", strconv.Itoa(request.LimitUploadKiB))
+	}
+	if request.LimitDownloadKiB > 0 {
+		args = append(args, "--limit-download", strconv.Itoa(request.LimitDownloadKiB))
+	}
+	if request.ReadConcurrency > 0 {
+		args = append(args, "--read-concurrency", strconv.Itoa(request.ReadConcurrency))
+	}
 	if request.TLSClientCertFile != "" {
 		args = append(args, "--tls-client-cert", request.TLSClientCertFile)
 	}
@@ -191,22 +199,22 @@ type Event struct {
 	FilesNew    int64
 	DataAdded   int64
 	Message     string
-	Summary *domain.BackupSummary
+	Summary     *domain.BackupSummary
 }
 
 type wireEvent struct {
-	MessageType string   `json:"message_type"`
-	PercentDone *float64 `json:"percent_done"`
-	FilesDone   *int64   `json:"files_done"`
-	FilesProcessed *int64 `json:"total_files_processed"`
-	BytesProcessed *int64 `json:"total_bytes_processed"`
-	TotalFiles  *int64   `json:"total_files"`
-	BytesDone   *int64   `json:"bytes_done"`
-	TotalBytes  *int64   `json:"total_bytes"`
-	SnapshotID  string   `json:"snapshot_id"`
-	FilesNew    *int64   `json:"files_new"`
-	DataAdded   *int64   `json:"data_added"`
-	Message     string   `json:"message"`
+	MessageType    string   `json:"message_type"`
+	PercentDone    *float64 `json:"percent_done"`
+	FilesDone      *int64   `json:"files_done"`
+	FilesProcessed *int64   `json:"total_files_processed"`
+	BytesProcessed *int64   `json:"total_bytes_processed"`
+	TotalFiles     *int64   `json:"total_files"`
+	BytesDone      *int64   `json:"bytes_done"`
+	TotalBytes     *int64   `json:"total_bytes"`
+	SnapshotID     string   `json:"snapshot_id"`
+	FilesNew       *int64   `json:"files_new"`
+	DataAdded      *int64   `json:"data_added"`
+	Message        string   `json:"message"`
 }
 
 // ParseEvent decodes one line. The boolean reports whether the line produced a
@@ -217,7 +225,9 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		return Event{}, false, nil
 	}
 	var wire wireEvent
-	var header struct { MessageType string `json:"message_type"` }
+	var header struct {
+		MessageType string `json:"message_type"`
+	}
 	if json.Unmarshal(line, &header) != nil || header.MessageType == "" {
 		return Event{}, false, errors.New("restic: invalid JSONL message")
 	}
@@ -227,7 +237,7 @@ func ParseEvent(line []byte) (Event, bool, error) {
 	if err := json.Unmarshal(line, &wire); err != nil {
 		return Event{}, false, errors.New("restic: invalid JSONL message")
 	}
-	for _, counter := range []*int64{wire.FilesDone, wire.TotalFiles, wire.BytesDone, wire.TotalBytes, wire.FilesNew, wire.DataAdded, wire.FilesProcessed,wire.BytesProcessed} {
+	for _, counter := range []*int64{wire.FilesDone, wire.TotalFiles, wire.BytesDone, wire.TotalBytes, wire.FilesNew, wire.DataAdded, wire.FilesProcessed, wire.BytesProcessed} {
 		if counter != nil && *counter < 0 {
 			return Event{}, false, errors.New("restic: invalid JSONL counter")
 		}
@@ -255,7 +265,7 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		}
 		return event, true, nil
 	case "summary":
-		if wire.FilesNew == nil || wire.DataAdded == nil || wire.FilesProcessed==nil || wire.BytesProcessed==nil {
+		if wire.FilesNew == nil || wire.DataAdded == nil || wire.FilesProcessed == nil || wire.BytesProcessed == nil {
 			return Event{}, false, errors.New("restic: incomplete JSONL summary")
 		}
 		if wire.SnapshotID != "" {
@@ -265,8 +275,10 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		}
 		event := Event{Type: "summary", SnapshotID: wire.SnapshotID}
 		var summary domain.BackupSummary
-		if json.Unmarshal(line,&summary)!=nil || summary.Validate()!=nil {return Event{},false,errors.New("restic: invalid JSONL summary")}
-		event.Summary=&summary
+		if json.Unmarshal(line, &summary) != nil || summary.Validate() != nil {
+			return Event{}, false, errors.New("restic: invalid JSONL summary")
+		}
+		event.Summary = &summary
 		if wire.FilesNew != nil {
 			event.FilesNew = *wire.FilesNew
 		}
@@ -279,7 +291,7 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		if wire.FilesProcessed != nil {
 			event.FilesDone = *wire.FilesProcessed
 		}
-		event.BytesDone=*wire.BytesProcessed
+		event.BytesDone = *wire.BytesProcessed
 		return event, true, nil
 	case "error":
 		return Event{Type: "error", Message: wire.Message}, true, nil
@@ -309,7 +321,9 @@ type Result struct {
 var ErrCanceled = errors.New("restic: run canceled")
 
 func (r Run) Execute(ctx context.Context) (Result, error) {
-	if ctx.Err()!=nil {return Result{ExitCode:-1},ErrCanceled}
+	if ctx.Err() != nil {
+		return Result{ExitCode: -1}, ErrCanceled
+	}
 	binary := r.Binary
 	if binary == "" {
 		binary = "restic"

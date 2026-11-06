@@ -88,3 +88,14 @@ func optionalOperationID(id uuid.UUID) string {
 	if id==uuid.Nil{return ""}
 	return id.String()
 }
+
+func reportLogs(stream agentv1.AgentControlService_ConnectClient,sequence *uint64,protocol string,state *State,force bool) error {
+	chunks,err:=state.pendingLogs(time.Now().UTC(),force);if err!=nil{return err}
+	for _,chunk:=range chunks {
+		if err:=sendAgentMessage(stream,sequence,protocol,&agentv1.AgentToServer{Payload:&agentv1.AgentToServer_JobLogChunk{JobLogChunk:&agentv1.JobLogChunk{
+			OperationId:chunk.OperationID.String(),FirstSequence:chunk.First,LastSequence:chunk.Last,EntriesJson:chunk.JSON,
+		}}});err!=nil{return err}
+		if err:=state.markLogsSent(chunk.OperationID,chunk.Last,time.Now().UTC());err!=nil{return err}
+	}
+	return nil
+}

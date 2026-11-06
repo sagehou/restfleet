@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { components } from './api/schema'
 import { ApiError, csrfToken, errorMessage, requestJSON } from './api/client'
 
@@ -35,6 +35,13 @@ export function Operations({ canManage, onUnauthorized }: Props) {
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [busyID, setBusyID] = useState('')
+  const requestKeys = useRef(new Map<string, string>())
+  const actionKey = useCallback((action: string, id: string) => {
+    const scope = `${action}:${id}`
+    let key = requestKeys.current.get(scope)
+    if (!key) { key = crypto.randomUUID(); requestKeys.current.set(scope, key) }
+    return key
+  }, [])
 
   const handleError = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) { onUnauthorized(); return }
@@ -47,6 +54,7 @@ export function Operations({ canManage, onUnauthorized }: Props) {
         if (signal?.aborted) return
         setItems((current) => cursor ? [...current, ...page.items] : page.items)
         setNextCursor(page.next_cursor)
+        setSelected((current) => current ? page.items.find((item) => item.id === current.id) ?? current : null)
       })
       .catch((error: unknown) => { if (!signal?.aborted) handleError(error) })
       .finally(() => { if (!signal?.aborted) setLoading(false) }),
@@ -65,9 +73,10 @@ export function Operations({ canManage, onUnauthorized }: Props) {
     try {
       const updated = await requestJSON<BackupOperation>(`${endpoint}/${operation.id}/cancel`, {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken() },
+        headers: { 'X-CSRF-Token': csrfToken(), 'Idempotency-Key': actionKey('cancel', operation.id) },
         body: JSON.stringify({ reason: '用户取消' }),
       })
+      requestKeys.current.delete(`cancel:${operation.id}`)
       setItems((current) => current.map((item) => item.id === updated.id ? updated : item))
       setSelected((current) => current?.id === updated.id ? updated : current)
     } catch (error) {
@@ -75,7 +84,7 @@ export function Operations({ canManage, onUnauthorized }: Props) {
     } finally {
       setBusyID('')
     }
-  }, [handleError])
+  }, [handleError, actionKey])
 
   const retry = useCallback(async (operation: BackupOperation) => {
     setBusyID(operation.id)
@@ -83,19 +92,20 @@ export function Operations({ canManage, onUnauthorized }: Props) {
     try {
       const created = await requestJSON<BackupOperation>(`${endpoint}/${operation.id}/retry`, {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken() },
+        headers: { 'X-CSRF-Token': csrfToken(), 'Idempotency-Key': actionKey('retry', operation.id) },
       })
-      setItems((current) => [created, ...current])
+      requestKeys.current.delete(`retry:${operation.id}`)
+      setItems((current) => [created, ...current.filter((item) => item.id !== created.id)])
     } catch (error) {
       handleError(error)
     } finally {
       setBusyID('')
     }
-  }, [handleError])
+  }, [handleError, actionKey])
 
   // Refresh while anything is running or cancellation is pending.
   useEffect(() => {
-    if (!items.some((item) => item.status === 'RUNNING' || item.status === 'CANCEL_REQUESTED')) return
+    if (!items.some((item) => item.status === 'QUEUED' || item.status === 'RUNNING' || item.status === 'CANCEL_REQUESTED')) return
     const timer = setInterval(() => { void load() }, 5000)
     return () => clearInterval(timer)
   }, [items, load])
@@ -123,9 +133,15 @@ export function Operations({ canManage, onUnauthorized }: Props) {
             <div><dt>计划时间</dt><dd>{selected.scheduled_at ?? '—'}</dd></div>
             <div><dt>开始 / 结束</dt><dd>{selected.started_at ?? '—'} / {selected.finished_at ?? '—'}</dd></div>
             <div><dt>进度</dt><dd>{percent(selected)}（{selected.files_done ?? 0}/{selected.total_files ?? 0} 文件，{selected.bytes_done ?? 0}/{selected.total_bytes ?? 0} 字节）</dd></div>
-            <div><dt>快照</dt><dd>{selected.snapshot_id || '—'}</dd></div>
+            <div><dt>快照</dt><dd>{selected.snapshot_id || (selected.status === 'SUCCEEDED' ? '无变化，未创建快照' : '—')}</dd></div>
             <div><dt>退出码 / 错误</dt><dd>{selected.exit_code ?? '—'} {selected.error_code || ''}</dd></div>
+            {selected.parent_operation_id && <div><dt>重试关联</dt><dd>第 {selected.attempt ?? 1} 次 · 前次 {selected.parent_operation_id} · 起始 {selected.root_operation_id}</dd></div>}
+            {selected.summary && <>
+              <div><dt>文件统计</dt><dd>新增 {selected.summary.files_new} · 变化 {selected.summary.files_changed} · 未变 {selected.summary.files_unmodified}</dd></div>
+              <div><dt>写入 / 耗时</dt><dd>{selected.summary.data_added} 字节（压缩后 {selected.summary.data_added_packed}）· {selected.summary.total_duration.toFixed(1)} 秒 · {selected.summary.warning_count} 个警告</dd></div>
+            </>}
           </dl>
+          <OperationLogs key={selected.id} operationID={selected.id} onError={handleError} />
           <div className="actions">
             {canManage && !terminal(selected.status) && selected.status !== 'CANCEL_REQUESTED' && (
               <button className="secondary-button" disabled={busyID === selected.id} onClick={() => { void cancel(selected) }}>取消</button>
@@ -160,4 +176,32 @@ export function Operations({ canManage, onUnauthorized }: Props) {
       {nextCursor && <button className="secondary-button" disabled={loading} onClick={() => { setLoading(true); void load(nextCursor) }}>加载更多</button>}
     </section>
   )
+}
+
+function OperationLogs({ operationID, onError }: { operationID: string; onError: (error: unknown) => void }) {
+  const [after, setAfter] = useState(0)
+  const [page, setPage] = useState<components['schemas']['BackupLogPage']>({ items: [], next_sequence: 0 })
+  const [history, setHistory] = useState<number[]>([])
+  useEffect(() => {
+    const controller = new AbortController()
+    const load = () => requestJSON<components['schemas']['BackupLogPage']>(`${endpoint}/${operationID}/logs?after_sequence=${after}&limit=100`, { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setPage(result) })
+      .catch((error: unknown) => { if (!controller.signal.aborted) onError(error) })
+    void load()
+    const timer = setInterval(() => { void load() }, 5000)
+    return () => { controller.abort(); clearInterval(timer) }
+  }, [operationID, after, onError])
+  return <section aria-label="执行日志">
+    <h3>执行日志</h3>
+    {!page.items.length && <p className="muted">暂无日志；离线记录会在结果确认后继续补报。</p>}
+    <ol>{page.items.map((entry) => <li key={entry.sequence}>
+      <time>{entry.observed_at}</time> [{entry.section}] {entry.level} · {entry.code}
+      {entry.code === 'BACKUP_PROGRESS' && ` · ${entry.files_done} 文件 / ${entry.bytes_done} 字节`}
+      {entry.code === 'LOG_TRUNCATED' && ' · 日志已达到上限，保留摘要、错误及最终结果。'}
+    </li>)}</ol>
+    <div className="actions">
+      {history.length > 0 && <button className="secondary-button" onClick={() => { setAfter(history[history.length - 1]); setHistory(history.slice(0, -1)) }}>上一页日志</button>}
+      {page.items.length === 100 && <button className="secondary-button" onClick={() => { setHistory([...history, after]); setAfter(page.next_sequence) }}>下一页日志</button>}
+    </div>
+  </section>
 }

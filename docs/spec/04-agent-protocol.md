@@ -304,14 +304,14 @@ Agent 将 Restic `--json` JSONL 映射为：
 
 ## 11. 日志流与离线缓冲
 
-- 日志 chunk sequence 每 Operation 单调递增；
-- 默认 chunk <= 32 KiB；
-- Agent 在发送前做本地 secret redaction；Server 再做第二层 redaction；
-- Server ACK highest contiguous sequence；
-- 断线时 Agent 本地最多缓存每 Operation 10 MiB；
-- 超限丢弃中间 raw logs，但保留首尾、errors、summary 和 truncation marker；
-- 重连后先补报 terminal results，再补日志；
-- Server 对重复 `(operation_id, sequence)` 做幂等 upsert。
+- 双方 MUST 协商 `backup_logs_v1`，旧 peer MUST 忽略未知扩展而不能把 send 成功视为持久 ACK。
+- `JobLogChunk` MUST 包含 Operation ID、首末连续 sequence 和严格 JSON entries，每块至多 32KiB / 200 项，每轮至多 8 个 Operation。
+- 每项 MUST 仅含 sequence、UTC observed_at、固定 section/level/code 和非负 files_done/bytes_done。Agent MUST 投影原始输出，Server MUST 再严格验证；路径、命令、stdout/stderr 和任意错误字符串 MUST NOT 进入日志。
+- 中心 MUST 核验 mTLS Agent 与已有 Operation 的绑定，原子保存 entries 和 highest contiguous sequence，再发 `JobLogAccepted`。gap、未知 code/section、越界 MUST 拒绝；重复/重叠序列保留首次提交内容。
+- Agent MUST 在 bbolt 持久化后发送，收到不超过已发送最高序列的 ACK 后才回收；断线/重启 MUST 重发原连续事件，未确认 chunk 至少等待 30s 再重发。
+- 每 Operation MUST 固定首次写入时接受的累计预算，默认 10MiB、最低 64KiB。ACK MUST NOT 重置预算；最后 16KiB 留给去重的首尾、Hook、错误、summary 和唯一 truncation marker。超限丢弃后续进度，不消耗 sequence。
+- 中心 MUST 同样限制每 Operation 累计 10MiB。重连 MUST 先补 terminal results，收到持久 ACK 后再补其日志；运行中日志 MUST 在首次进度报告后发送。
+- 日志 MUST NOT 改写 Operation 结果，或授予/释放 Gateway 占用。见 [ADR-0040](../adr/0040-bounded-backup-feedback.md)。
 
 ## 12. Heartbeat
 

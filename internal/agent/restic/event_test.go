@@ -7,7 +7,7 @@ import (
 
 func TestParseSummaryKeepsNewFilesAndAddedBytes(t *testing.T) {
 	snapshot := strings.Repeat("a", 64)
-	event, ok, err := ParseEvent([]byte(`{"message_type":"summary","snapshot_id":"`+snapshot+`","files_new":3,"data_added":42,"total_files_processed":9,"total_bytes_processed":42}`))
+	event, ok, err := ParseEvent([]byte(`{"message_type":"summary","snapshot_id":"` + snapshot + `","files_new":3,"data_added":42,"total_files_processed":9,"total_bytes_processed":42}`))
 	if err != nil || !ok {
 		t.Fatalf("summary parse = %v, %v", ok, err)
 	}

@@ -482,3 +482,9 @@ Filter：actor、action、resource、result、time range。普通 API 不允许 
 - 示例不得含真实 endpoint/credential；
 - contract tests 验证 handler 与 OpenAPI；
 - breaking change 需要新 API major 或兼容迁移窗口。
+
+### 备份操作补充（ADR-0040）
+
+`POST /plans/{id}/backup`、`POST /backup-operations/{id}/retry` 与 `/cancel` MUST 要求单一有效 `Idempotency-Key`。scope MUST 包括当前认证 actor 和具体 route；同 key/body MUST 返回原响应快照，即使计划已暂停或 Operation 已终态，不生成新任务或重复审计；不同 body MUST 返回 409。业务、24h 幂等记录和审计 MUST 同事务。backup/retry MUST 拒绝 body/query，cancel MUST 拒绝 query/未知字段；取消原因仅 hash 用于去重，持久化与发送使用固定 USER_CANCELED。
+
+`GET /api/v1/backup-operations/{operation_id}/logs` MUST 按递增 sequence 返回最多 200 条结构化事件，使用 `after_sequence` 和响应 `next_sequence` 继续读取；ADMIN/VIEWER 可读，未知或重复 query MUST 拒绝。日志不可用于判断数据面清理完成。

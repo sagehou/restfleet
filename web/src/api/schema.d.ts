@@ -909,20 +909,27 @@ export interface components {
             jitter_seconds: number;
             /** @default 900 */
             misfire_grace_seconds: number;
-            /** @description Opaque retry metadata stored verbatim for the Agent scheduler. */
-            retry_policy?: {
-                [key: string]: unknown;
-            };
+            retry_policy?: components["schemas"]["BackupRetryPolicy"];
             /** Format: uuid */
             retention_policy_id?: string;
             pre_hook_ids?: string[];
             post_hook_ids?: string[];
-            /** @description Opaque resource limits stored verbatim for the Agent runtime. */
-            resource_limits?: {
-                [key: string]: unknown;
-            };
+            resource_limits?: components["schemas"]["BackupResourceLimits"];
             /** @default true */
             enabled_by_default: boolean;
+        };
+        /** @description Zero or omitted values use defaults (1 attempt, 60s initial, 1800s maximum); each retry creates a new Operation. */
+        BackupRetryPolicy: {
+            initial_backoff_seconds?: number;
+            max_attempts?: number;
+            max_backoff_seconds?: number;
+        };
+        /** @description Zero or omitted limits retain Restic defaults; maximum duration is also capped by the operation deadline. */
+        BackupResourceLimits: {
+            limit_download_kib?: number;
+            limit_upload_kib?: number;
+            max_duration_seconds?: number;
+            read_concurrency?: number;
         };
         Template: {
             /** Format: uuid */
