@@ -616,6 +616,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backup-operations/{operation_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Ordered typed events; raw engine or Hook output is never exposed. */
+        get: operations["listBackupOperationLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/backup-operations/{operation_id}/cancel": {
         parameters: {
             query?: never;
@@ -907,22 +926,32 @@ export interface components {
             schedule_timezone: string;
             /** @default 0 */
             jitter_seconds: number;
-            /** @default 900 */
+            /**
+             * @description Catch-up grace after downtime or a delayed scheduler loop. Zero disables catch-up; an ordinary poll may wake up to one poll interval plus one second late.
+             * @default 900
+             */
             misfire_grace_seconds: number;
-            /** @description Opaque retry metadata stored verbatim for the Agent scheduler. */
-            retry_policy?: {
-                [key: string]: unknown;
-            };
+            retry_policy?: components["schemas"]["BackupRetryPolicy"];
             /** Format: uuid */
             retention_policy_id?: string;
             pre_hook_ids?: string[];
             post_hook_ids?: string[];
-            /** @description Opaque resource limits stored verbatim for the Agent runtime. */
-            resource_limits?: {
-                [key: string]: unknown;
-            };
+            resource_limits?: components["schemas"]["BackupResourceLimits"];
             /** @default true */
             enabled_by_default: boolean;
+        };
+        /** @description Zero or omitted values use defaults (1 attempt, 60s initial, 1800s maximum); each retry creates a new Operation. */
+        BackupRetryPolicy: {
+            initial_backoff_seconds?: number;
+            max_attempts?: number;
+            max_backoff_seconds?: number;
+        };
+        /** @description Zero or omitted limits retain Restic defaults; maximum duration is also capped by the operation deadline. */
+        BackupResourceLimits: {
+            limit_download_kib?: number;
+            limit_upload_kib?: number;
+            max_duration_seconds?: number;
+            read_concurrency?: number;
         };
         Template: {
             /** Format: uuid */
@@ -981,8 +1010,11 @@ export interface components {
              * @description Last revision acknowledged by the Agent.
              */
             accepted_revision: number;
-            /** @enum {string} */
-            backup_health: "UNKNOWN" | "HEALTHY" | "OVERDUE" | "FAILED" | "NEVER_RUN" | "PAUSED";
+            /**
+             * @description WARNING means the latest relevant backup completed with warnings and counts as unhealthy on the dashboard.
+             * @enum {string}
+             */
+            backup_health: "UNKNOWN" | "HEALTHY" | "WARNING" | "OVERDUE" | "FAILED" | "NEVER_RUN" | "PAUSED";
             /** @description Allowed JSON merge-patch subset stored with the plan. */
             overrides?: {
                 [key: string]: unknown;
@@ -1084,9 +1116,62 @@ export interface components {
             parent_operation_id?: string;
             /** Format: uuid */
             root_operation_id?: string;
+            /** @description Execution attempt within the retry chain. */
+            attempt?: number;
+            summary?: components["schemas"]["BackupSummary"];
             /** Format: date-time */
             cancel_requested_at?: string;
             cancel_reason?: string;
+        };
+        BackupSummary: {
+            /** Format: int64 */
+            files_new: number;
+            /** Format: int64 */
+            files_changed: number;
+            /** Format: int64 */
+            files_unmodified: number;
+            /** Format: int64 */
+            dirs_new: number;
+            /** Format: int64 */
+            dirs_changed: number;
+            /** Format: int64 */
+            dirs_unmodified: number;
+            /** Format: int64 */
+            data_added: number;
+            /** Format: int64 */
+            data_added_packed: number;
+            /** Format: int64 */
+            total_files_processed: number;
+            /** Format: int64 */
+            total_bytes_processed: number;
+            /** Format: date-time */
+            backup_start?: string;
+            /** Format: date-time */
+            backup_end?: string;
+            /** Format: double */
+            total_duration: number;
+            /** Format: int64 */
+            warning_count: number;
+        };
+        BackupLogEntry: {
+            /** Format: int64 */
+            sequence: number;
+            /** Format: date-time */
+            observed_at: string;
+            /** @enum {string} */
+            section: "backup" | "pre_hook" | "post_hook" | "agent";
+            /** @enum {string} */
+            level: "INFO" | "WARN" | "ERROR";
+            code: string;
+            /** Format: int64 */
+            files_done: number;
+            /** Format: int64 */
+            bytes_done: number;
+        };
+        BackupLogPage: {
+            items: components["schemas"]["BackupLogEntry"][];
+            /** Format: int64 */
+            next_sequence: number;
         };
         BackupOperationCancel: {
             reason?: string;
@@ -2772,11 +2857,42 @@ export interface operations {
             503: components["responses"]["Problem"];
         };
     };
+    listBackupOperationLogs: {
+        parameters: {
+            query?: {
+                after_sequence?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One bounded log page with a monotonic continuation cursor. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupLogPage"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
     cancelBackupOperation: {
         parameters: {
             query?: never;
             header: {
                 "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
             path: {
                 operation_id: string;
@@ -2813,6 +2929,7 @@ export interface operations {
             query?: never;
             header: {
                 "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
             path: {
                 operation_id: string;

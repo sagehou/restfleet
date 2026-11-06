@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,16 @@ type PublicServer struct {
 	requests int
 	reported bool
 	running  sync.WaitGroup
+}
+
+type publicAuditContextKey struct{}
+
+// Use the trusted server lifetime for ingress audit, independent of the peer.
+func publicAuditContext(ctx context.Context) context.Context {
+	if parent, ok := ctx.Value(publicAuditContextKey{}).(context.Context); ok {
+		return parent
+	}
+	return ctx
 }
 
 // NewPublicServer validates the borrowed PEM key pair before the caller binds a
@@ -99,7 +110,9 @@ func (p *PublicServer) Serve(ctx context.Context, listener net.Listener) error {
 
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	p.http.BaseContext = func(net.Listener) context.Context { return requestCtx }
+	p.http.BaseContext = func(net.Listener) context.Context {
+		return context.WithValue(requestCtx, publicAuditContextKey{}, requestCtx)
+	}
 	stop := context.AfterFunc(ctx, func() { _ = p.http.Close() })
 	err := p.http.ServeTLS(netutil.LimitListener(listener, p.connections), "", "")
 	stop()
@@ -158,6 +171,9 @@ func (p *PublicServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if report && !p.supervisor.record(r.Context(), Binding{}, "denied", "rate_limited") {
 			http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 			return
+		}
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/gateway/v1/repositories/") && strings.Contains(r.URL.Path, "/backup-sessions/") {
+			w.Header().Set(backupRetryHeader, "GATEWAY_RATE_LIMITED")
 		}
 		http.Error(w, "gateway request limited", http.StatusTooManyRequests)
 		return

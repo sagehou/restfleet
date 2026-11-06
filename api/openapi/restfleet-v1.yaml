@@ -961,6 +961,33 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/backup-operations/{operation_id}/logs:
+    parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listBackupOperationLogs
+      description: Ordered typed events; raw engine or Hook output is never exposed.
+      parameters:
+        - name: after_sequence
+          in: query
+          schema: { type: integer, format: int64, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        "200":
+          description: One bounded log page with a monotonic continuation cursor.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupLogPage" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/backup-operations/{operation_id}/cancel:
     parameters:
       - name: operation_id
@@ -972,6 +999,7 @@ paths:
       description: Closes a queued run immediately or asks the Agent to stop a running one.
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: false
         content:
@@ -1002,6 +1030,7 @@ paths:
       description: Creates a new manual operation linked to the terminal operation.
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
       responses:
         "202":
           description: Retry queued.
@@ -1420,8 +1449,13 @@ components:
         schedule_cron: { type: string, minLength: 1, maxLength: 128, description: Standard five-field cron in the template timezone. }
         schedule_timezone: { type: string, minLength: 1, maxLength: 64, description: IANA timezone name. }
         jitter_seconds: { type: integer, minimum: 0, maximum: 3600, default: 0 }
-        misfire_grace_seconds: { type: integer, minimum: 0, maximum: 86400, default: 900 }
-        retry_policy: { type: object, additionalProperties: true, description: Opaque retry metadata stored verbatim for the Agent scheduler. }
+        misfire_grace_seconds:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          default: 900
+          description: Catch-up grace after downtime or a delayed scheduler loop. Zero disables catch-up; an ordinary poll may wake up to one poll interval plus one second late.
+        retry_policy: { $ref: "#/components/schemas/BackupRetryPolicy" }
         retention_policy_id: { type: string, format: uuid }
         pre_hook_ids:
           type: array
@@ -1429,8 +1463,25 @@ components:
         post_hook_ids:
           type: array
           items: { type: string, format: uuid }
-        resource_limits: { type: object, additionalProperties: true, description: Opaque resource limits stored verbatim for the Agent runtime. }
+        resource_limits: { $ref: "#/components/schemas/BackupResourceLimits" }
         enabled_by_default: { type: boolean, default: true }
+    BackupRetryPolicy:
+      type: object
+      additionalProperties: false
+      description: Zero or omitted values use defaults (1 attempt, 60s initial, 1800s maximum); each retry creates a new Operation.
+      properties:
+        initial_backoff_seconds: { type: integer, minimum: 0, maximum: 86400 }
+        max_attempts: { type: integer, minimum: 0, maximum: 10 }
+        max_backoff_seconds: { type: integer, minimum: 0, maximum: 86400 }
+    BackupResourceLimits:
+      type: object
+      additionalProperties: false
+      description: Zero or omitted limits retain Restic defaults; maximum duration is also capped by the operation deadline.
+      properties:
+        limit_download_kib: { type: integer, minimum: 0, maximum: 1073741824 }
+        limit_upload_kib: { type: integer, minimum: 0, maximum: 1073741824 }
+        max_duration_seconds: { type: integer, minimum: 0, maximum: 86400 }
+        read_concurrency: { type: integer, minimum: 0, maximum: 64 }
     Template:
       type: object
       additionalProperties: false
@@ -1483,7 +1534,10 @@ components:
         status: { type: string, enum: [DRAFT, PENDING_APPLY, ACTIVE, PAUSED, INVALID, ARCHIVED] }
         desired_revision: { type: integer, format: int64, minimum: 1 }
         accepted_revision: { type: integer, format: int64, minimum: 0, description: Last revision acknowledged by the Agent. }
-        backup_health: { type: string, enum: [UNKNOWN, HEALTHY, OVERDUE, FAILED, NEVER_RUN, PAUSED] }
+        backup_health:
+          type: string
+          description: WARNING means the latest relevant backup completed with warnings and counts as unhealthy on the dashboard.
+          enum: [UNKNOWN, HEALTHY, WARNING, OVERDUE, FAILED, NEVER_RUN, PAUSED]
         overrides: { type: object, additionalProperties: true, description: Allowed JSON merge-patch subset stored with the plan. }
         effective_config: { $ref: "#/components/schemas/TemplateConfig" }
         created_at: { type: string, format: date-time }
@@ -1576,8 +1630,51 @@ components:
         updated_at: { type: string, format: date-time }
         parent_operation_id: { type: string, format: uuid }
         root_operation_id: { type: string, format: uuid }
+        attempt: { type: integer, minimum: 1, description: Execution attempt within the retry chain. }
+        summary: { $ref: "#/components/schemas/BackupSummary" }
         cancel_requested_at: { type: string, format: date-time }
         cancel_reason: { type: string }
+    BackupSummary:
+      type: object
+      additionalProperties: false
+      required: [files_new, files_changed, files_unmodified, dirs_new, dirs_changed, dirs_unmodified, data_added, data_added_packed, total_files_processed, total_bytes_processed, total_duration, warning_count]
+      properties:
+        files_new: { type: integer, format: int64, minimum: 0 }
+        files_changed: { type: integer, format: int64, minimum: 0 }
+        files_unmodified: { type: integer, format: int64, minimum: 0 }
+        dirs_new: { type: integer, format: int64, minimum: 0 }
+        dirs_changed: { type: integer, format: int64, minimum: 0 }
+        dirs_unmodified: { type: integer, format: int64, minimum: 0 }
+        data_added: { type: integer, format: int64, minimum: 0 }
+        data_added_packed: { type: integer, format: int64, minimum: 0 }
+        total_files_processed: { type: integer, format: int64, minimum: 0 }
+        total_bytes_processed: { type: integer, format: int64, minimum: 0 }
+        backup_start: { type: string, format: date-time }
+        backup_end: { type: string, format: date-time }
+        total_duration: { type: number, format: double, minimum: 0 }
+        warning_count: { type: integer, format: int64, minimum: 0 }
+    BackupLogEntry:
+      type: object
+      additionalProperties: false
+      required: [sequence, observed_at, section, level, code, files_done, bytes_done]
+      properties:
+        sequence: { type: integer, format: int64, minimum: 1 }
+        observed_at: { type: string, format: date-time }
+        section: { type: string, enum: [backup, pre_hook, post_hook, agent] }
+        level: { type: string, enum: [INFO, WARN, ERROR] }
+        code: { type: string, minLength: 1, maxLength: 64 }
+        files_done: { type: integer, format: int64, minimum: 0 }
+        bytes_done: { type: integer, format: int64, minimum: 0 }
+    BackupLogPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_sequence]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/BackupLogEntry" }
+        next_sequence: { type: integer, format: int64, minimum: 0 }
     BackupOperationCancel:
       type: object
       additionalProperties: false

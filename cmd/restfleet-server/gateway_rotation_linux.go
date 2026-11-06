@@ -91,7 +91,7 @@ func openGatewayCommandControlPlane(ctx context.Context, config control.RuntimeC
 		GatewaySigningKey:           config.GatewaySigningKey,
 		GatewayPendingDecryptionKey: config.GatewayPendingDecryptionKey,
 		ExpectedSchema:              postgres.ExpectedSchemaVersion,
-		Enrollment: control.EnrollmentSettings{ServerCABundlePEM: config.ServerCABundlePEM},
+		Enrollment:                  control.EnrollmentSettings{ServerCABundlePEM: config.ServerCABundlePEM},
 	})
 	if err != nil {
 		store.Close()

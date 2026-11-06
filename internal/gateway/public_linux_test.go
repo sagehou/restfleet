@@ -426,14 +426,25 @@ func TestPublicRateLimitOverTLS(t *testing.T) {
 	var audits atomic.Int32
 	s := &Supervisor{audit: func(context.Context, Event) error { audits.Add(1); return nil }}
 	f := startPublicFixture(t, s, func(p *PublicServer) { p.rate = 1; p.window = time.Now().Add(time.Hour) })
-	for _, want := range []int{403, 429, 429} {
-		resp, err := f.client.Get(f.URL + "/")
+	for _, test := range []struct {
+		method, path, hint string
+		want               int
+	}{
+		{http.MethodGet, "/", "", 403},
+		{http.MethodPost, "/gateway/v1/repositories/" + bindingFixture().RepositoryID.String() + "/backup-sessions/" + bindingFixture().OperationID.String(), "GATEWAY_RATE_LIMITED", 429},
+		{http.MethodGet, "/", "", 429},
+	} {
+		req, err := http.NewRequest(test.method, f.URL+test.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := f.client.Do(req)
 		if err != nil {
 			t.Fatal("rate-limit TLS request failed")
 		}
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
-		if resp.StatusCode != want || (want == 429 && (!resp.Close || resp.Header.Get("Retry-After") != "1")) {
+		if resp.StatusCode != test.want || resp.Header.Get(backupRetryHeader) != test.hint || (test.want == 429 && (!resp.Close || resp.Header.Get("Retry-After") != "1")) {
 			t.Fatal("rate-limit transport response mismatch")
 		}
 	}
@@ -484,5 +495,62 @@ func TestPublicShutdownWaitsForUnauthenticatedAudit(t *testing.T) {
 	case <-requestDone:
 	case <-time.After(2 * time.Second):
 		t.Fatal("request did not stop")
+	}
+}
+
+func TestPublicClientDisconnectDoesNotPoisonGlobalAudit(t *testing.T) {
+	recorder, _, _, _, _ := globalRecorderFixture(t, 8)
+	entered := make(chan context.Context, 1)
+	release, committed, disconnected := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	s := &Supervisor{audit: func(ctx context.Context, event Event) error {
+		entered <- ctx
+		<-release
+		err := recorder.Record(ctx, event)
+		close(committed)
+		return err
+	}}
+	f := startPublicFixture(t, s, func(p *PublicServer) {
+		p.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			go func() { <-r.Context().Done(); close(disconnected) }()
+			s.ServeHTTP(w, r)
+		})
+	})
+	t.Cleanup(func() { once.Do(func() { close(release) }) })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, f.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		response, err := f.client.Do(r)
+		if err == nil {
+			_ = response.Body.Close()
+		}
+	}()
+	var auditCtx context.Context
+	select {
+	case auditCtx = <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("audit did not start")
+	}
+	cancel()
+	select {
+	case <-disconnected:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not observe client disconnect")
+	}
+	if deadline, ok := auditCtx.Deadline(); auditCtx.Err() != nil || !ok || time.Until(deadline) > 3*time.Second {
+		t.Fatal("client disconnect canceled or unbounded the security audit")
+	}
+	once.Do(func() { close(release) })
+	select {
+	case <-committed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("audit did not commit")
+	}
+	if !recorder.Ready() {
+		t.Fatal("client disconnect permanently stopped global audit")
 	}
 }

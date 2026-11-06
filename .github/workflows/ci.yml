@@ -113,10 +113,22 @@ jobs:
           docker cp restfleet-restic-conformance:/usr/bin/restic "${RUNNER_TEMP}/restic"
           docker rm restfleet-restic-conformance
           "${RUNNER_TEMP}/restic" version
+      - run: make generate
+      - name: Format Go sources and retain generated source changes
+        id: generated
+        run: |
+          git ls-files -z '*.go' | xargs -0 gofmt -w
+          git diff --binary > "${RUNNER_TEMP}/generated-sources.patch"
+          if test -s "${RUNNER_TEMP}/generated-sources.patch"; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: steps.generated.outputs.changed == 'true'
+        with:
+          name: generated-sources
+          path: ${{ runner.temp }}/generated-sources.patch
       - name: Verify Gateway service formatting
         run: test -z "$(gofmt -l internal/gateway/service*_linux*.go internal/gateway/conformance_linux_test.go)"
-      - run: make generate
-      - run: git diff --exit-code
       - run: make lint
       - run: make migrate
       - run: make test
@@ -146,6 +158,8 @@ jobs:
         with:
           name: sbom
           path: build/sbom.cdx.json
+      - name: Verify generated sources are committed
+        run: git diff --exit-code
 
   images:
     runs-on: ubuntu-latest

@@ -1,5 +1,9 @@
 # 07 — PostgreSQL 数据库规范
 
+schema 29（ADR-0043）新增 Plan 的 `backup_health=WARNING`，保留部分成功的成功时间并计入不健康计划。Plan 变更、DesiredState、outbox 和审计 MUST 同事务提交；状态更新 MUST 同时验证读取时的状态与配置 revision。该迁移在仍有 WARNING 行时 MUST 拒绝降级，不能把告警改写为健康。
+
+schema 28（ADR-0039）为备份 Operation 保存有界 `attempt` 与结构化 `summary_json`，parent/root 沿用既有外键。新自动 attempt MUST 验证前一终态、暂态原因、Agent/Plan/revision、root 与递增次数；已有行绑定不可被重写。Plan 的 `last_result_at` MUST 防止离线旧结果覆盖更新的健康状态；`last_success_at` MUST 单调向前，结果与快照索引仍同事务提交。旧 Agent 缺少增量字段时保持原报告兼容。
+
 ADR-0033 兼容说明：schema 16 的 Gateway secret 引用继续保留，不新增身份表、verifier 或候选密码状态；生产认证复用 AgentCertificate/Agent 身份，Gateway secret MUST NOT 用于生产密码回退。新 capability 仅接收 Restic 密码，其余交付/ACK/占用 fencing 仍复用原事务。
 
 readiness MUST 检查当前连续编号的全部迁移已应用，不能只取最大已应用版本；后续版本 MUST NOT 掩盖缺失/未应用的前置迁移。Goose 同一版本有多条历史记录时，MUST 以最新记录判断当前应用状态。
@@ -176,6 +180,8 @@ create table secrets (
 ```
 
 普通 repository/API query 不 join/decrypt secrets。Secret access 通过独立 store interface，并生成 audit/security metric。
+
+`jobs.gateway_read_binding` MAY 保存中心 snapshot index/list 的 repository/operation/admission/runtime UUID 与 configuration hash，不含私钥或秘密。enqueue、claim、续租和结果提交 MUST 验证原 owner 绑定；无效任务 MUST 以固定失败码收尾，不能写成功索引或解除 Gateway 占用。当前 owner 的 OAuth token CAS 更新不改变该读绑定，也不授权中心更新云端秘密。
 
 ### 5.3.1 storage_credentials / storage_credential_revisions（schema 5）
 
@@ -535,3 +541,7 @@ RestFleet 管理自己的备份不能形成循环依赖：
 - audit role 无 UPDATE/DELETE 权限；
 - full snapshot index 失败不标记 snapshots missing；
 - cursor pagination 在并发插入下无重复/大面积遗漏。
+
+## 可靠备份反馈（schema 28）
+
+`backup_operations` MUST 保存有界 attempt 与可选完整 summary；`plans.last_result_at` MUST 防止旧结果补报降低最新健康。`backup_operation_log_heads` 保存最高连续序列和累计字节，`backup_operation_logs` 以 `(operation_id, sequence)` 唯一追加；两者 MUST 绑定现有 Operation，ACK 仅在提交后发出。`backup_operation_requests` MUST 保存 actor/route scope、key/body hash、Operation 外键与脱敏响应快照，保留至少 24h；幂等记录、业务和审计 MUST 同事务。应用角色不得删除日志、绕开绑定或随意改终态，见 ADR-0040。

@@ -16,6 +16,16 @@ type notifyingBody struct {
 	started chan struct{}
 }
 
+type cancelOnReadBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *cancelOnReadBody) Read(p []byte) (int, error) {
+	b.cancel()
+	return b.ReadCloser.Read(p)
+}
+
 func (b *notifyingBody) Read(p []byte) (int, error) {
 	b.once.Do(func() { close(b.started) })
 	return b.ReadCloser.Read(p)
@@ -115,4 +125,27 @@ func TestSessionDoesNotTranslateListFailureIntoEmptyRepository(t *testing.T) {
 	s, secret := newSession(t, socket, bindingFixture(), acceptAudit)
 	serve(t, s, request(s, secret, http.MethodGet, "locks/", ""), http.StatusBadGateway)
 	serve(t, s, request(s, secret, http.MethodGet, "snapshots/", ""), http.StatusBadGateway)
+}
+
+func TestCanceledRequestStillCommitsBoundedSecurityAudit(t *testing.T) {
+	s, secret, _ := fixture(t)
+	observed := false
+	s.audit = func(ctx context.Context, event Event) error {
+		deadline, bounded := ctx.Deadline()
+		if ctx.Err() != nil || !bounded || time.Until(deadline) > 3*time.Second || event.Action != "denied" {
+			t.Error("client canceled security audit or removed its deadline")
+			return ErrGatewayAudit
+		}
+		observed = true
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r := request(s, secret, http.MethodPost, object("data", "pending"), "short")
+	r.Body = &cancelOnReadBody{ReadCloser: r.Body, cancel: cancel}
+	r.ContentLength = 7
+	s.ServeHTTP(httptest.NewRecorder(), r.WithContext(ctx))
+	if !observed {
+		t.Fatal("canceled request lost its security audit")
+	}
 }

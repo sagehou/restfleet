@@ -146,7 +146,7 @@ export function Repositories({ hosts, canManage, onUnauthorized }: Props) {
           {canManage && <button className="primary-button" disabled={busy} onClick={() => { setCreating(true); setSelected(null); void loadCredentials() }}>创建仓库</button>}
         </div>
       </div>
-      <p className="warning-text" role="status">新仓库暂不可备份；完成初始化、Agent 确认及 Gateway 后端探测后才显示可用。定时备份执行功能仍在接线。</p>
+      <p className="warning-text" role="status">新仓库暂不可备份；完成初始化、Agent 确认及 Gateway 后端探测后才显示可用。</p>
       {message && <p className="error-message" role="alert">{message}</p>}
       {creating && (
         <form aria-label="创建独立仓库" className="credential-form" onSubmit={submit}>

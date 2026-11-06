@@ -10,33 +10,38 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
-	"unicode"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 )
 
 // BackupRequest is the effective, already-validated plan config for one run.
 type BackupRequest struct {
-	Repository      string
-	PasswordFile    string
-	HostID          uuid.UUID
-	PlanID          uuid.UUID
-	Paths           []string
-	ExcludePatterns []string
-	ExcludeCaches   bool
-	OneFileSystem   bool
-	SkipIfUnchanged bool
+	Repository       string
+	PasswordFile     string
+	HostID           uuid.UUID
+	PlanID           uuid.UUID
+	Paths            []string
+	ExcludePatterns  []string
+	ExcludeCaches    bool
+	OneFileSystem    bool
+	SkipIfUnchanged  bool
+	LimitUploadKiB   int
+	LimitDownloadKiB int
+	ReadConcurrency  int
+	CacheDirectory   string
 	// TLSClientCertFile holds the combined client certificate and key for the
 	// Gateway REST endpoint; CACertFile pins the Gateway CA.
 	TLSClientCertFile string
@@ -54,19 +59,8 @@ type PreparedFiles struct {
 // with --files-from-verbatim / --exclude-file so argv stays small and logs never
 // contain the patterns.
 func Prepare(paths, excludes []string) (PreparedFiles, error) {
-	if len(paths) == 0 {
-		return PreparedFiles{}, errors.New("restic: at least one path is required")
-	}
-	for _, path := range paths {
-		if len(path) == 0 || len(path) > 4096 || !filepath.IsAbs(path) || filepath.Clean(path) != path ||
-			strings.IndexFunc(path, unicode.IsControl) >= 0 {
-			return PreparedFiles{}, errors.New("restic: path is not canonical")
-		}
-	}
-	for _, pattern := range excludes {
-		if len(pattern) > 4096 || strings.IndexFunc(pattern, unicode.IsControl) >= 0 {
-			return PreparedFiles{}, errors.New("restic: exclude pattern is invalid")
-		}
+	if err := domain.ValidateBackupPaths(paths, excludes); err != nil {
+		return PreparedFiles{}, errors.New("restic: invalid backup paths or excludes")
 	}
 	directory, err := os.MkdirTemp("", "restfleet-restic-")
 	if err != nil {
@@ -152,6 +146,18 @@ func BackupArgs(request BackupRequest, prepared PreparedFiles) ([]string, error)
 	if request.SkipIfUnchanged {
 		args = append(args, "--skip-if-unchanged")
 	}
+	if request.CacheDirectory != "" {
+		args = append(args, "--cache-dir", request.CacheDirectory)
+	}
+	if request.LimitUploadKiB > 0 {
+		args = append(args, "--limit-upload", strconv.Itoa(request.LimitUploadKiB))
+	}
+	if request.LimitDownloadKiB > 0 {
+		args = append(args, "--limit-download", strconv.Itoa(request.LimitDownloadKiB))
+	}
+	if request.ReadConcurrency > 0 {
+		args = append(args, "--read-concurrency", strconv.Itoa(request.ReadConcurrency))
+	}
 	if request.TLSClientCertFile != "" {
 		args = append(args, "--tls-client-cert", request.TLSClientCertFile)
 	}
@@ -181,19 +187,22 @@ type Event struct {
 	FilesNew    int64
 	DataAdded   int64
 	Message     string
+	Summary     *domain.BackupSummary
 }
 
 type wireEvent struct {
-	MessageType string   `json:"message_type"`
-	PercentDone *float64 `json:"percent_done"`
-	FilesDone   *int64   `json:"files_done"`
-	TotalFiles  *int64   `json:"total_files"`
-	BytesDone   *int64   `json:"bytes_done"`
-	TotalBytes  *int64   `json:"total_bytes"`
-	SnapshotID  string   `json:"snapshot_id"`
-	FilesNew    *int64   `json:"files_new"`
-	DataAdded   *int64   `json:"data_added"`
-	Message     string   `json:"message"`
+	MessageType    string   `json:"message_type"`
+	PercentDone    *float64 `json:"percent_done"`
+	FilesDone      *int64   `json:"files_done"`
+	FilesProcessed *int64   `json:"total_files_processed"`
+	BytesProcessed *int64   `json:"total_bytes_processed"`
+	TotalFiles     *int64   `json:"total_files"`
+	BytesDone      *int64   `json:"bytes_done"`
+	TotalBytes     *int64   `json:"total_bytes"`
+	SnapshotID     string   `json:"snapshot_id"`
+	FilesNew       *int64   `json:"files_new"`
+	DataAdded      *int64   `json:"data_added"`
+	Message        string   `json:"message"`
 }
 
 // ParseEvent decodes one line. The boolean reports whether the line produced a
@@ -204,8 +213,25 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		return Event{}, false, nil
 	}
 	var wire wireEvent
+	var header struct {
+		MessageType string `json:"message_type"`
+	}
+	if json.Unmarshal(line, &header) != nil || header.MessageType == "" {
+		return Event{}, false, errors.New("restic: invalid JSONL message")
+	}
+	if header.MessageType != "status" && header.MessageType != "summary" && header.MessageType != "error" {
+		return Event{}, false, nil
+	}
 	if err := json.Unmarshal(line, &wire); err != nil {
-		return Event{}, false, fmt.Errorf("restic: invalid JSONL message: %w", err)
+		return Event{}, false, errors.New("restic: invalid JSONL message")
+	}
+	for _, counter := range []*int64{wire.FilesDone, wire.TotalFiles, wire.BytesDone, wire.TotalBytes, wire.FilesNew, wire.DataAdded, wire.FilesProcessed, wire.BytesProcessed} {
+		if counter != nil && *counter < 0 {
+			return Event{}, false, errors.New("restic: invalid JSONL counter")
+		}
+	}
+	if wire.PercentDone != nil && (*wire.PercentDone < 0 || *wire.PercentDone > 1) {
+		return Event{}, false, errors.New("restic: invalid JSONL percentage")
 	}
 	switch wire.MessageType {
 	case "status":
@@ -227,7 +253,20 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		}
 		return event, true, nil
 	case "summary":
+		if wire.FilesNew == nil || wire.DataAdded == nil || wire.FilesProcessed == nil || wire.BytesProcessed == nil {
+			return Event{}, false, errors.New("restic: incomplete JSONL summary")
+		}
+		if wire.SnapshotID != "" {
+			if _, err := hex.DecodeString(wire.SnapshotID); err != nil || len(wire.SnapshotID) != 64 || wire.SnapshotID != strings.ToLower(wire.SnapshotID) {
+				return Event{}, false, errors.New("restic: invalid snapshot id")
+			}
+		}
 		event := Event{Type: "summary", SnapshotID: wire.SnapshotID}
+		var summary domain.BackupSummary
+		if json.Unmarshal(line, &summary) != nil || summary.Validate() != nil {
+			return Event{}, false, errors.New("restic: invalid JSONL summary")
+		}
+		event.Summary = &summary
 		if wire.FilesNew != nil {
 			event.FilesNew = *wire.FilesNew
 		}
@@ -237,6 +276,10 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		if wire.FilesDone != nil {
 			event.FilesDone = *wire.FilesDone
 		}
+		if wire.FilesProcessed != nil {
+			event.FilesDone = *wire.FilesProcessed
+		}
+		event.BytesDone = *wire.BytesProcessed
 		return event, true, nil
 	case "error":
 		return Event{Type: "error", Message: wire.Message}, true, nil
@@ -252,6 +295,7 @@ type Run struct {
 	Args      []string
 	Env       []string
 	Stdout    io.Writer
+	Stderr    io.Writer
 	KillGrace time.Duration
 	StderrCap int
 }
@@ -266,12 +310,20 @@ type Result struct {
 var ErrCanceled = errors.New("restic: run canceled")
 
 func (r Run) Execute(ctx context.Context) (Result, error) {
+	if ctx.Err() != nil {
+		return Result{ExitCode: -1}, ErrCanceled
+	}
 	binary := r.Binary
 	if binary == "" {
 		binary = "restic"
 	}
 	command := exec.Command(binary, r.Args...)
-	command.Env = append(os.Environ(), r.Env...)
+	for _, name := range []string{"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TZ"} {
+		if value, ok := os.LookupEnv(name); ok {
+			command.Env = append(command.Env, name+"="+value)
+		}
+	}
+	command.Env = append(command.Env, r.Env...)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if r.Stdout != nil {
 		command.Stdout = r.Stdout
@@ -282,6 +334,9 @@ func (r Run) Execute(ctx context.Context) (Result, error) {
 	}
 	stderr := &limitedBuffer{limit: limit}
 	command.Stderr = stderr
+	if r.Stderr != nil {
+		command.Stderr = io.MultiWriter(stderr, r.Stderr)
+	}
 	if err := command.Start(); err != nil {
 		return Result{}, err
 	}

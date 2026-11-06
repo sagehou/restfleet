@@ -14,6 +14,8 @@
 - API 不返回任何可复用 secret，除创建/轮换时的一次性响应；
 - 长任务返回 `202 Accepted + Operation resource`，不在 HTTP handler 中阻塞执行。
 
+独立 Gateway 的会话契约位于 `api/openapi/gateway-v1.yaml`。`read-sessions` 仅接受中心任务的短期 reader mTLS，MUST 与 Agent `backup-sessions` 角色隔离；数据请求只允许 GET/HEAD。两类会话均不经过 Control API，也不释放中心占用。
+
 ## 2. 认证与 Session
 
 ### 2.1 Bootstrap
@@ -294,20 +296,13 @@ Plan create/update 返回 normalized effective config、warnings 与 status。Se
 GET   /api/v1/backup-operations
 GET   /api/v1/backup-operations/{operation_id}
 GET   /api/v1/backup-operations/{operation_id}/logs
-GET   /api/v1/backup-operations/{operation_id}/events
 POST  /api/v1/backup-operations/{operation_id}/cancel
 POST  /api/v1/backup-operations/{operation_id}/retry
 ```
 
 Filter：type、status、host_id、repo_id、plan_id、created_after/before。
 
-Logs：cursor + stream filter，返回 redacted chunks。可选 SSE endpoint：
-
-```http
-GET /api/v1/backup-operations/{id}/stream
-```
-
-SSE 只传 progress/status/redacted log，不传 secret。断线用 event ID 恢复。
+V1 MUST 通过按 Operation ID 查询完整当前状态及日志 cursor 轮询恢复进度；列表分页刷新 MUST NOT 导致已打开任务停止更新或状态倒退。Logs 返回固定字段的 redacted chunks。SSE MAY 后续增量扩展，扩展时 MUST 定义 event ID 恢复且不能传输 secret；当前验收按 ADR-0043 的完整状态轮询执行。
 
 Cancel 对终态 Operation 返回 409 `OPERATION_ALREADY_TERMINAL`。Retry 创建新 Operation，响应含新 ID。
 
@@ -482,3 +477,9 @@ Filter：actor、action、resource、result、time range。普通 API 不允许 
 - 示例不得含真实 endpoint/credential；
 - contract tests 验证 handler 与 OpenAPI；
 - breaking change 需要新 API major 或兼容迁移窗口。
+
+### 备份操作补充（ADR-0040）
+
+`POST /plans/{id}/backup`、`POST /backup-operations/{id}/retry` 与 `/cancel` MUST 要求单一有效 `Idempotency-Key`。scope MUST 包括当前认证 actor 和具体 route；同 key/body MUST 返回原响应快照，即使计划已暂停或 Operation 已终态，不生成新任务或重复审计；不同 body MUST 返回 409。业务、24h 幂等记录和审计 MUST 同事务。backup/retry MUST 拒绝 body/query，cancel MUST 拒绝 query/未知字段；取消原因仅 hash 用于去重，持久化与发送使用固定 USER_CANCELED。
+
+`GET /api/v1/backup-operations/{operation_id}/logs` MUST 按递增 sequence 返回最多 200 条结构化事件，使用 `after_sequence` 和响应 `next_sequence` 继续读取；ADMIN/VIEWER 可读，未知或重复 query MUST 拒绝。日志不可用于判断数据面清理完成。

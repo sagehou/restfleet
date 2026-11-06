@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -24,7 +25,7 @@ func validSnapshotIndexCode(code string) bool {
 
 // EnqueueSnapshotIndex creates one system-owned read-only index operation.
 // It uses the same repository lock and active-operation guard as SNAPSHOT_LIST.
-func (s *Store) EnqueueSnapshotIndex(ctx context.Context, operation domain.Operation) (domain.Operation, error) {
+func (s *Store) EnqueueSnapshotIndex(ctx context.Context, operation domain.Operation, configurationHash string) (domain.Operation, error) {
 	if operation.RepositoryID == nil || operation.ID.Version() != 7 || operation.RequestedByUserID != nil {
 		return operation, domain.ErrOperationTransition
 	}
@@ -62,7 +63,12 @@ func (s *Store) EnqueueSnapshotIndex(ctx context.Context, operation domain.Opera
 	if credential.Status == "DISABLED" {
 		return operation, domain.ErrCredentialDisabled
 	}
-	if err = ensureNoBackupAdmission(ctx, tx, credential.ID); err != nil {
+	readBinding, err := gatewayReadBinding(ctx, tx, repo, operation.ID, configurationHash)
+	if err != nil {
+		return operation, err
+	}
+	readJSON, err := json.Marshal(readBinding)
+	if err != nil {
 		return operation, err
 	}
 	var now time.Time
@@ -87,35 +93,14 @@ func (s *Store) EnqueueSnapshotIndex(ctx context.Context, operation domain.Opera
 	if err != nil {
 		return operation, err
 	}
-	if _, err = tx.Exec(ctx, `insert into jobs(id,operation_id,queue,status,available_at,payload,created_at,updated_at)
-		values($1,$2,'SNAPSHOT_INDEX','READY',$3,'{}'::jsonb,$3,$3)`, jobID, operation.ID, now); err != nil {
+	if _, err = tx.Exec(ctx, `insert into jobs(id,operation_id,queue,status,available_at,payload,created_at,updated_at,gateway_read_binding)
+		values($1,$2,'SNAPSHOT_INDEX','READY',$3,'{}'::jsonb,$3,$3,$4::jsonb)`, jobID, operation.ID, now, string(readJSON)); err != nil {
 		return operation, err
 	}
 	if err = recordOperationEvent(ctx, tx, operation, "", now); err != nil {
 		return operation, err
 	}
 	return operation, tx.Commit(ctx)
-}
-
-// ReadyRepositoryIDs returns initialized repositories eligible for a periodic
-// index. A caller still checks the active-operation guard before enqueueing.
-func (s *Store) ReadyRepositoryIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
-	rows, err := s.pool.Query(ctx, `select id from repositories
-		where archived_at is null and status='READY' and restic_id is not null
-		order by id limit $1`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	ids := make([]uuid.UUID, 0)
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
 }
 
 // FinishSnapshotIndexJob upserts a complete index in one transaction. Missing
@@ -148,6 +133,14 @@ func (s *Store) FinishSnapshotIndexJob(ctx context.Context, id, owner uuid.UUID,
 	}
 	if !job.RepositoryAvailable {
 		code = "REPOSITORY_UNAVAILABLE"
+	}
+	if job.GatewayRead != nil {
+		if err = ensureReadJobBinding(ctx, tx, job); err != nil {
+			if !errors.Is(err, domain.ErrRepositoryBusy) && !errors.Is(err, domain.ErrRepositoryUnavailable) {
+				return err
+			}
+			code = "REPOSITORY_UNAVAILABLE"
+		}
 	}
 	to := "FAILED"
 	if code == "" {
@@ -209,18 +202,13 @@ func (s *Store) FinishSnapshotIndexJob(ctx context.Context, id, owner uuid.UUID,
 		to = "TIMED_OUT"
 	}
 	job.Operation.ErrorCode = code
-	if err = transitionOperation(ctx, tx, &job.Operation, to, now); err != nil {
+	if err = finishSnapshotReadJob(ctx, tx, &job, to, now); err != nil {
 		return err
 	}
-	if err = ensureCredentialLease(ctx, tx, id, owner); err != nil {
-		return err
-	}
-	if err = finishJobRow(ctx, tx, &job, to, now); err != nil {
-		return err
-	}
-	if _, err = tx.Exec(ctx, "delete from repository_leases where repository_id=$1 and operation_id=$2",
-		job.Repository.ID, job.Operation.ID); err != nil {
-		return err
+	if code == "" && job.GatewayRead != nil {
+		if err = ensureReadJobBinding(ctx, tx, job); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

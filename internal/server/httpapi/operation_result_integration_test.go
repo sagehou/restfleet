@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +14,7 @@ import (
 )
 
 func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
-	store, pool, _, enrolled, repository, _ := deliveryFixture(t, "onedrive")
+	store, pool, b, enrolled, repository, _ := deliveryFixture(t, "onedrive")
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	var userID uuid.UUID
@@ -42,7 +44,58 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 		queued, planID, enrolled.AgentId, hash, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RejectManualOperation(ctx, queued, now); err != nil {
+	// A second enrolled Host may report its own plan but cannot select the ID
+	// of an existing operation belonging to the first Host.
+	otherHost := createTestHost(t, b, "Other operation Host")
+	otherRepository := createTestRepository(t, b, otherHost.Id, repository.StorageCredentialId, "Other operation Repository")
+	token := createTestEnrollmentToken(t, b, otherHost.Id)
+	csr, key := agentCSR(t)
+	clear(key)
+	response := b.request(t, http.MethodPost, "/api/v1/agent-enrollment", enrollRequest(token.Token, csr, uuid.Must(uuid.NewV7())), nil)
+	if response.Code != http.StatusCreated {
+		t.Fatal("second Host enrollment failed")
+	}
+	var other AgentEnrollmentResponse
+	decodeResponse(t, response, &other)
+	otherPlan := uuid.Must(uuid.NewV7())
+	if _, err := pool.Exec(ctx, `insert into plans(id,name,host_id,agent_id,repository_id,template_id,template_revision,
+		effective_config,config_hash,status,desired_revision,accepted_revision,created_at,updated_at)
+		values($1,'other-operation-guard',$2,$3,$4,$5,1,'{}'::jsonb,$6,'ACTIVE',1,0,$7,$7)`,
+		otherPlan, other.HostId, other.AgentId, otherRepository.Id, templateID, hash, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, attack := range []func() error{
+		func() error { return store.MarkOperationDispatched(ctx, other.AgentId, queued) },
+		func() error { return store.RejectManualOperation(ctx, other.AgentId, queued, now) },
+		func() error {
+			return store.UpsertOperationProgress(ctx, domain.BackupOperationProgress{
+				OperationID: queued, PlanID: otherPlan, AgentID: other.AgentId, PlanRevision: 1, ScheduledAt: now, ObservedAt: now, Sequence: 1, Stage: "backup"})
+		},
+		func() error {
+			return store.UpsertOperationResult(ctx, domain.BackupOperationResult{
+				OperationID: queued, PlanID: otherPlan, AgentID: other.AgentId, PlanRevision: 1, ScheduledAt: now, FinishedAt: now, Status: "SUCCEEDED", SnapshotID: strings.Repeat("d", 64)})
+		},
+		func() error {
+			return store.UpsertOperationResult(ctx, domain.BackupOperationResult{
+				OperationID: queued, PlanID: planID, AgentID: enrolled.AgentId, PlanRevision: 2, ScheduledAt: now, FinishedAt: now, Status: "FAILED"})
+		},
+	} {
+		if err := attack(); !errors.Is(err, domain.ErrPlanBindingInvalid) {
+			t.Fatalf("cross-bound operation accepted: %v", err)
+		}
+	}
+	protected, err := store.BackupOperation(ctx, queued)
+	if err != nil || protected.Status != "QUEUED" || protected.StartedAt != nil || protected.FinishedAt != nil {
+		t.Fatalf("foreign report changed operation: %+v %v", protected, err)
+	}
+	var leaked int
+	if err := pool.QueryRow(ctx, "select count(*) from backup_operation_events where operation_id=$1", queued).Scan(&leaked); err != nil || leaked != 0 {
+		t.Fatalf("foreign event persisted: %d %v", leaked, err)
+	}
+	if err := pool.QueryRow(ctx, "select count(*) from snapshots where operation_id=$1", queued).Scan(&leaked); err != nil || leaked != 0 {
+		t.Fatalf("foreign snapshot persisted: %d %v", leaked, err)
+	}
+	if err := store.RejectManualOperation(ctx, enrolled.AgentId, queued, now); err != nil {
 		t.Fatal(err)
 	}
 	var status string
@@ -78,6 +131,88 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 	}
 	if health != "HEALTHY" {
 		t.Fatalf("late result changed plan health = %s", health)
+	}
+	// An older offline failure must not regress the newer success or its health.
+	parentID := uuid.Must(uuid.NewV7())
+	parentResult := domain.BackupOperationResult{OperationID: parentID, PlanID: planID, AgentID: enrolled.AgentId, PlanRevision: 1,
+		ScheduledAt: now.Add(-time.Hour), FinishedAt: now.Add(-time.Minute), Status: "FAILED", ErrorCode: "REPOSITORY_LOCKED", ExitCode: 11, Attempt: 1}
+	if err := store.UpsertOperationResult(ctx, parentResult); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "select backup_health from plans where id=$1", planID).Scan(&health); err != nil || health != "HEALTHY" {
+		t.Fatalf("offline old failure regressed health: %s %v", health, err)
+	}
+	childID := uuid.Must(uuid.NewV7())
+	childResult := domain.BackupOperationResult{OperationID: childID, PlanID: planID, AgentID: enrolled.AgentId, PlanRevision: 1,
+		ScheduledAt: now, FinishedAt: now.Add(time.Second), Status: "SUCCEEDED", ParentOperationID: &parentID, RootOperationID: &parentID, Attempt: 2,
+		FilesNew: 2, DataAdded: 20, Summary: &domain.BackupSummary{FilesNew: 2, DataAdded: 20, TotalFilesProcessed: 9, TotalBytesProcessed: 100}}
+	if err := store.UpsertOperationResult(ctx, childResult); err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.BackupOperation(ctx, childID)
+	if err != nil || child.ParentOperationID == nil || *child.ParentOperationID != parentID || child.Attempt != 2 || child.Summary == nil || child.FilesDone != 9 || child.BytesDone != 100 {
+		t.Fatalf("retry result/stats lost: %+v %v", child, err)
+	}
+	for _, mutate := range []func(*domain.BackupOperationResult){
+		func(r *domain.BackupOperationResult) { r.AgentID = other.AgentId; r.PlanID = otherPlan },
+		func(r *domain.BackupOperationResult) { r.Attempt = 5 },
+		func(r *domain.BackupOperationResult) { r.RootOperationID = &queued },
+	} {
+		attack := childResult
+		attack.OperationID = uuid.Must(uuid.NewV7())
+		mutate(&attack)
+		if err := store.UpsertOperationResult(ctx, attack); !errors.Is(err, domain.ErrPlanBindingInvalid) {
+			t.Fatalf("forged retry chain accepted: %v", err)
+		}
+	}
+	for _, test := range []struct {
+		code  string
+		retry bool
+	}{
+		{"GATEWAY_UNAVAILABLE", true},
+		{"GATEWAY_RATE_LIMITED", true},
+		{"GATEWAY_CLEANUP_UNCONFIRMED", false},
+		{"GATEWAY_SESSION_FAILED", false},
+	} {
+		code := test.code
+		parent := parentResult
+		parent.OperationID, parent.ErrorCode, parent.ExitCode = uuid.Must(uuid.NewV7()), code, 1
+		if err := store.UpsertOperationResult(ctx, parent); err != nil {
+			t.Fatal(err)
+		}
+		child := childResult
+		child.OperationID = uuid.Must(uuid.NewV7())
+		child.ParentOperationID, child.RootOperationID = &parent.OperationID, &parent.OperationID
+		err := store.UpsertOperationResult(ctx, child)
+		if test.retry {
+			if err != nil {
+				t.Fatalf("verified transient retry was rejected: %s %v", code, err)
+			}
+		} else if !errors.Is(err, domain.ErrPlanBindingInvalid) {
+			t.Fatalf("uncertain Gateway failure gained retry permission: %s %v", code, err)
+		}
+		entry := domain.BackupLogEntry{Sequence: 1, ObservedAt: now, Section: "backup", Level: "ERROR", Code: code}
+		if ack, err := store.AppendOperationLogs(ctx, enrolled.AgentId, parent.OperationID, []domain.BackupLogEntry{entry}); err != nil || ack != 1 {
+			t.Fatalf("fixed Gateway classification could not be reported: %s %v", code, err)
+		}
+	}
+	progressID := uuid.Must(uuid.NewV7())
+	progress := domain.BackupOperationProgress{OperationID: progressID, PlanID: planID, AgentID: enrolled.AgentId,
+		PlanRevision: 1, ScheduledAt: now, ObservedAt: now, Sequence: 2, Stage: "backup", FilesDone: 8}
+	if err := store.UpsertOperationProgress(ctx, progress); err != nil {
+		t.Fatal(err)
+	}
+	progress.Sequence, progress.FilesDone = 1, 1
+	if err := store.UpsertOperationProgress(ctx, progress); err != nil {
+		t.Fatal(err)
+	}
+	progress.Sequence = 2
+	if err := store.UpsertOperationProgress(ctx, progress); err != nil {
+		t.Fatal(err)
+	}
+	current, err := store.BackupOperation(ctx, progressID)
+	if err != nil || current.FilesDone != 8 {
+		t.Fatalf("stale/duplicate progress regressed counters: %+v %v", current, err)
 	}
 }
 

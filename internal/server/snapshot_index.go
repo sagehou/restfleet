@@ -39,32 +39,39 @@ func (c *ControlPlane) RunSnapshotIndexer(ctx context.Context, interval time.Dur
 }
 
 func (c *ControlPlane) indexReadyRepositories(ctx context.Context) error {
-	ids, err := c.store.ReadyRepositoryIDs(ctx, 200)
-	if err != nil {
-		return err
-	}
-	for _, repositoryID := range ids {
-		operationID, err := uuid.NewV7()
+	after := uuid.Nil
+	for {
+		repositories, err := c.Repositories(ctx, after, 200)
 		if err != nil {
 			return err
 		}
-		repositoryID := repositoryID
-		_, err = c.store.EnqueueSnapshotIndex(ctx, domain.Operation{ID: operationID, RepositoryID: &repositoryID})
-		switch {
-		case err == nil,
-			errors.Is(err, domain.ErrRepositoryBusy),
-			errors.Is(err, domain.ErrRepositoryUnavailable),
-			errors.Is(err, domain.ErrCredentialDisabled):
-			continue
-		default:
-			return err
+		for _, repository := range repositories {
+			after = repository.ID
+			if repository.Status != "READY" {
+				continue
+			}
+			operationID, err := uuid.NewV7()
+			if err != nil {
+				return err
+			}
+			id := repository.ID
+			_, err = c.store.EnqueueSnapshotIndex(ctx, domain.Operation{ID: operationID, RepositoryID: &id}, c.credentialConfigurationHash())
+			switch {
+			case err == nil, errors.Is(err, domain.ErrRepositoryBusy), errors.Is(err, domain.ErrRepositoryUnavailable), errors.Is(err, domain.ErrCredentialDisabled):
+				continue
+			default:
+				return err
+			}
+		}
+		if len(repositories) < 200 {
+			return nil
 		}
 	}
-	return nil
 }
 
 func resolveSnapshotPlan(tags []string) *uuid.UUID {
 	managed := false
+	ambiguous := false
 	var planID *uuid.UUID
 	for _, tag := range tags {
 		switch {
@@ -72,17 +79,19 @@ func resolveSnapshotPlan(tags []string) *uuid.UUID {
 			managed = true
 		case strings.HasPrefix(tag, "restfleet:plan:"):
 			parsed, err := uuid.Parse(strings.TrimPrefix(tag, "restfleet:plan:"))
-			if err == nil && parsed.Version() == 7 && parsed.Variant() == uuid.RFC4122 {
+			if err == nil && parsed.Version() == 7 && parsed.Variant() == uuid.RFC4122 && strings.TrimPrefix(tag, "restfleet:plan:") == parsed.String() {
 				candidate := parsed
 				if planID == nil {
 					planID = &candidate
 				} else if *planID != candidate {
-					planID = nil
+					ambiguous = true
 				}
+			} else {
+				ambiguous = true
 			}
 		}
 	}
-	if !managed {
+	if !managed || ambiguous {
 		return nil
 	}
 	return planID

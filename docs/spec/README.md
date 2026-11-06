@@ -2,6 +2,12 @@
 
 本目录是 RestFleet V1 的规范来源。文档以“实现者无需补猜关键行为”为目标，涵盖产品、架构、安全、协议、数据、UI 与验收。
 
+## 规范与实现状态
+
+本目录定义产品目标、行为契约与安全边界，不是功能完成清单。当前实现和验收证据见 [当前开发状态](../development/current-state.md)，三个交付阶段、唯一 ACTIVE 与主 issue 关联见 [实施计划](../../IMPLEMENTATION_PLAN.md)；旧 M0–M12 只用于[范围与验收追溯](../development/implementation-plan-m0-m12.md)。2026-11-06 的交叉核对见 [仓库复核](../development/repository-review-2026-11-06.md)。
+
+部分章节保留早期批次的“尚未接线”等进度说明，MUST 结合后续 ADR 与实现证据核对，不能据此重复开工，也不能因已有源码就认定验收通过。进度记录 MUST NOT 放宽 AGENTS 或规范的安全要求；仍有冲突时 MUST 同批修订相关约定或请求决定。
+
 ## 规范用语
 
 - **MUST / 必须**：实现不可偏离。

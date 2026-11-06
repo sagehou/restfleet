@@ -78,6 +78,8 @@ V1 统一 `--group-by tags`，并在 retention 中使用相同分组逻辑。用
 
 ## 4. Pre/Post Hook
 
+Agent MUST 通过本机 `--hooks-file` 读取 version=1 的受保护 JSON allowlist，文件及父目录归 Agent 服务用户所有，权限分别为 0400/0600、0700。`hooks` 是至多 64 项的数组，每项包含 UUIDv7 `id`、规范绝对路径 `executable`、本机 `args` 和 1..3600 的 `timeout_seconds`。MUST 拒绝 symlink、重复 ID、未知字段、过长参数和可被其他用户写入的 executable。executable 及祖先目录 MUST 属于 root 或 Agent 服务用户，祖先 MUST 不可由其他用户写入；root 所有且带 sticky bit 的临时目录 MAY 作为受保护子目录的祖先。执行前 MUST 重验，防止 allowlist 接受后放宽权限。中心仅下发每阶段至多 16 个 ID；未知本机 ID MUST 拒绝配置，保留 last-known-good。
+
 执行顺序：
 
 ```text
@@ -97,6 +99,12 @@ acquire plan lock
 - Dump 产物必须位于 Plan 明确包含的路径；
 - Agent 不自动猜测数据库一致性方案。
 
+Hook MUST 直接通过 argv 执行，并沿整个进程组执行 timeout/cancel。输出 MUST 只产生固定结果的独立日志 section，不上传原始 stdout/stderr、路径或参数；秘密 MUST NOT 放入 Hook 参数。
+
+### 4.1 资源限制
+
+`resource_limits` MUST 仅接受 `limit_upload_kib`、`limit_download_kib`（0..1073741824）、`read_concurrency`（0..64）、`max_duration_seconds`（0..86400）。非整数、未知键和越界值 MUST 拒绝；0/省略表示 Restic 默认或 Operation 的既有 deadline。带宽/读取并发 MUST 分别接入 Restic 对应参数；duration MUST 同时约束 Hooks 和 backup，并且不能延长原 deadline。MUST 使用 Agent 私有 cache directory。
+
 ## 5. Backup 结果
 
 至少保存：
@@ -113,6 +121,8 @@ exit_code
 ```
 
 Restic JSON `summary` 是成功输出的必要证据。未知字段忽略；缺失关键字段按 engine output error 处理。
+
+Restic 的 JSON `error` 事件来自 stderr，Agent MUST 分别读取 stdout 的进度/summary 和 stderr 的固定类型计数，并在子进程完全退出后合并 warning_count，避免并发修改 summary。stderr 单行缓冲 MUST 不超过 1MiB；非 JSON、未知消息和超限行 MUST NOT 作为日志上传或用于猜测可重试错误。exit 3 的 warning_count MUST 至少为 1。
 
 ## 6. Retry
 
@@ -133,6 +143,10 @@ Restic JSON `summary` 是成功输出的必要证据。未知字段忽略；缺�
 
 每次 retry 创建新 Operation，关联 parent/root operation；遵守 Plan deadline，避免下一计划窗口重叠。
 
+网络、Gateway 429/5xx 和 provider 限流 MUST 采用可信传输或 Gateway 的固定响应分类，MUST NOT 从任意 stderr 猜测。首次 POST 连接前的明确 dial 暂态失败可重试；请求可能已被接收时 MUST 先以原 ID 获得清理 204。后端只读 429、500/502/503/504 或网络故障 MAY 在清理响应中给出固定分类；权限拒绝、未知故障、写入/删除不确定及已提交 snapshot MUST 抑制提示。Agent 仅对 exit 1 且没有 summary/snapshot/源读取错误的失败采用该提示，不能把已有备份结果重跑。rclone 折叠的错误不声称能识别具体 provider 原因；旧 Gateway 的数据路径失败无提示时保守失败。见 ADR-0042。
+
+`retry_policy` MUST 仅接受 `max_attempts`（0..10）、`initial_backoff_seconds`、`max_backoff_seconds`（0..86400）。0/省略分别采用 1 次、60s、1800s；initial MUST 不超过 maximum。指数退避 MUST 有上限；默认不启用自动重试。自动 retry MUST 持久化新 ID、parent/root、attempt、等待时刻和 deadline；等待期间保留同一 I/O 槽位与取消上下文，崩溃后 MUST 报告 LOST，不能静默重跑。配置变更/暂停或下一计划窗口到来 MUST 停止重试链。结果补报 MUST 先得到 parent 的持久 ACK 再补报 child，保持外键与顺序。
+
 ## 7. Snapshot 索引
 
 ### 7.1 Metadata
@@ -144,6 +158,10 @@ restic snapshots --json
 ```
 
 解析完整 snapshot ID、tags、paths、summary 和 program_version。Managed tags 用于映射 Host/Plan。无法映射的 snapshot 作为 `UNMANAGED` 展示，绝不能自动 retention。
+
+周期索引 MUST 复用仓库 API 的动态 READY 投影，按 UUID cursor 遍历全部仓库，每页最多 200 项；MUST NOT 只查持久化 `status='READY'` 或固定第一页。
+
+有未释放 Gateway 占用时，snapshot index/list MUST 经当前 owner 的短期 mTLS read-session 执行，Restic 使用 `--no-lock` 与受保护 TLS/密码文件。worker MUST NOT 读取云端配置或传入 OAuth refresh callback；Gateway 继续使用原材料与 token watcher，并与备份/探测串行。会话最长 5min，且不超过原授权、占用或证书期限。中心未知/陈旧绑定、撤回/到期或旧 Gateway 不支持 read-session 时 MUST 失败，不得回退启动第二个 rclone。没有占用的中心读取仍 MUST 通过原仓库 lease 与无占用检查。见 ADR-0041。
 
 ### 7.2 文件树
 

@@ -40,7 +40,7 @@ func lockProvisionRepository(ctx context.Context, tx pgx.Tx, id uuid.UUID) (doma
 
 func acquireProvisionLease(ctx context.Context, tx pgx.Tx, job domain.CredentialJob, now time.Time) error {
 	r := job.Repository
-	if err := ensureNoBackupAdmission(ctx, tx, r.StorageCredentialID); err != nil {
+	if err := ensureReadJobBinding(ctx, tx, job); err != nil {
 		return err
 	}
 	// The repository advisory lock coordinates future backup/maintenance lease

@@ -56,7 +56,7 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 		CredentialRuntimeDir: envOrDefault("RESTFLEET_CREDENTIAL_RUNTIME_DIR", "/run/restfleet/credentials"),
 		RcloneBinary:         envOrDefault("RESTFLEET_RCLONE_BINARY", "/usr/local/bin/rclone"),
 		ResticBinary:         envOrDefault("RESTFLEET_RESTIC_BINARY", "/usr/local/bin/restic"),
-		GatewayReplayPeerUID:  uint32(os.Geteuid()),
+		GatewayReplayPeerUID: uint32(os.Geteuid()),
 	}
 	if config.Environment != "production" && config.Environment != "development" && config.Environment != "test" {
 		return RuntimeConfig{}, errors.New("RESTFLEET_ENV must be production, development, or test")

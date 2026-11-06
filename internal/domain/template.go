@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata" // Keep IANA zones available in static binaries and scratch images.
 	"unicode"
 
 	"github.com/google/uuid"
@@ -29,24 +30,22 @@ type TemplateError struct {
 
 func (e *TemplateError) Error() string { return e.Field + ": " + e.Code }
 
-// TemplateConfig is one immutable revision body. RetryPolicy and ResourceLimits
-// stay opaque so the server stores exactly what a later scheduler understands;
-// every other field is validated before the revision is written.
+// TemplateConfig is one immutable, validated revision body.
 type TemplateConfig struct {
-	Paths               []string       `json:"paths"`
-	ExcludePatterns     []string       `json:"exclude_patterns"`
-	ExcludeCaches       bool           `json:"exclude_caches"`
-	OneFileSystem       bool           `json:"one_file_system"`
-	ScheduleCron        string         `json:"schedule_cron"`
-	ScheduleTimezone    string         `json:"schedule_timezone"`
-	JitterSeconds       int            `json:"jitter_seconds"`
-	MisfireGraceSeconds int            `json:"misfire_grace_seconds"`
-	RetryPolicy         map[string]any `json:"retry_policy"`
-	RetentionPolicyID   *uuid.UUID     `json:"retention_policy_id"`
-	PreHookIDs          []uuid.UUID    `json:"pre_hook_ids"`
-	PostHookIDs         []uuid.UUID    `json:"post_hook_ids"`
-	ResourceLimits      map[string]any `json:"resource_limits"`
-	EnabledByDefault    bool           `json:"enabled_by_default"`
+	Paths               []string              `json:"paths"`
+	ExcludePatterns     []string              `json:"exclude_patterns"`
+	ExcludeCaches       bool                  `json:"exclude_caches"`
+	OneFileSystem       bool                  `json:"one_file_system"`
+	ScheduleCron        string                `json:"schedule_cron"`
+	ScheduleTimezone    string                `json:"schedule_timezone"`
+	JitterSeconds       int                   `json:"jitter_seconds"`
+	MisfireGraceSeconds int                   `json:"misfire_grace_seconds"`
+	RetryPolicy         *BackupRetryPolicy    `json:"retry_policy"`
+	RetentionPolicyID   *uuid.UUID            `json:"retention_policy_id"`
+	PreHookIDs          []uuid.UUID           `json:"pre_hook_ids"`
+	PostHookIDs         []uuid.UUID           `json:"post_hook_ids"`
+	ResourceLimits      *BackupResourceLimits `json:"resource_limits"`
+	EnabledByDefault    bool                  `json:"enabled_by_default"`
 }
 
 // CanonicalJSON returns the deterministic encoding used for config_hash.
@@ -81,19 +80,8 @@ func (t Template) Archived() bool { return t.ArchivedAt != nil }
 // Validate checks one revision body before persistence. It rejects fields the
 // Agent could not schedule deterministically instead of accepting them softly.
 func (c TemplateConfig) Validate() error {
-	if len(c.Paths) == 0 {
-		return &TemplateError{Field: "paths", Code: "REQUIRED"}
-	}
-	for i, path := range c.Paths {
-		if strings.TrimSpace(path) == "" || len(path) > 4096 || !filepath.IsAbs(path) ||
-			filepath.Clean(path) != path || strings.IndexFunc(path, unicode.IsControl) >= 0 {
-			return &TemplateError{Field: fmt.Sprintf("paths.%d", i), Code: "INVALID"}
-		}
-	}
-	for i, pattern := range c.ExcludePatterns {
-		if len(pattern) > 4096 || strings.IndexFunc(pattern, unicode.IsControl) >= 0 {
-			return &TemplateError{Field: fmt.Sprintf("exclude_patterns.%d", i), Code: "INVALID"}
-		}
+	if err := ValidateBackupPaths(c.Paths, c.ExcludePatterns); err != nil {
+		return err
 	}
 	if err := validateCron(c.ScheduleCron); err != nil {
 		return &TemplateError{Field: "schedule_cron", Code: "INVALID"}
@@ -112,6 +100,25 @@ func (c TemplateConfig) Validate() error {
 	}
 	if c.RetentionPolicyID != nil && *c.RetentionPolicyID == uuid.Nil {
 		return &TemplateError{Field: "retention_policy_id", Code: "INVALID"}
+	}
+	return c.BackupExecution().Validate()
+}
+
+// ValidateBackupPaths is shared by API config, Agent activation and execution.
+func ValidateBackupPaths(paths, excludes []string) error {
+	if len(paths) == 0 {
+		return &TemplateError{Field: "paths", Code: "REQUIRED"}
+	}
+	for i, path := range paths {
+		if strings.TrimSpace(path) == "" || len(path) > 4096 || !filepath.IsAbs(path) ||
+			filepath.Clean(path) != path || strings.IndexFunc(path, unicode.IsControl) >= 0 {
+			return &TemplateError{Field: fmt.Sprintf("paths.%d", i), Code: "INVALID"}
+		}
+	}
+	for i, pattern := range excludes {
+		if len(pattern) > 4096 || strings.IndexFunc(pattern, unicode.IsControl) >= 0 {
+			return &TemplateError{Field: fmt.Sprintf("exclude_patterns.%d", i), Code: "INVALID"}
+		}
 	}
 	return nil
 }

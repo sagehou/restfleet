@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 
 	"github.com/google/uuid"
@@ -77,14 +76,7 @@ func (c *ControlPlane) CreatePlan(ctx context.Context, name string, hostID, agen
 		return domain.Plan{}, err
 	}
 	audit.Changes = json.RawMessage(`{"revision":1}`)
-	created, err := c.store.CreatePlan(ctx, plan, audit)
-	if err != nil {
-		return domain.Plan{}, err
-	}
-	if err := c.republishPlanState(ctx, created.AgentID); err != nil {
-		return domain.Plan{}, err
-	}
-	return created, nil
+	return c.store.CreatePlan(ctx, plan, audit)
 }
 
 // UpdatePlan appends a desired revision. A change to the config or template
@@ -107,6 +99,7 @@ func (c *ControlPlane) UpdatePlan(ctx context.Context, id uuid.UUID, expectedRev
 	if err != nil {
 		return domain.Plan{}, err
 	}
+	expectedStatus := current.Status
 	if name != nil {
 		trimmed := strings.TrimSpace(*name)
 		if !validTemplateText(trimmed, 1, 128) {
@@ -165,14 +158,7 @@ func (c *ControlPlane) UpdatePlan(ctx context.Context, id uuid.UUID, expectedRev
 		return domain.Plan{}, err
 	}
 	audit.Changes = changes
-	updated, err := c.store.SavePlanRevision(ctx, current, expectedRevision, audit)
-	if err != nil {
-		return domain.Plan{}, err
-	}
-	if err := c.republishPlanState(ctx, updated.AgentID); err != nil {
-		return domain.Plan{}, err
-	}
-	return updated, nil
+	return c.store.SavePlanRevision(ctx, current, expectedRevision, expectedStatus, audit)
 }
 
 // PausePlan stops future scheduling without cancelling anything already running.
@@ -218,6 +204,7 @@ func (c *ControlPlane) planStatus(ctx context.Context, id uuid.UUID, expectedRev
 	if !permitted {
 		return domain.Plan{}, domain.ErrPlanStateInvalid
 	}
+	expectedStatus := plan.Status
 	plan.Status = target
 	plan.UpdatedAt = c.clock().UTC()
 	audit, err := c.userAudit(action, "PLAN", id, actor.ID, meta, target)
@@ -229,14 +216,7 @@ func (c *ControlPlane) planStatus(ctx context.Context, id uuid.UUID, expectedRev
 		return domain.Plan{}, err
 	}
 	audit.Changes = changes
-	updated, err := c.store.UpdatePlanStatus(ctx, plan, expectedRevision, audit)
-	if err != nil {
-		return domain.Plan{}, err
-	}
-	if err := c.republishPlanState(ctx, updated.AgentID); err != nil {
-		return domain.Plan{}, err
-	}
-	return updated, nil
+	return c.store.UpdatePlanStatus(ctx, plan, expectedRevision, expectedStatus, audit)
 }
 
 // ApplyTemplateToPlans moves the named plans to one template revision. Every
@@ -280,6 +260,7 @@ func (c *ControlPlane) ApplyTemplateToPlans(ctx context.Context, templateID uuid
 		case plan.DesiredRevision != target.ExpectedRevision:
 			result.Status, result.Code = "CONFLICT", "REVISION_CONFLICT"
 		default:
+			expectedStatus := plan.Status
 			config, mergeErr := domain.MergePlanConfig(base, plan.Overrides)
 			if mergeErr != nil {
 				result.Status, result.Code = "CONFLICT", "INVALID_CONFIG"
@@ -301,29 +282,14 @@ func (c *ControlPlane) ApplyTemplateToPlans(ctx context.Context, templateID uuid
 			}
 			changes, _ := json.Marshal(map[string]int64{"revision": target.ExpectedRevision + 1, "template_revision": templateRevision})
 			audit.Changes = changes
-			if _, saveErr := c.store.SavePlanRevision(ctx, plan, target.ExpectedRevision, audit); saveErr != nil {
+			if _, saveErr := c.store.SavePlanRevision(ctx, plan, target.ExpectedRevision, expectedStatus, audit); saveErr != nil {
 				result.Status = "CONFLICT"
 				result.Code = "SAVE_FAILED"
 				break
-			}
-			if publishErr := c.republishPlanState(ctx, plan.AgentID); publishErr != nil {
-				return results, publishErr
 			}
 			result.Status, result.Code = "APPLIED", ""
 		}
 		results = append(results, result)
 	}
 	return results, nil
-}
-
-// republishPlanState refreshes the Agent snapshot after a plan mutation. An
-// inactive Agent keeps its last snapshot until it enrols or is reactivated.
-func (c *ControlPlane) republishPlanState(ctx context.Context, agentID uuid.UUID) error {
-	if err := c.store.PublishAgentDesiredState(ctx, agentID, c.clock().UTC()); err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return nil
-		}
-		return err
-	}
-	return nil
 }

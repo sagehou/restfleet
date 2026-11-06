@@ -1,7 +1,10 @@
 package agentgrpc
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"io"
 	"slices"
 	"strings"
 	"time"
@@ -83,13 +86,13 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			ConnectionId: connectionID.String(), SelectedProtocolVersion: selected,
 			ServerTime: timestamppb.Now(), HeartbeatIntervalSeconds: s.heartbeatSeconds,
 			DesiredConfigRevision: agent.DesiredRevision, MinimumAgentVersion: "0.1.0",
-			ServerCapabilities: []string{domain.JobResultAckCapability, domain.JobCancelCapability},
+			ServerCapabilities: []string{domain.JobResultAckCapability, domain.JobCancelCapability, domain.BackupLogsCapability},
 		}},
 	}); err != nil {
 		return err
 	}
 	if hello.GetAcceptedConfigRevision() < agent.DesiredRevision {
-		if err := s.sendDesiredState(stream, agentID, selected, &serverSequence); err != nil {
+		if err := s.sendDesiredState(stream, agentID, selected, &serverSequence, hello.GetCapabilities()...); err != nil {
 			return err
 		}
 	}
@@ -98,6 +101,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 	identityCapable := slices.Contains(hello.GetCapabilities(), domain.RepositoryIdentityCapability)
 	resultAckCapable := slices.Contains(hello.GetCapabilities(), domain.JobResultAckCapability)
 	cancelCapable := slices.Contains(hello.GetCapabilities(), domain.JobCancelCapability)
+	logsCapable := slices.Contains(hello.GetCapabilities(), domain.BackupLogsCapability)
 	if credentialCapable {
 		if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, true, identityCapable); err != nil {
 			return err
@@ -129,7 +133,8 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				s.observeHeartbeatResult("rejected")
 				return s.invalidMessage(stream, meta, "HEARTBEAT_INVALID")
 			}
-			if _, err := s.control.RecordAgentHeartbeat(stream.Context(), heartbeat); err != nil {
+			updatedAgent, err := s.control.RecordAgentHeartbeat(stream.Context(), heartbeat)
+			if err != nil {
 				s.observeHeartbeatResult("rejected")
 				var validation *control.ValidationError
 				if errors.As(err, &validation) {
@@ -141,6 +146,11 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				return status.Error(codes.Unavailable, "heartbeat persistence failed")
 			}
 			s.observeHeartbeatResult("accepted")
+			if heartbeat.AcceptedRevision < updatedAgent.DesiredRevision {
+				if err := s.sendDesiredState(stream, agentID, selected, &serverSequence, hello.GetCapabilities()...); err != nil {
+					return err
+				}
+			}
 			if credentialCapable {
 				if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, false, identityCapable); err != nil {
 					return err
@@ -179,7 +189,12 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			progress := message.GetJobProgress()
 			operationID, opErr := uuid.Parse(progress.GetOperationId())
 			planID, planErr := uuid.Parse(progress.GetPlanId())
-			if opErr != nil || planErr != nil || progress.GetScheduledAt() == nil || progress.GetObservedAt() == nil {
+			if opErr != nil || planErr != nil || progress.GetScheduledAt() == nil || progress.GetObservedAt() == nil ||
+				progress.GetScheduledAt().CheckValid() != nil || progress.GetObservedAt().CheckValid() != nil {
+				return s.invalidMessage(stream, meta, "JOB_PROGRESS_INVALID")
+			}
+			parent, root, err := reportedOperationLinks(progress.GetParentOperationId(), progress.GetRootOperationId(), progress.GetAttempt())
+			if err != nil {
 				return s.invalidMessage(stream, meta, "JOB_PROGRESS_INVALID")
 			}
 			if err := s.control.RecordOperationProgress(stream.Context(), domain.BackupOperationProgress{
@@ -188,26 +203,78 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				Sequence: progress.GetSequence(), Stage: progress.GetStage(),
 				FilesDone: progress.GetFilesDone(), TotalFiles: progress.GetTotalFiles(),
 				BytesDone: progress.GetBytesDone(), TotalBytes: progress.GetTotalBytes(),
-				ObservedAt: progress.GetObservedAt().AsTime().UTC(),
+				ObservedAt:        progress.GetObservedAt().AsTime().UTC(),
+				ParentOperationID: parent, RootOperationID: root, Attempt: int(progress.GetAttempt()),
 			}); err != nil {
+				var validation *control.ValidationError
+				if errors.As(err, &validation) || errors.Is(err, domain.ErrPlanBindingInvalid) || errors.Is(err, domain.ErrNotFound) {
+					return s.invalidMessage(stream, meta, "JOB_PROGRESS_INVALID")
+				}
 				return status.Error(codes.Unavailable, "job progress persistence failed")
+			}
+		case message.GetJobLogChunk() != nil:
+			chunk := message.GetJobLogChunk()
+			id, err := uuid.Parse(chunk.GetOperationId())
+			if !logsCapable || err != nil || !domain.ValidOperationID(id) || len(chunk.GetEntriesJson()) > domain.MaxBackupLogChunkBytes {
+				return s.invalidMessage(stream, meta, "JOB_LOG_INVALID")
+			}
+			var entries []domain.BackupLogEntry
+			decoder := json.NewDecoder(bytes.NewReader(chunk.GetEntriesJson()))
+			decoder.DisallowUnknownFields()
+			if decoder.Decode(&entries) != nil || len(entries) == 0 || len(entries) > 200 || entries[0].Sequence != chunk.GetFirstSequence() || entries[len(entries)-1].Sequence != chunk.GetLastSequence() {
+				return s.invalidMessage(stream, meta, "JOB_LOG_INVALID")
+			}
+			var extra any
+			if decoder.Decode(&extra) != io.EOF {
+				return s.invalidMessage(stream, meta, "JOB_LOG_INVALID")
+			}
+			ack, err := s.control.RecordOperationLogs(stream.Context(), agentID, id, entries)
+			if err != nil {
+				var validation *control.ValidationError
+				if errors.As(err, &validation) || errors.Is(err, domain.ErrPlanBindingInvalid) || errors.Is(err, domain.ErrOperationTransition) {
+					return s.invalidMessage(stream, meta, "JOB_LOG_INVALID")
+				}
+				return status.Error(codes.Unavailable, "job log persistence failed")
+			}
+			if err := sendServerMessage(stream, &serverSequence, selected, &agentv1.ServerToAgent{Payload: &agentv1.ServerToAgent_JobLogAccepted{JobLogAccepted: &agentv1.JobLogAccepted{OperationId: id.String(), ThroughSequence: ack}}}); err != nil {
+				return err
 			}
 		case message.GetJobResult() != nil:
 			result := message.GetJobResult()
 			operationID, opErr := uuid.Parse(result.GetOperationId())
 			planID, planErr := uuid.Parse(result.GetPlanId())
-			if opErr != nil || planErr != nil || result.GetScheduledAt() == nil || result.GetFinishedAt() == nil {
+			if opErr != nil || planErr != nil || result.GetScheduledAt() == nil || result.GetFinishedAt() == nil ||
+				result.GetScheduledAt().CheckValid() != nil || result.GetFinishedAt().CheckValid() != nil ||
+				result.GetExitCode() < -1 || result.GetExitCode() > 255 {
 				return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
+			}
+			parent, root, err := reportedOperationLinks(result.GetParentOperationId(), result.GetRootOperationId(), result.GetAttempt())
+			if err != nil {
+				return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
+			}
+			var summary *domain.BackupSummary
+			if raw := result.GetSummaryJson(); len(raw) > 0 {
+				decoder := json.NewDecoder(bytes.NewReader(raw))
+				decoder.DisallowUnknownFields()
+				if len(raw) > 16<<10 || decoder.Decode(&summary) != nil || summary == nil || summary.Validate() != nil {
+					return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
+				}
+				var extra any
+				if decoder.Decode(&extra) != io.EOF {
+					return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
+				}
 			}
 			if err := s.control.RecordOperationResult(stream.Context(), domain.BackupOperationResult{
 				OperationID: operationID, PlanID: planID, AgentID: agentID,
 				PlanRevision: result.GetPlanRevision(), ScheduledAt: result.GetScheduledAt().AsTime().UTC(),
 				Status: result.GetStatus(), ErrorCode: result.GetErrorCode(), ExitCode: int(result.GetExitCode()),
 				SnapshotID: result.GetSnapshotId(), FilesNew: result.GetFilesNew(), DataAdded: result.GetDataAdded(),
-				FinishedAt: result.GetFinishedAt().AsTime().UTC(),
+				FinishedAt:        result.GetFinishedAt().AsTime().UTC(),
+				ParentOperationID: parent, RootOperationID: root, Attempt: int(result.GetAttempt()),
+				Summary: summary,
 			}); err != nil {
 				var validation *control.ValidationError
-				if errors.As(err, &validation) {
+				if errors.As(err, &validation) || errors.Is(err, domain.ErrPlanBindingInvalid) || errors.Is(err, domain.ErrNotFound) {
 					return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
 				}
 				return status.Error(codes.Unavailable, "job result persistence failed")
@@ -226,7 +293,10 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			if err != nil {
 				return s.invalidMessage(stream, meta, "JOB_ACCEPTED_INVALID")
 			}
-			if err := s.control.MarkJobDispatched(stream.Context(), operationID); err != nil {
+			if err := s.control.MarkJobDispatched(stream.Context(), agentID, operationID); err != nil {
+				if errors.Is(err, domain.ErrPlanBindingInvalid) {
+					return s.invalidMessage(stream, meta, "JOB_ACCEPTED_INVALID")
+				}
 				return status.Error(codes.Unavailable, "job acceptance persistence failed")
 			}
 		case message.GetJobRejected() != nil:
@@ -234,7 +304,10 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			if err != nil {
 				return s.invalidMessage(stream, meta, "JOB_REJECTED_INVALID")
 			}
-			if err := s.control.RejectManualOperation(stream.Context(), operationID); err != nil {
+			if err := s.control.RejectManualOperation(stream.Context(), agentID, operationID); err != nil {
+				if errors.Is(err, domain.ErrPlanBindingInvalid) {
+					return s.invalidMessage(stream, meta, "JOB_REJECTED_INVALID")
+				}
 				return status.Error(codes.Unavailable, "job rejection persistence failed")
 			}
 		case message.GetJobCancelAccepted() != nil:
@@ -287,6 +360,7 @@ func (s *Service) sendDesiredState(
 	agentID uuid.UUID,
 	protocol string,
 	sequence *uint64,
+	capabilities ...string,
 ) error {
 	state, err := s.control.DesiredState(stream.Context(), agentID)
 	if err != nil {
@@ -294,6 +368,19 @@ func (s *Service) sendDesiredState(
 	}
 	plans := make([]*agentv1.PlanSchedule, 0, len(state.Plans))
 	for _, plan := range state.Plans {
+		var execution []byte
+		if plan.Execution != nil {
+			if !slices.Contains(capabilities, domain.BackupExecutionCapability) {
+				if err := s.control.RejectAgentConfig(stream.Context(), agentID, domain.AgentConfigResult{Revision: state.Revision, ErrorCode: "AGENT_CAPABILITY_REQUIRED", FieldPath: "plans.execution"}); err != nil {
+					return status.Error(codes.Unavailable, "configuration compatibility persistence failed")
+				}
+				return nil
+			}
+			execution, err = json.Marshal(plan.Execution)
+			if err != nil || len(execution) > 16<<10 {
+				return status.Error(codes.Internal, "invalid execution configuration")
+			}
+		}
 		plans = append(plans, &agentv1.PlanSchedule{
 			PlanId: plan.PlanID.String(), Revision: plan.Revision, Name: plan.Name,
 			HostId: plan.HostID.String(), RepositoryId: plan.RepositoryID.String(),
@@ -302,6 +389,7 @@ func (s *Service) sendDesiredState(
 			ConcurrencyPolicy: plan.ConcurrencyPolicy, Paths: plan.Paths,
 			ExcludePatterns: plan.ExcludePatterns, ExcludeCaches: plan.ExcludeCaches,
 			OneFileSystem: plan.OneFileSystem, ConfigHash: plan.ConfigHash,
+			ExecutionConfigJson: execution,
 		})
 	}
 	if err := sendServerMessage(stream, sequence, protocol, &agentv1.ServerToAgent{
@@ -447,12 +535,41 @@ func (s *Service) dispatchQueuedJob(stream agentv1.AgentControlService_ConnectSe
 			CreatedAt: timestamppb.New(operation.CreatedAt), NotBefore: scheduled,
 			Deadline: timestamppb.New(operation.CreatedAt.Add(24 * time.Hour)),
 			PlanId:   operation.PlanID.String(), PlanRevision: operation.PlanRevision, ConfigHash: operation.ConfigHash,
+			ParentOperationId: optionalReportedOperationID(operation.ParentOperationID), RootOperationId: optionalReportedOperationID(operation.RootOperationID), Attempt: int32(operation.Attempt),
 		}},
 	}); err != nil {
 		return err
 	}
 	// The operation stays QUEUED until JobAccepted; a lost dispatch is retried.
 	return nil
+}
+
+func optionalReportedOperationID(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
+}
+
+func reportedOperationLinks(parent, root string, attempt int32) (*uuid.UUID, *uuid.UUID, error) {
+	if attempt < 0 || attempt > 10000 {
+		return nil, nil, errors.New("invalid operation attempt")
+	}
+	if parent == "" && root == "" {
+		if attempt > 1 {
+			return nil, nil, errors.New("missing operation parent")
+		}
+		return nil, nil, nil
+	}
+	p, err := uuid.Parse(parent)
+	if err != nil || !domain.ValidOperationID(p) {
+		return nil, nil, errors.New("invalid operation parent")
+	}
+	r, err := uuid.Parse(root)
+	if err != nil || !domain.ValidOperationID(r) || attempt < 2 {
+		return nil, nil, errors.New("invalid operation root")
+	}
+	return &p, &r, nil
 }
 
 // dispatchCancellations repeats pending cancel requests until the Agent reports

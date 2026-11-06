@@ -18,12 +18,14 @@ import (
 // backup results. They survive a lost HTTP response, never a Gateway restart.
 type serviceBackup struct {
 	agentID, repositoryID uuid.UUID
+	reader                *domain.GatewayReadBinding
 	requestedDeadline     time.Time
 	sessionID             uuid.UUID
 	expires               time.Time
 	state, endpoint       string // Under Service.mu.
 	ready, done, finish   chan struct{}
 	finishOnce            sync.Once
+	retry                 *backupRetryObservation
 }
 
 type serviceBackupResponse struct {
@@ -39,7 +41,8 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, authenticated := authenticatedAgent(r)
-	if !authenticated || r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery ||
+	reader, readAuthenticated := authenticatedGatewayReader(r)
+	if (!authenticated && !readAuthenticated) || r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery ||
 		r.URL.Fragment != "" || r.URL.User != nil || r.URL.Scheme != "" || r.URL.Host != "" || r.URL.Opaque != "" {
 		s.rejectSession(w, r, http.StatusForbidden)
 		return
@@ -50,7 +53,7 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			known = known || owner.config.Binding.AgentID == id
 			ready = ready && owner.owner.ready()
 		}
-		if !known {
+		if !authenticated || !known {
 			s.rejectSession(w, r, http.StatusForbidden)
 		} else if !ready {
 			http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
@@ -61,7 +64,12 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 7 || parts[1] != "gateway" || parts[2] != "v1" || parts[3] != "repositories" || parts[5] != "backup-sessions" {
+	if len(parts) != 7 || parts[1] != "gateway" || parts[2] != "v1" || parts[3] != "repositories" || (parts[5] != "backup-sessions" && parts[5] != "read-sessions") {
+		s.rejectSession(w, r, http.StatusForbidden)
+		return
+	}
+	readOnly := parts[5] == "read-sessions"
+	if readOnly && (!readAuthenticated || reader.OperationID.String() != parts[6] || reader.RepositoryID.String() != parts[4]) || !readOnly && !authenticated {
 		s.rejectSession(w, r, http.StatusForbidden)
 		return
 	}
@@ -73,7 +81,8 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var owner *serviceRepository
 	for _, candidate := range s.repositories {
-		if candidate.config.Binding.RepositoryID == repository && candidate.config.Binding.AgentID == id {
+		if candidate.config.Binding.RepositoryID == repository && ((!readOnly && candidate.config.Binding.AgentID == id) ||
+			(readOnly && candidate.config.Binding.AdmissionID == reader.AdmissionID && candidate.config.Binding.RuntimeID == reader.RuntimeID)) {
 			owner = candidate
 			break
 		}
@@ -82,8 +91,14 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		s.rejectSession(w, r, http.StatusForbidden)
 		return
 	}
+	var scope *domain.GatewayReadBinding
+	if readOnly {
+		reader.ConfigurationHash = owner.config.Binding.ConfigurationHash
+		scope = &reader
+		id = owner.config.Binding.AgentID
+	}
 	if r.Method == http.MethodPost {
-		s.openSession(w, r, owner, operation)
+		s.openSession(w, r, owner, operation, scope)
 		return
 	}
 	if (r.Method != http.MethodGet && r.Method != http.MethodDelete) || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
@@ -97,7 +112,8 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "gateway session unavailable", http.StatusNotFound)
 		return
 	}
-	if backup.agentID != id || backup.repositoryID != repository {
+	if backup.agentID != id || backup.repositoryID != repository || (backup.reader == nil) != (!readOnly) ||
+		(readOnly && !sameGatewayReader(*backup.reader, reader)) {
 		s.rejectSession(w, r, http.StatusForbidden)
 		return
 	}
@@ -109,6 +125,11 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			closed := backup.state == "CLOSED"
 			s.mu.Unlock()
 			if closed {
+				if !readOnly && backup.retry != nil {
+					if code := backup.retry.code(); code != "" {
+						w.Header().Set(backupRetryHeader, code)
+					}
+				}
 				w.WriteHeader(http.StatusNoContent)
 			} else {
 				http.Error(w, "gateway cleanup unavailable", http.StatusServiceUnavailable)
@@ -140,7 +161,7 @@ func (s *Service) rejectSession(w http.ResponseWriter, r *http.Request, status i
 	http.Error(w, "gateway session rejected", status)
 }
 
-func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *serviceRepository, operation uuid.UUID) {
+func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *serviceRepository, operation uuid.UUID, reader *domain.GatewayReadBinding) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		s.rejectSession(w, r, http.StatusBadRequest)
 		return
@@ -163,7 +184,8 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 	s.mu.Lock()
 	if existing := s.sessions[operation]; existing != nil {
 		conflict := existing.agentID != owner.config.Binding.AgentID || existing.repositoryID != owner.config.Binding.RepositoryID ||
-			!existing.requestedDeadline.Equal(request.Deadline)
+			!existing.requestedDeadline.Equal(request.Deadline) || (existing.reader == nil) != (reader == nil) ||
+			(reader != nil && !sameGatewayReader(*reader, *existing.reader))
 		s.mu.Unlock()
 		if conflict {
 			s.rejectSession(w, r, http.StatusConflict)
@@ -185,6 +207,9 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 	}
 	if s.stopping || s.ctx.Err() != nil || len(s.sessions) >= 4096 {
 		s.mu.Unlock()
+		if reader == nil {
+			w.Header().Set(backupRetryHeader, "GATEWAY_UNAVAILABLE")
+		}
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -192,26 +217,36 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 		if active.state != "CLOSED" && active.state != "FAILED" &&
 			(active.repositoryID == owner.config.Binding.RepositoryID || active.agentID == owner.config.Binding.AgentID) {
 			s.mu.Unlock()
-			s.rejectSession(w, r, http.StatusConflict)
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "gateway repository busy", http.StatusConflict)
 			return
 		}
 	}
 	id, err := uuid.NewV7()
 	if err != nil {
 		s.mu.Unlock()
+		if reader == nil {
+			w.Header().Set(backupRetryHeader, "GATEWAY_UNAVAILABLE")
+		}
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	deadline := time.Now().UTC().Add(24 * time.Hour)
+	if reader != nil {
+		deadline = time.Now().UTC().Add(5 * time.Minute)
+	}
 	if request.Deadline.Before(deadline) {
 		deadline = request.Deadline
+	}
+	if reader != nil && r.TLS.PeerCertificates[0].NotAfter.Before(deadline) {
+		deadline = r.TLS.PeerCertificates[0].NotAfter
 	}
 	if owner.owner.expires.Before(deadline) {
 		deadline = owner.owner.expires
 	}
 	backup := &serviceBackup{agentID: owner.config.Binding.AgentID, repositoryID: owner.config.Binding.RepositoryID,
 		requestedDeadline: request.Deadline, sessionID: id, expires: deadline, state: "STARTING",
-		ready: make(chan struct{}), done: make(chan struct{}), finish: make(chan struct{})}
+		ready: make(chan struct{}), done: make(chan struct{}), finish: make(chan struct{}), reader: reader}
 	s.sessions[operation] = backup
 	// Add under the same gate cleanup closes before waiting for all work.
 	s.workers.Go(func() {
@@ -219,8 +254,9 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 		defer cancel()
 		// Lost requests do not cancel or restart a session. The same owner and
 		// authority are used; only the Gateway-generated session ID scopes locks.
-		err := owner.owner.WithBackup(ctx, id, func(work context.Context, access Access) error {
+		run := func(work context.Context, access Access) error {
 			s.mu.Lock()
+			backup.retry = access.retry
 			backup.state, backup.endpoint = "ACTIVE", access.EndpointPath
 			s.mu.Unlock()
 			close(backup.ready)
@@ -230,7 +266,13 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 			case <-work.Done():
 				return work.Err()
 			}
-		})
+		}
+		var err error
+		if reader != nil {
+			err = owner.owner.WithRead(ctx, id, *reader, run)
+		} else {
+			err = owner.owner.WithBackup(ctx, id, run)
+		}
 		s.mu.Lock()
 		backup.state, backup.endpoint = "CLOSED", ""
 		if err != nil {

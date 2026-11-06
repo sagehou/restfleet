@@ -1,7 +1,8 @@
 package agent
 
 import (
-	"sort"
+	"encoding/json"
+	"github.com/google/uuid"
 	"time"
 
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
@@ -9,8 +10,8 @@ import (
 )
 
 // reportOperations uploads pending progress and terminal results. Delivery is
-// at-least-once; the terminal record is only marked uploaded after the stream
-// accepted the message, so a disconnect simply replays it.
+// at-least-once; capable peers acknowledge durable receipt before results leave
+// the pending set. Each batch is bounded so heartbeats and cancels can proceed.
 func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence *uint64,
 	protocol string, state *State, progressInterval time.Duration, resultAck bool,
 ) error {
@@ -18,27 +19,18 @@ func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence
 	if err != nil {
 		return err
 	}
-	// Replay terminal results before progress, preserving creation order inside
-	// each group. A terminal record stays pending until the Server acknowledges.
-	sort.SliceStable(records, func(i, j int) bool {
-		return records[i].Terminal() && !records[j].Terminal()
-	})
 	for _, record := range records {
 		if record.Terminal() {
 			if err := sendOperationResult(stream, sequence, protocol, record); err != nil {
 				return err
 			}
 			if !resultAck {
-				current, found, err := state.Operation(record.ID)
-				if err != nil {
+				if err := state.MarkOperationUploaded(record.ID); err != nil {
 					return err
 				}
-				if found {
-					current.Uploaded = true
-					if err := state.PutOperation(current); err != nil {
-						return err
-					}
-				}
+			}
+			if err := state.markOperationReported(record.ID, time.Now().UTC()); err != nil {
+				return err
 			}
 			continue
 		}
@@ -47,6 +39,7 @@ func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence
 			JobProgress: &agentv1.JobProgress{
 				OperationId: record.ID.String(), PlanId: record.PlanID.String(),
 				PlanRevision: record.PlanRevision, ScheduledAt: scheduled,
+				ParentOperationId: optionalOperationID(record.ParentOperationID), RootOperationId: optionalOperationID(record.RootOperationID), Attempt: int32(record.Attempt),
 				Sequence: uint64(time.Now().UnixMilli()), Stage: "backup",
 				FilesDone: record.FilesDone, TotalFiles: record.TotalFiles,
 				BytesDone: record.BytesDone, TotalBytes: record.TotalBytes,
@@ -56,18 +49,7 @@ func reportOperations(stream agentv1.AgentControlService_ConnectClient, sequence
 		if err := sendAgentMessage(stream, sequence, protocol, payload); err != nil {
 			return err
 		}
-		// The executor may have written the terminal record while the progress
-		// message was in flight. Re-read before updating the throttle timestamp
-		// so a stale RUNNING view cannot overwrite the terminal result.
-		current, found, err := state.Operation(record.ID)
-		if err != nil {
-			return err
-		}
-		if !found || current.Terminal() {
-			continue
-		}
-		current.LastReportedAt = time.Now().UTC()
-		if err := state.PutOperation(current); err != nil {
+		if err := state.markOperationReported(record.ID, time.Now().UTC()); err != nil {
 			return err
 		}
 	}
@@ -82,15 +64,50 @@ func sendOperationResult(
 	protocol string,
 	record OperationRecord,
 ) error {
+	var summary []byte
+	if record.Summary != nil {
+		var err error
+		summary, err = json.Marshal(record.Summary)
+		if err != nil {
+			return err
+		}
+	}
 	return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
 		Payload: &agentv1.AgentToServer_JobResult{
 			JobResult: &agentv1.JobResult{
 				OperationId: record.ID.String(), PlanId: record.PlanID.String(),
 				PlanRevision: record.PlanRevision, ScheduledAt: timestamppb.New(record.ScheduledAt),
+				ParentOperationId: optionalOperationID(record.ParentOperationID), RootOperationId: optionalOperationID(record.RootOperationID), Attempt: int32(record.Attempt),
 				Status: record.Status, ErrorCode: record.ErrorCode, ExitCode: int64(record.ExitCode),
 				SnapshotId: record.SnapshotID, FilesNew: record.FilesNew,
-				DataAdded: record.DataAdded, FinishedAt: timestamppb.New(record.FinishedAt),
+				SummaryJson: summary,
+				DataAdded:   record.DataAdded, FinishedAt: timestamppb.New(record.FinishedAt),
 			},
 		},
 	})
+}
+
+func optionalOperationID(id uuid.UUID) string {
+	if id == uuid.Nil {
+		return ""
+	}
+	return id.String()
+}
+
+func reportLogs(stream agentv1.AgentControlService_ConnectClient, sequence *uint64, protocol string, state *State, force bool) error {
+	chunks, err := state.pendingLogs(time.Now().UTC(), force)
+	if err != nil {
+		return err
+	}
+	for _, chunk := range chunks {
+		if err := sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{Payload: &agentv1.AgentToServer_JobLogChunk{JobLogChunk: &agentv1.JobLogChunk{
+			OperationId: chunk.OperationID.String(), FirstSequence: chunk.First, LastSequence: chunk.Last, EntriesJson: chunk.JSON,
+		}}}); err != nil {
+			return err
+		}
+		if err := state.markLogsSent(chunk.OperationID, chunk.Last, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	return nil
 }

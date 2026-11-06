@@ -53,6 +53,7 @@ type BackupSession struct {
 	binding   Binding
 	prefix    string
 	agentID   uuid.UUID
+	reader    *domain.GatewayReadBinding
 	verifier  [sha256.Size]byte
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -63,6 +64,7 @@ type BackupSession struct {
 	requests  chan struct{}
 	writes    chan struct{}
 	locks     map[string]bool // Under writes: false means consumed or ambiguous.
+	retry     backupRetryObservation
 }
 
 // NewBackupSession requires a live, deadline-bound authorization and a private
@@ -192,7 +194,10 @@ func (s *BackupSession) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authenticated := false
-	if s.agentID != uuid.Nil {
+	if s.reader != nil {
+		reader, ok := authenticatedGatewayReader(r)
+		authenticated = ok && sameGatewayReader(reader, *s.reader)
+	} else if s.agentID != uuid.Nil {
 		id, ok := authenticatedAgent(r)
 		authenticated = ok && id == s.agentID
 	} else {
@@ -244,6 +249,10 @@ func (s *BackupSession) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.read(w, r, path)
 		return
 	}
+	if s.reader != nil {
+		s.deny(w, r, true, "method_rejected", http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		s.deny(w, r, true, "method_rejected", http.StatusForbidden)
 		return
@@ -288,6 +297,7 @@ func (s *BackupSession) objectPath(r *http.Request) (string, bool) {
 
 func (s *BackupSession) request(ctx context.Context, method, path string, body []byte, headers http.Header) (*http.Response, error) {
 	if s.guard != nil && !s.guard() {
+		s.retry.flags.Or(retryUnsafe)
 		return nil, ErrAuthorization
 	}
 	u := &url.URL{Scheme: "http", Host: "gateway-backend.invalid", Path: "/" + path}
@@ -302,7 +312,12 @@ func (s *BackupSession) request(ctx context.Context, method, path string, body [
 	if method == http.MethodGet && headers.Get("Range") != "" {
 		r.Header.Set("Range", headers.Get("Range"))
 	}
-	return s.transport.RoundTrip(r)
+	if method == http.MethodPost && strings.HasPrefix(path, "snapshots/") {
+		s.retry.flags.Or(retryUnsafe) // A committed or uncertain snapshot must never be repeated.
+	}
+	response, err := s.transport.RoundTrip(r)
+	s.retry.observe(ctx, method, response, err)
+	return response, err
 }
 
 func (s *BackupSession) read(w http.ResponseWriter, r *http.Request, path string) {
@@ -316,6 +331,9 @@ func (s *BackupSession) read(w http.ResponseWriter, r *http.Request, path string
 		// Restic treats ordinary list 404 as empty. Backend list errors must not
 		// hide locks or snapshots, even when rclone misclassifies the failure.
 		if strings.HasSuffix(path, "/") {
+			if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+				s.retry.flags.Or(retryUnsafe)
+			}
 			resp.StatusCode = http.StatusBadGateway
 		}
 		s.backendFailure(w, resp.StatusCode)
@@ -334,6 +352,7 @@ func (s *BackupSession) read(w http.ResponseWriter, r *http.Request, path string
 	w.WriteHeader(resp.StatusCode)
 	if r.Method != http.MethodHead {
 		if _, err := io.Copy(w, resp.Body); err != nil {
+			s.retry.flags.Or(retryUnsafe)
 			panic(http.ErrAbortHandler) // Never turn a truncated list/object into success.
 		}
 	}
@@ -403,7 +422,7 @@ func (s *BackupSession) removeLock(w http.ResponseWriter, r *http.Request, path 
 		s.deny(w, r, true, "lock_not_owned", http.StatusForbidden)
 		return
 	}
-	if !s.record(r.Context(), true, "lock_cleanup", "owned_lock") {
+	if !s.record(true, "lock_cleanup", "owned_lock") {
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -421,14 +440,20 @@ func (s *BackupSession) removeLock(w http.ResponseWriter, r *http.Request, path 
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *BackupSession) record(ctx context.Context, authenticated bool, action, reason string) bool {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+func (s *BackupSession) record(authenticated bool, action, reason string) bool {
+	// A disconnected client cannot cancel the durable security observation.
+	ctx, cancel := context.WithTimeout(s.ctx, 3*time.Second)
 	defer cancel()
 	return s.audit(ctx, Event{Binding: s.binding, Authenticated: authenticated, Action: action, Reason: reason}) == nil
 }
 
 func (s *BackupSession) deny(w http.ResponseWriter, r *http.Request, authenticated bool, reason string, status int) {
-	if !s.record(r.Context(), authenticated, "denied", reason) {
+	if authenticated && reason == "request_limit" {
+		s.retry.flags.Or(retryRateLimited)
+	} else {
+		s.retry.flags.Or(retryUnsafe)
+	}
+	if !s.record(authenticated, "denied", reason) {
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -440,4 +465,20 @@ func (s *BackupSession) backendFailure(w http.ResponseWriter, status int) {
 		status = http.StatusBadGateway
 	}
 	http.Error(w, "gateway request failed", status)
+}
+
+func sameGatewayReader(a, b domain.GatewayReadBinding) bool {
+	return a.RepositoryID == b.RepositoryID && a.OperationID == b.OperationID && a.AdmissionID == b.AdmissionID && a.RuntimeID == b.RuntimeID
+}
+
+func authenticatedGatewayReader(r *http.Request) (domain.GatewayReadBinding, bool) {
+	if r.TLS == nil || r.TLS.Version < tls.VersionTLS12 || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 || len(r.TLS.VerifiedChains[0]) == 0 {
+		return domain.GatewayReadBinding{}, false
+	}
+	leaf := r.TLS.PeerCertificates[0]
+	if !bytes.Equal(leaf.Raw, r.TLS.VerifiedChains[0][0].Raw) {
+		return domain.GatewayReadBinding{}, false
+	}
+	reader, err := security.GatewayReaderFromCertificate(leaf)
+	return reader, err == nil
 }

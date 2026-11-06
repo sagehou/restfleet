@@ -104,8 +104,11 @@ func (c *ControlPlane) ProcessCredentialJob(ctx context.Context, owner uuid.UUID
 	if job.Repository != nil && !job.RepositoryAvailable {
 		return true, complete("REPOSITORY_UNAVAILABLE")
 	}
-	if job.Credential.Status == "DISABLED" || job.Credential.SecretRevision != job.Operation.SecretRevision {
+	if job.Credential.Status == "DISABLED" || (job.GatewayRead == nil && job.Credential.SecretRevision != job.Operation.SecretRevision) {
 		return true, complete("CREDENTIAL_CHANGED")
+	}
+	if job.GatewayRead != nil {
+		return true, c.processGatewayReadJob(ctx, job, owner)
 	}
 	if err = c.store.RenewCredentialJob(ctx, job.ID, owner); err != nil {
 		return true, err

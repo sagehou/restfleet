@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"time"
@@ -98,7 +99,9 @@ func MergePlanConfig(base TemplateConfig, overrides json.RawMessage) (TemplateCo
 		return TemplateConfig{}, err
 	}
 	var config TemplateConfig
-	if err := json.Unmarshal(encoded, &config); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&config); err != nil {
 		return TemplateConfig{}, &TemplateError{Field: "overrides", Code: "INVALID"}
 	}
 	if err := config.Validate(); err != nil {

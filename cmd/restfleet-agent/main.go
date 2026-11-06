@@ -63,6 +63,7 @@ func run() error {
 		fmt.Printf("Agent %s enrolled for Host %s\n", identity.AgentID, identity.HostID)
 		return nil
 	}
+	hooksFile := flags.String("hooks-file", "", "protected local Hook allowlist file")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -76,5 +77,5 @@ func run() error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	return agent.Run(ctx, state, agent.RunConfig{Version: buildinfo.Version})
+	return agent.Run(ctx, state, agent.RunConfig{Version: buildinfo.Version, HooksFile: *hooksFile})
 }

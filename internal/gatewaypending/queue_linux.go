@@ -323,7 +323,7 @@ func (q *Queue) Finish(authorizationRevision int64) error {
 	}
 	return q.append(security.GatewayPendingRecord{
 		Header: security.GatewayPendingHeader{AuthorizationRevision: authorizationRevision, CreatedAt: time.Now().UTC().Unix()},
-		Kind: kind, Event: &domain.GatewayEvent{Action: "runtime_cleanup", Reason: "joined"},
+		Kind:   kind, Event: &domain.GatewayEvent{Action: "runtime_cleanup", Reason: "joined"},
 	})
 }
 

@@ -154,9 +154,17 @@ type RunConfig struct {
 	Version string
 	// ResticBinary defaults to "restic" from PATH.
 	ResticBinary string
+	HooksFile    string
 }
 
 func Run(ctx context.Context, state *State, config RunConfig) error {
+	hooks, err := LoadHooks(config.HooksFile)
+	if err != nil {
+		return err
+	}
+	state.schedulerMu.Lock()
+	state.hooks = hooks
+	state.schedulerMu.Unlock()
 	binary := config.ResticBinary
 	if binary == "" {
 		binary = "restic"
@@ -168,8 +176,14 @@ func Run(ctx context.Context, state *State, config RunConfig) error {
 		return err
 	}
 	schedulerCtx, stopScheduler := context.WithCancel(ctx)
-	defer stopScheduler()
+	schedulerDone := make(chan struct{})
+	defer func() {
+		stopScheduler()
+		<-schedulerDone
+		state.workers.Wait()
+	}()
 	go func() {
+		defer close(schedulerDone)
 		err := state.RunLocalScheduler(schedulerCtx, 30*time.Second, BackupExecutor{State: state, Binary: binary},
 			func(err error) { fmt.Fprintf(os.Stderr, "scheduler: %v\n", err) })
 		if err != nil && schedulerCtx.Err() == nil {

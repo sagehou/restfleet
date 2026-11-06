@@ -32,6 +32,8 @@ var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // Store is the persistence port used by control-plane domain operations.
 type Store interface {
+	AppendOperationLogs(context.Context, uuid.UUID, uuid.UUID, []domain.BackupLogEntry) (uint64, error)
+	OperationLogs(context.Context, uuid.UUID, uint64, int) ([]domain.BackupLogEntry, error)
 	Ping(context.Context) error
 	SchemaVersion(context.Context) (int, error)
 	BootstrapRequired(context.Context) (bool, error)
@@ -81,29 +83,27 @@ type Store interface {
 	Plans(context.Context, uuid.UUID, int) ([]domain.Plan, error)
 	Plan(context.Context, uuid.UUID) (domain.Plan, error)
 	CreatePlan(context.Context, domain.Plan, domain.AuditEvent) (domain.Plan, error)
-	SavePlanRevision(context.Context, domain.Plan, int64, domain.AuditEvent) (domain.Plan, error)
-	UpdatePlanStatus(context.Context, domain.Plan, int64, domain.AuditEvent) (domain.Plan, error)
-	PublishAgentDesiredState(context.Context, uuid.UUID, time.Time) error
+	SavePlanRevision(context.Context, domain.Plan, int64, string, domain.AuditEvent) (domain.Plan, error)
+	UpdatePlanStatus(context.Context, domain.Plan, int64, string, domain.AuditEvent) (domain.Plan, error)
 	UpsertOperationProgress(context.Context, domain.BackupOperationProgress) error
 	UpsertOperationResult(context.Context, domain.BackupOperationResult) error
 	BackupOperations(context.Context, uuid.UUID, int) ([]domain.BackupOperation, error)
 	BackupOperation(context.Context, uuid.UUID) (domain.BackupOperation, error)
 	FleetBackupCounts(context.Context) (plans, operations, running, failed24h, unhealthy int64, err error)
-	CreateManualOperation(context.Context, domain.BackupOperation) error
+	CreateManualOperation(context.Context, domain.BackupOperation, domain.BackupRequestKey, domain.AuditEvent) (domain.BackupOperation, error)
 	ClaimManualOperationDispatch(context.Context, uuid.UUID, time.Time, time.Duration) (domain.BackupOperation, bool, error)
 	CloseUnstartedCancellations(context.Context, time.Time, time.Time) (int64, error)
 	ReconcileLostOperations(context.Context, time.Time, time.Time) (int64, error)
 	ReconcilePlanHealth(context.Context, time.Time) (int64, error)
 	DeleteExpiredSnapshotListResults(context.Context, time.Time) (int64, error)
-	MarkOperationDispatched(context.Context, uuid.UUID) error
-	CancelBackupOperation(context.Context, uuid.UUID, string, time.Time) (domain.BackupOperation, error)
+	MarkOperationDispatched(context.Context, uuid.UUID, uuid.UUID) error
+	CancelBackupOperation(context.Context, uuid.UUID, string, time.Time, domain.BackupRequestKey, domain.AuditEvent) (domain.BackupOperation, error)
 	PendingCancelOperations(context.Context, uuid.UUID) ([]domain.BackupOperation, error)
-	RejectManualOperation(context.Context, uuid.UUID, time.Time) error
+	RejectManualOperation(context.Context, uuid.UUID, uuid.UUID, time.Time) error
 	Snapshots(context.Context, int) ([]domain.Snapshot, error)
 	SnapshotsByID(context.Context, string) ([]domain.Snapshot, error)
-	EnqueueSnapshotList(context.Context, domain.Operation, string, string, string) (domain.Operation, error)
-	EnqueueSnapshotIndex(context.Context, domain.Operation) (domain.Operation, error)
-	ReadyRepositoryIDs(context.Context, int) ([]uuid.UUID, error)
+	EnqueueSnapshotList(context.Context, domain.Operation, string, string, string, string) (domain.Operation, error)
+	EnqueueSnapshotIndex(context.Context, domain.Operation, string) (domain.Operation, error)
 	FinishSnapshotIndexJob(context.Context, uuid.UUID, uuid.UUID, string, domain.SnapshotIndexResult) error
 	ActiveSnapshotListOperation(context.Context, uuid.UUID) (domain.Operation, bool, error)
 	SnapshotListResult(context.Context, uuid.UUID, string, string, string, time.Time) (domain.SnapshotListResult, bool, error)

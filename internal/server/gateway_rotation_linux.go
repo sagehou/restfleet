@@ -26,12 +26,12 @@ var (
 // replacement. It never contains Gateway private material. The deployer MUST
 // independently provision and start the next fresh runtime.
 type GatewayRotationConfig struct {
-	Version         int                `json:"version"`
+	Version         int                    `json:"version"`
 	Current         GatewayAuthorityTarget `json:"current"`
-	Next            GatewayPreparation `json:"next_preparation"`
-	PlanFile        string             `json:"plan_file"`
-	AuditConfigFile string             `json:"audit_config_file"`
-	WaitSeconds     int                `json:"wait_seconds"`
+	Next            GatewayPreparation     `json:"next_preparation"`
+	PlanFile        string                 `json:"plan_file"`
+	AuditConfigFile string                 `json:"audit_config_file"`
+	WaitSeconds     int                    `json:"wait_seconds"`
 }
 
 func (r GatewayRotationConfig) valid(path string) bool {

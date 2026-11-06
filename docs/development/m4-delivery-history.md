@@ -1,6 +1,6 @@
 # M4 分批交付历史
 
-基线：2026-10-08 已合并 `07a85e39169c416817df97ecb5cd63224ebb9d8a`（#60）。以下保存各批交付时的边界与验证记录；其中“仍待完成”等表述仅代表当批时点，当前状态以 [实施计划 M4](../../IMPLEMENTATION_PLAN.md#m4--storage-credential-repository-and-gateway) 为准。三十批并非三十个独立 PR，#51 包含多个批次。
+基线：2026-10-08 已合并 `07a85e39169c416817df97ecb5cd63224ebb9d8a`（#60）。以下保存各批交付时的边界与验证记录；其中“仍待完成”等表述仅代表当批时点，当前状态以 [现行开发计划](../../IMPLEMENTATION_PLAN.md) 为准。三十批并非三十个独立 PR，#51 包含多个批次。
 
 分批交付：凭据管理（#16）、中心 tmpfs/runtime/token watcher（#17）、持久化异步 Test Operation/租约/幂等/加密 CAS 与测试 UI（#18）、中心 Restic 初始化适配器及固定二进制离线验证（#19）均已合并。第五批（#20，已合并）交付 Repository 记录事务、per-Host 独立加密凭据、创建/列表/详情 API 与 Web；创建仅得到 PROVISIONING，不代表云端初始化或 Agent 已接受。第七批（#22，已合并）接入初始化 Operation/jobs 与基础状态 UI；Agent ACK、Public Gateway、凭据轮换、完整 provisioning UI 和多后端真实服务人工验收仍待完成。
 

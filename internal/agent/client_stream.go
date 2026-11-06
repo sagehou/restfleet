@@ -18,6 +18,9 @@ import (
 )
 
 func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, error) {
+	operationCtx := ctx
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	identity, err := LoadIdentity(state)
 	if err != nil {
 		return false, err
@@ -66,6 +69,8 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 			Capabilities: []string{
 				"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability, domain.RepositoryIdentityCapability,
 				domain.JobResultAckCapability, domain.JobCancelCapability,
+				domain.BackupExecutionCapability,
+				domain.BackupLogsCapability,
 			},
 			LocalTime: timestamppb.Now(),
 		}},
@@ -84,12 +89,23 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	serverSequence := response.GetSequence()
 	clockOffset := welcome.GetServerTime().AsTime().Sub(time.Now().UTC())
 	resultAck := slices.Contains(welcome.GetServerCapabilities(), domain.JobResultAckCapability)
+	logAck := slices.Contains(welcome.GetServerCapabilities(), domain.BackupLogsCapability)
 
+	// Send success is not a durable Server ACK; replay the active config on reconnect.
+	if active, ok, err := state.ActiveDesiredState(); err != nil {
+		return true, err
+	} else if ok {
+		if err := sendConfigResult(stream, &agentSequence, protocol, acceptedConfigResult(active)); err != nil {
+			return true, err
+		}
+	}
 	if pending, ok, err := state.PendingConfigResult(); err != nil {
 		return true, err
 	} else if ok {
-		if err := sendConfigResult(stream, &agentSequence, protocol, pending); err != nil {
-			return true, err
+		if !pending.Accepted || pending.Revision != acceptedRevision {
+			if err := sendConfigResult(stream, &agentSequence, protocol, pending); err != nil {
+				return true, err
+			}
 		}
 		if err := state.ClearPendingConfigResult(pending.Revision); err != nil {
 			return true, err
@@ -116,6 +132,14 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	rotationPending := false
 	reports := time.NewTicker(5 * time.Second)
 	defer reports.Stop()
+	if err := reportOperations(stream, &agentSequence, protocol, state, 0, resultAck); err != nil {
+		return true, err
+	}
+	if logAck {
+		if err := reportLogs(stream, &agentSequence, protocol, state, true); err != nil {
+			return true, err
+		}
+	}
 
 	for {
 		select {
@@ -136,6 +160,11 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 		case <-reports.C:
 			if err := reportOperations(stream, &agentSequence, protocol, state, 5*time.Second, resultAck); err != nil {
 				return true, err
+			}
+			if logAck {
+				if err := reportLogs(stream, &agentSequence, protocol, state, false); err != nil {
+					return true, err
+				}
 			}
 		case <-rotationTimer.C:
 			privateKey, err := LoadOrCreatePrivateKey(state)
@@ -184,7 +213,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 					return true, err
 				}
 			case message.GetJobDispatch() != nil:
-				if err := handleJobDispatch(ctx, stream, state, config, message.GetJobDispatch(), &agentSequence, protocol); err != nil {
+				if err := handleJobDispatch(operationCtx, stream, state, config, message.GetJobDispatch(), &agentSequence, protocol); err != nil {
 					return true, err
 				}
 			case message.GetJobCancel() != nil:
@@ -206,6 +235,15 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 					return true, errors.New("job result ack has an invalid operation id")
 				}
 				if err := state.MarkOperationUploaded(operationID); err != nil {
+					return true, err
+				}
+			case message.GetJobLogAccepted() != nil:
+				ack := message.GetJobLogAccepted()
+				id, err := uuid.Parse(ack.GetOperationId())
+				if err != nil || !logAck {
+					return true, errors.New("invalid log acknowledgement")
+				}
+				if err := state.acknowledgeLogs(id, ack.GetThroughSequence()); err != nil {
 					return true, err
 				}
 			case message.GetCertificateRotationResponse() != nil && rotationPending:
@@ -341,13 +379,26 @@ func validateServerEnvelope(message *agentv1.ServerToAgent, protocol string) err
 func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_ConnectClient, state *State,
 	config RunConfig, job *agentv1.JobDispatch, sequence *uint64, protocol string,
 ) error {
+	state.schedulerMu.Lock()
+	defer state.schedulerMu.Unlock()
 	operationID, err := uuid.Parse(job.GetOperationId())
-	if err != nil {
+	if err != nil || operationID.Version() != 7 || operationID.Variant() != uuid.RFC4122 {
 		return errors.New("job dispatch has an invalid operation id")
 	}
 	planID, err := uuid.Parse(job.GetPlanId())
-	if err != nil {
+	if err != nil || planID.Version() != 7 || planID.Variant() != uuid.RFC4122 {
 		return errors.New("job dispatch has an invalid plan id")
+	}
+	parentID, rootID := uuid.Nil, uuid.Nil
+	if job.GetParentOperationId() != "" {
+		parentID, err = uuid.Parse(job.GetParentOperationId())
+		if err != nil || !domain.ValidOperationID(parentID) {
+			return errors.New("job dispatch has an invalid parent id")
+		}
+		rootID, err = uuid.Parse(job.GetRootOperationId())
+		if err != nil || !domain.ValidOperationID(rootID) {
+			return errors.New("job dispatch has an invalid root id")
+		}
 	}
 	reject := func(code string) error {
 		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
@@ -358,6 +409,23 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	}
 	if job.GetType() != "BACKUP" {
 		return reject("TYPE_UNSUPPORTED")
+	}
+	existing, exists, err := state.Operation(operationID)
+	if err != nil {
+		return reject("PERSIST_FAILED")
+	}
+	if exists {
+		if existing.PlanID != planID || existing.PlanRevision != job.GetPlanRevision() || existing.ConfigHash != job.GetConfigHash() {
+			return reject("OPERATION_BINDING_MISMATCH")
+		}
+		if existing.Terminal() {
+			return sendOperationResult(stream, sequence, protocol, existing)
+		}
+		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
+			Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
+				JobId: job.GetJobId(), OperationId: job.GetOperationId(),
+			}},
+		})
 	}
 	desired, ok, err := state.ActiveDesiredState()
 	if err != nil || !ok {
@@ -374,9 +442,19 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	if !found {
 		return reject("PLAN_UNAVAILABLE")
 	}
+	if job.GetPlanRevision() != plan.Revision || job.GetConfigHash() != plan.ConfigHash {
+		return reject("CONFIG_REVISION_MISMATCH")
+	}
+	if job.GetDeadline() == nil || job.GetDeadline().CheckValid() != nil ||
+		job.GetNotBefore() == nil || job.GetNotBefore().CheckValid() != nil {
+		return reject("DEADLINE_INVALID")
+	}
 	deadline := job.GetDeadline().AsTime().UTC()
 	if !deadline.After(time.Now()) {
 		return reject("DEADLINE_EXCEEDED")
+	}
+	if job.GetNotBefore().AsTime().After(time.Now()) {
+		return nil
 	}
 	// A JobCancel can arrive before its JobDispatch when a dispatch was lost and
 	// the server retried. Never start Restic in that case; persist and report a
@@ -397,47 +475,37 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 		}
 		return sendOperationResult(stream, sequence, protocol, record)
 	}
-	if existing, exists, err := state.Operation(operationID); err == nil && exists {
-		if existing.Terminal() {
-			return sendOperationResult(stream, sequence, protocol, existing)
+	running, err := state.RunningOperations()
+	if err != nil {
+		return reject("PERSIST_FAILED")
+	}
+	if uint32(len(running)) >= desired.RuntimePolicy.MaxParallelIOJobs {
+		// Leave the durable Server job queued; its normal dispatch retry will
+		// offer it again when capacity is available, without starting a process.
+		return nil
+	}
+	for _, record := range running {
+		if record.PlanID == planID && plan.ConcurrencyPolicy != "ALLOW" {
+			return nil
 		}
-		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
-			Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
-				JobId: job.GetJobId(), OperationId: job.GetOperationId(),
-			}},
-		})
 	}
 	scheduled := job.GetNotBefore().AsTime().UTC()
 	record := OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
-		ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, StartedAt: time.Now().UTC(), Status: OperationRunning}
+		ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, StartedAt: time.Now().UTC(), Status: OperationRunning,
+		ParentOperationID: parentID, RootOperationID: rootID, Attempt: int(job.GetAttempt())}
 	if err := state.PutOperation(record); err != nil {
 		return reject("PERSIST_FAILED")
-	}
-	if err := sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
-		Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
-			JobId: job.GetJobId(), OperationId: job.GetOperationId(),
-		}},
-	}); err != nil {
-		return err
 	}
 	binary := config.ResticBinary
 	if binary == "" {
 		binary = "restic"
 	}
 	executor := BackupExecutor{State: state, Binary: binary}
-	runCtx, endRun := state.BeginOperation(ctx, operationID)
-	go func() {
-		defer endRun()
-		outcome := executor.Execute(runCtx, plan, operationID, scheduled, deadline)
-		record.Status = outcome.Status
-		record.ExitCode = outcome.ExitCode
-		record.ErrorCode = outcome.ErrorCode
-		record.SnapshotID = outcome.SnapshotID
-		record.FilesDone, record.TotalFiles = outcome.FilesDone, outcome.TotalFiles
-		record.BytesDone, record.TotalBytes = outcome.BytesDone, outcome.TotalBytes
-		record.FilesNew, record.DataAdded = outcome.FilesNew, outcome.DataAdded
-		record.FinishedAt = time.Now().UTC()
-		_ = state.PutOperation(record)
-	}()
-	return nil
+	// Register the worker before sending: a failed ACK must not strand RUNNING.
+	state.executeOperation(ctx, executor, plan, record, deadline, nil)
+	return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
+		Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
+			JobId: job.GetJobId(), OperationId: job.GetOperationId(),
+		}},
+	})
 }

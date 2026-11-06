@@ -41,6 +41,7 @@ type ListRequest struct {
 	GatewayID    uuid.UUID
 	RepositoryID uuid.UUID
 	Password     []byte
+	Gateway      *GatewayReadAccess
 	SnapshotID   string
 	Path         string
 	After        string
@@ -143,6 +144,18 @@ func (p *Provisioner) List(ctx context.Context, request ListRequest,
 	if err := request.normalize(); err != nil {
 		return ListResult{}, err
 	}
+	if request.Gateway != nil {
+		var result ListResult
+		err := p.withGatewayRepository(ctx, *request.Gateway, request.GatewayID, request.RepositoryID, request.Password, func(work context.Context, dir, repository, passwordFile string) error {
+			var err error
+			result, err = p.list(work, dir, repository, passwordFile, request)
+			if err == nil && result.TreeID == "" {
+				return ErrInvalidOutput
+			}
+			return err
+		})
+		return result, err
+	}
 	var result ListResult
 	var commandErr error
 	err := p.runtime.WithConfig(ctx, request.Config, request.Remote, persist,
@@ -170,8 +183,12 @@ func (p *Provisioner) List(ctx context.Context, request ListRequest,
 func (p *Provisioner) list(ctx context.Context, dir, repository, passwordFile string, request ListRequest) (ListResult, error) {
 	workCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cmd := command(workCtx, p.binary, dir, "--json", "--cache-dir", filepath.Join(dir, "cache"),
-		"ls", request.SnapshotID, request.Path)
+	args := []string{"--json", "--cache-dir", filepath.Join(dir, "cache"), "--no-lock"}
+	if request.Gateway != nil {
+		args = append(args, "--tls-client-cert", filepath.Join(dir, "client.pem"), "--cacert", filepath.Join(dir, "ca.pem"))
+	}
+	args = append(args, "ls", request.SnapshotID, request.Path)
+	cmd := command(workCtx, p.binary, dir, args...)
 	cmd.Env = append(cmd.Env, "RESTIC_REPOSITORY="+repository, "RESTIC_PASSWORD_FILE="+passwordFile)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

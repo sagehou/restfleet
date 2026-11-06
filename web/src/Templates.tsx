@@ -113,7 +113,7 @@ export function Templates({ canManage, onUnauthorized }: Props) {
           {canManage && <button className="primary-button" disabled={busy} onClick={() => { setCreating(true); setSelected(null) }}>创建模板</button>}
         </div>
       </div>
-      <p className="warning-text" role="status">模板只描述意图；真正执行备份与本地调度仍待 M5/M6 接线。</p>
+      <p className="warning-text" role="status">模板更新后需对计划显式应用；Agent 接受配置后按本地计划执行。</p>
       {message && <p className="error-message" role="alert">{message}</p>}
       {creating && (
         <form aria-label="创建模板" className="credential-form" onSubmit={submit}>

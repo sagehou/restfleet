@@ -38,21 +38,22 @@ type RuntimePolicy struct {
 // PlanSchedule is the Agent-visible scheduling subset of one plan. It carries
 // no secrets and is part of the canonical config hash.
 type PlanSchedule struct {
-	PlanID              uuid.UUID `json:"plan_id"`
-	Revision            int64     `json:"revision"`
-	Name                string    `json:"name"`
-	HostID              uuid.UUID `json:"host_id"`
-	RepositoryID        uuid.UUID `json:"repository_id"`
-	Cron                string    `json:"cron"`
-	Timezone            string    `json:"timezone"`
-	JitterSeconds       int       `json:"jitter_seconds"`
-	MisfireGraceSeconds int       `json:"misfire_grace_seconds"`
-	ConcurrencyPolicy   string    `json:"concurrency_policy"`
-	Paths               []string  `json:"paths"`
-	ExcludePatterns     []string  `json:"exclude_patterns"`
-	ExcludeCaches       bool      `json:"exclude_caches"`
-	OneFileSystem       bool      `json:"one_file_system"`
-	ConfigHash          string    `json:"config_hash"`
+	PlanID              uuid.UUID        `json:"plan_id"`
+	Revision            int64            `json:"revision"`
+	Name                string           `json:"name"`
+	HostID              uuid.UUID        `json:"host_id"`
+	RepositoryID        uuid.UUID        `json:"repository_id"`
+	Cron                string           `json:"cron"`
+	Timezone            string           `json:"timezone"`
+	JitterSeconds       int              `json:"jitter_seconds"`
+	MisfireGraceSeconds int              `json:"misfire_grace_seconds"`
+	ConcurrencyPolicy   string           `json:"concurrency_policy"`
+	Paths               []string         `json:"paths"`
+	ExcludePatterns     []string         `json:"exclude_patterns"`
+	ExcludeCaches       bool             `json:"exclude_caches"`
+	OneFileSystem       bool             `json:"one_file_system"`
+	ConfigHash          string           `json:"config_hash"`
+	Execution           *BackupExecution `json:"execution,omitempty"`
 }
 
 type DesiredState struct {
@@ -232,6 +233,16 @@ func (p PlanSchedule) Validate() error {
 	}
 	if validateTimezone(p.Timezone) != nil {
 		return &DesiredStateError{Code: "PLAN_TIMEZONE_INVALID", FieldPath: "plans.timezone"}
+	}
+	if err := ValidateBackupPaths(p.Paths, p.ExcludePatterns); err != nil {
+		var pathError *TemplateError
+		if errors.As(err, &pathError) {
+			return &DesiredStateError{Code: "PLAN_PATHS_INVALID", FieldPath: "plans." + pathError.Field}
+		}
+		return &DesiredStateError{Code: "PLAN_PATHS_INVALID", FieldPath: "plans.paths"}
+	}
+	if p.Execution.Validate() != nil {
+		return &DesiredStateError{Code: "PLAN_EXECUTION_INVALID", FieldPath: "plans.execution"}
 	}
 	return nil
 }

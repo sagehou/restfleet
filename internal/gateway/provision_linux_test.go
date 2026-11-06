@@ -17,17 +17,17 @@ func provisionConfigFixture() ProvisionConfig {
 	return ProvisionConfig{Version: 1, Environment: "test", AgentID: uuid.Must(uuid.NewV7()),
 		AdmissionLifetimeSeconds: 600, MaterialSocket: "/run/restfleet-gateway/ipc/material.sock",
 		AuthoritySocket: "/run/restfleet-gateway/ipc/authority.sock", GatewayUID: uid,
-		CentralPinFile: "/var/lib/restfleet-gateway/keys/central.pub",
-		AuditSourceFile: "/var/lib/restfleet-gateway/keys/audit.seed",
+		CentralPinFile:       "/var/lib/restfleet-gateway/keys/central.pub",
+		AuditSourceFile:      "/var/lib/restfleet-gateway/keys/audit.seed",
 		RepositorySourceFile: "/var/lib/restfleet-gateway/keys/repo.seed",
-		AuditQueueDirectory: "/var/lib/restfleet-gateway/audit-queue",
-		QueueDirectory: "/var/lib/restfleet-gateway/repo-queue",
-		RuntimeDirectory: "/run/restfleet-gateway/runtime",
-		RcloneBinary: "/usr/local/bin/rclone",
-		CertificateFile: "/var/lib/restfleet-gateway/tls/server.crt",
-		TLSKeyFile: "/var/lib/restfleet-gateway/tls/server.key",
-		ClientCAFile: "/var/lib/restfleet-gateway/tls/agent-ca.pem",
-		ListenAddress: "127.0.0.1:8443", MaxBytes: security.MaxGatewayPendingSize + (16 << 10),
+		AuditQueueDirectory:  "/var/lib/restfleet-gateway/audit-queue",
+		QueueDirectory:       "/var/lib/restfleet-gateway/repo-queue",
+		RuntimeDirectory:     "/run/restfleet-gateway/runtime",
+		RcloneBinary:         "/usr/local/bin/rclone",
+		CertificateFile:      "/var/lib/restfleet-gateway/tls/server.crt",
+		TLSKeyFile:           "/var/lib/restfleet-gateway/tls/server.key",
+		ClientCAFile:         "/var/lib/restfleet-gateway/tls/agent-ca.pem",
+		ListenAddress:        "127.0.0.1:8443", MaxBytes: security.MaxGatewayPendingSize + (16 << 10),
 		MaxRecords: 128, MaxSessions: 4, ServerUID: uid,
 		ReplaySocket: "/run/restfleet-ipc/replay.sock", StartupWaitSeconds: 30}
 }
@@ -73,7 +73,7 @@ func TestProvisionStateProtectedCanonicalMetadata(t *testing.T) {
 	runtimeID := uuid.Must(uuid.NewV7())
 	originID := uuid.Must(uuid.NewV7())
 	state := ProvisionState{Version: 1, Config: config, RuntimeID: runtimeID,
-		AuditOrigin: domain.GatewayAuditBinding{OriginID: originID, RuntimeID: runtimeID},
+		AuditOrigin:       domain.GatewayAuditBinding{OriginID: originID, RuntimeID: runtimeID},
 		AuditSourcePublic: bytes.Repeat([]byte{1}, 32), RepositorySourcePublic: bytes.Repeat([]byte{2}, 32)}
 	dir := t.TempDir()
 	if os.Chmod(dir, 0700) != nil {

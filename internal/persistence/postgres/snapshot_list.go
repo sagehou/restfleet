@@ -49,13 +49,13 @@ func lockRepositoryForRead(ctx context.Context, tx pgx.Tx, id uuid.UUID) (domain
 }
 
 // EnqueueSnapshotList creates one read-only scan job. It reuses the existing
-// repository serialization: no active operation, backup admission or live lease
-// may exist, so credential refresh remains safe.
-func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operation, snapshotID, path, cursor string) (domain.Operation, error) {
+// repository serialization. A live Gateway admission must be borrowed through
+// its current owner; a direct-cloud reader still requires no admission.
+func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operation, snapshotID, path, cursor, configurationHash string) (domain.Operation, error) {
 	if operation.RepositoryID == nil || operation.RequestedByUserID == nil || *operation.RequestedByUserID == uuid.Nil ||
 		operation.ID.Version() != 7 || len(path) == 0 || len(path) > 4096 ||
 		len(cursor) > 4096 || (cursor != "" && (!strings.HasPrefix(cursor, "/") ||
-			strings.IndexFunc(cursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
+		strings.IndexFunc(cursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
 		return operation, domain.ErrOperationTransition
 	}
 	payload, err := json.Marshal(map[string]string{"snapshot_id": snapshotID, "path": path, "cursor": cursor})
@@ -96,7 +96,12 @@ func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operat
 	if credential.Status == "DISABLED" {
 		return operation, domain.ErrCredentialDisabled
 	}
-	if err = ensureNoBackupAdmission(ctx, tx, credential.ID); err != nil {
+	readBinding, err := gatewayReadBinding(ctx, tx, repo, operation.ID, configurationHash)
+	if err != nil {
+		return operation, err
+	}
+	readJSON, err := json.Marshal(readBinding)
+	if err != nil {
 		return operation, err
 	}
 	var now time.Time
@@ -121,8 +126,8 @@ func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operat
 	if err != nil {
 		return operation, err
 	}
-	if _, err = tx.Exec(ctx, `insert into jobs(id,operation_id,queue,status,available_at,payload,created_at,updated_at)
-		values($1,$2,'SNAPSHOT_LIST','READY',$3,$4,$3,$3)`, jobID, operation.ID, now, payload); err != nil {
+	if _, err = tx.Exec(ctx, `insert into jobs(id,operation_id,queue,status,available_at,payload,created_at,updated_at,gateway_read_binding)
+		values($1,$2,'SNAPSHOT_LIST','READY',$3,$4,$3,$3,$5::jsonb)`, jobID, operation.ID, now, payload, string(readJSON)); err != nil {
 		return operation, err
 	}
 	if err = recordOperationEvent(ctx, tx, operation, "", now); err != nil {
@@ -217,6 +222,14 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 	if !job.RepositoryAvailable {
 		code = "REPOSITORY_UNAVAILABLE"
 	}
+	if job.GatewayRead != nil {
+		if err = ensureReadJobBinding(ctx, tx, job); err != nil {
+			if !errors.Is(err, domain.ErrRepositoryBusy) && !errors.Is(err, domain.ErrRepositoryUnavailable) {
+				return err
+			}
+			code = "REPOSITORY_UNAVAILABLE"
+		}
+	}
 	to := "FAILED"
 	if code == "" {
 		var request struct {
@@ -228,7 +241,7 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 			len(result.SnapshotID) != 64 || len(result.TreeID) != 64 || len(result.Path) == 0 ||
 			len(result.Path) > 4096 || len(result.Entries) > 5000 || result.Scanned < 0 ||
 			len(result.NextCursor) > 4096 || (result.NextCursor != "" && (!strings.HasPrefix(result.NextCursor, "/") ||
-				strings.IndexFunc(result.NextCursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
+			strings.IndexFunc(result.NextCursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
 			return domain.ErrOperationTransition
 		}
 		for _, entry := range result.Entries {
@@ -265,14 +278,13 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 		to = "TIMED_OUT"
 	}
 	job.Operation.ErrorCode = code
-	if err = transitionOperation(ctx, tx, &job.Operation, to, now); err != nil {
+	if err = finishSnapshotReadJob(ctx, tx, &job, to, now); err != nil {
 		return err
 	}
-	if err = ensureCredentialLease(ctx, tx, id, owner); err != nil {
-		return err
-	}
-	if err = finishJobRow(ctx, tx, &job, to, now); err != nil {
-		return err
+	if code == "" && job.GatewayRead != nil {
+		if err = ensureReadJobBinding(ctx, tx, job); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

@@ -90,7 +90,7 @@ func (c *ControlPlane) SnapshotEntries(ctx context.Context, snapshotID string,
 	}
 	operation, err := c.store.EnqueueSnapshotList(ctx, domain.Operation{
 		ID: operationID, RepositoryID: &resolved, RequestedByUserID: &requestedBy,
-	}, snapshotID, path, cursor)
+	}, snapshotID, path, cursor, c.credentialConfigurationHash())
 	if errors.Is(err, domain.ErrRepositoryBusy) {
 		return domain.SnapshotListResult{}, false, domain.ErrRepositoryBusy
 	}

@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -22,9 +24,65 @@ type BackupExecutor struct {
 }
 
 // Execute satisfies PlanExecutor.
-func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, operation uuid.UUID, scheduled, deadline time.Time) OperationOutcome {
+func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, operation uuid.UUID, scheduled, deadline time.Time) (outcome OperationOutcome) {
 	if e.State == nil {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: "EXECUTOR_UNAVAILABLE"}
+	}
+	if plan.Execution != nil && plan.Execution.ResourceLimits != nil && plan.Execution.ResourceLimits.MaxDurationSeconds > 0 {
+		if limited := time.Now().Add(time.Duration(plan.Execution.ResourceLimits.MaxDurationSeconds) * time.Second); limited.Before(deadline) {
+			deadline = limited
+		}
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	if plan.Execution != nil {
+		if len(plan.Execution.PreHookIDs) > 0 {
+			if err := e.State.operationLog(operation, "pre_hook", "INFO", "HOOK_STARTED", 0, 0); err != nil {
+				return OperationOutcome{Status: OperationFailed, ErrorCode: "STATE_STORAGE_UNAVAILABLE"}
+			}
+		}
+		if err := e.State.runHooks(ctx, plan.Execution.PreHookIDs); err != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return OperationOutcome{Status: OperationFailed, ErrorCode: "BACKUP_TIMED_OUT"}
+			}
+			if ctx.Err() != nil {
+				return OperationOutcome{Status: OperationCanceled, ErrorCode: "CANCELED"}
+			}
+			return OperationOutcome{Status: OperationFailed, ErrorCode: "PRE_HOOK_FAILED"}
+		}
+		if len(plan.Execution.PreHookIDs) > 0 {
+			if err := e.State.operationLog(operation, "pre_hook", "INFO", "HOOK_FINISHED", 0, 0); err != nil {
+				return OperationOutcome{Status: OperationFailed, ErrorCode: "STATE_STORAGE_UNAVAILABLE"}
+			}
+		}
+		defer func() {
+			if ctx.Err() == nil && len(plan.Execution.PostHookIDs) > 0 {
+				if err := e.State.operationLog(operation, "post_hook", "INFO", "HOOK_STARTED", 0, 0); err != nil {
+					outcome.Status, outcome.ErrorCode = OperationFailed, "STATE_STORAGE_UNAVAILABLE"
+					return
+				}
+				code, level := "HOOK_FINISHED", "INFO"
+				if err := e.State.runHooks(ctx, plan.Execution.PostHookIDs); err != nil {
+					if ctx.Err() != nil {
+						outcome.Status, outcome.ErrorCode = OperationCanceled, "CANCELED"
+						if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+							outcome.Status, outcome.ErrorCode = OperationFailed, "BACKUP_TIMED_OUT"
+						}
+						return
+					}
+					code, level = "POST_HOOK_FAILED", "WARN"
+					if outcome.Status == OperationSucceeded {
+						outcome.Status, outcome.ErrorCode = OperationSucceededWarnings, "POST_HOOK_FAILED"
+					}
+					if outcome.Summary != nil {
+						outcome.Summary.WarningCount++
+					}
+				}
+				if err := e.State.operationLog(operation, "post_hook", level, code, 0, 0); err != nil {
+					outcome.Status, outcome.ErrorCode = OperationFailed, "STATE_STORAGE_UNAVAILABLE"
+				}
+			}
+		}()
 	}
 	identity, err := LoadIdentity(e.State)
 	if err != nil {
@@ -64,63 +122,160 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 		PasswordFile: passwordFile, HostID: plan.HostID, PlanID: plan.PlanID,
 		Paths: plan.Paths, ExcludePatterns: plan.ExcludePatterns,
 		ExcludeCaches: plan.ExcludeCaches, OneFileSystem: plan.OneFileSystem,
-		TLSClientCertFile: certFile, CACertFile: caFile,
+		TLSClientCertFile: certFile, CACertFile: caFile, SkipIfUnchanged: true,
 	}
-	progress := &progressSink{state: e.State, operation: operation}
+	request.CacheDirectory = filepath.Join(e.State.Directory(), "cache")
+	if os.MkdirAll(request.CacheDirectory, 0700) != nil {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: "WORKDIR_UNAVAILABLE"}
+	}
+	if plan.Execution != nil && plan.Execution.ResourceLimits != nil {
+		limits := plan.Execution.ResourceLimits
+		request.LimitUploadKiB, request.LimitDownloadKiB, request.ReadConcurrency = limits.LimitUploadKiB, limits.LimitDownloadKiB, limits.ReadConcurrency
+	}
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	progress := &progressSink{state: e.State, operation: operation, cancel: stop}
+	warnings := &backupWarningSink{}
 	var runResult restic.Result
 	var runErr error
-	sessionErr := e.State.WithGatewaySession(ctx, operation, deadline, func(sessionCtx context.Context, endpoint string) error {
-		request.Repository = endpoint
+	started := false
+	sessionErr := e.State.WithGatewaySession(runCtx, operation, deadline, func(sessionCtx context.Context, endpoint string) error {
+		request.Repository = "rest:" + endpoint
 		args, err := restic.BackupArgs(request, prepared)
 		if err != nil {
 			return err
 		}
+		started = true
 		runResult, runErr = restic.Run{
 			Binary: e.Binary, Args: args, Env: restic.Env(request),
-			Stdout: progress, KillGrace: e.KillGrace,
+			Stdout: progress, Stderr: warnings, KillGrace: e.KillGrace,
 		}.Execute(sessionCtx)
 		return runErr
 	})
-	if errors.Is(runErr, restic.ErrCanceled) || errors.Is(sessionErr, context.Canceled) {
+	progress.finish()
+	warnings.finish()
+	progress.warnings += warnings.count
+	if progress.summary != nil {
+		progress.summary.WarningCount = progress.warnings
+	}
+	if warnings.count > 0 {
+		if err := e.State.operationLog(operation, "backup", "WARN", "ENGINE_READ_ERROR", progress.files, progress.bytes); err != nil {
+			progress.fail("STATE_STORAGE_UNAVAILABLE")
+		}
+	}
+	if errors.Is(sessionErr, ErrGatewayCleanup) {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: "GATEWAY_CLEANUP_UNCONFIRMED", ExitCode: runResult.ExitCode}
+	}
+	if errors.Is(sessionErr, ErrGatewayBusy) {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: "GATEWAY_BUSY", ExitCode: runResult.ExitCode}
+	}
+	if progress.errorCode != "" {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: progress.errorCode, ExitCode: runResult.ExitCode}
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: "BACKUP_TIMED_OUT", ExitCode: runResult.ExitCode}
+	}
+	if ctx.Err() != nil || errors.Is(runErr, restic.ErrCanceled) || errors.Is(sessionErr, context.Canceled) {
 		return OperationOutcome{Status: OperationCanceled, ErrorCode: "CANCELED", ExitCode: runResult.ExitCode,
 			FilesDone: progress.files, TotalFiles: progress.totalFiles, BytesDone: progress.bytes,
 			TotalBytes: progress.totalBytes, FilesNew: progress.filesNew, DataAdded: progress.dataAdded}
 	}
+	if !started && gatewayFailureCode(sessionErr) != "" {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: gatewayFailureCode(sessionErr)}
+	}
 	if sessionErr != nil && runErr == nil {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: "GATEWAY_SESSION_FAILED"}
 	}
-	return classify(runResult.ExitCode, progress.snapshotID, progress.sawSummary, progress)
+	return classify(runResult.ExitCode, progress.snapshotID, progress.sawSummary, progress, sessionErr)
 }
 
-func classify(exitCode int, snapshotID string, sawSummary bool, progress *progressSink) OperationOutcome {
+func classify(exitCode int, snapshotID string, sawSummary bool, progress *progressSink, sessionErr error) OperationOutcome {
 	outcome := OperationOutcome{ExitCode: exitCode, SnapshotID: snapshotID,
 		FilesDone: progress.files, TotalFiles: progress.totalFiles,
 		BytesDone: progress.bytes, TotalBytes: progress.totalBytes,
 		FilesNew: progress.filesNew, DataAdded: progress.dataAdded}
+	outcome.Summary = progress.summary
 	switch exitCode {
 	case 0:
-		if !sawSummary || snapshotID == "" {
+		if !sawSummary {
 			outcome.Status, outcome.ErrorCode = OperationFailed, "INVALID_ENGINE_OUTPUT"
 			return outcome
 		}
 		outcome.Status = OperationSucceeded
 	case 3:
-		if snapshotID == "" {
+		if !sawSummary || snapshotID == "" {
 			outcome.Status, outcome.ErrorCode = OperationFailed, "INVALID_ENGINE_OUTPUT"
 			return outcome
 		}
 		outcome.Status = OperationSucceededWarnings
 		outcome.ErrorCode = "PARTIAL_READ"
+		if outcome.Summary != nil && outcome.Summary.WarningCount == 0 {
+			outcome.Summary.WarningCount = 1
+		}
 	case 130:
 		outcome.Status, outcome.ErrorCode = OperationCanceled, "CANCELED"
 	case 11:
 		outcome.Status, outcome.ErrorCode = OperationFailed, "REPOSITORY_LOCKED"
 	case 12:
 		outcome.Status, outcome.ErrorCode = OperationFailed, "WRONG_REPOSITORY_PASSWORD"
+	case 10:
+		outcome.Status, outcome.ErrorCode = OperationFailed, "REPOSITORY_MISSING"
+	case 1:
+		outcome.Status, outcome.ErrorCode = OperationFailed, "BACKUP_FAILED"
+		if !sawSummary && snapshotID == "" && progress.warnings == 0 && gatewayFailureCode(sessionErr) != "" {
+			outcome.ErrorCode = gatewayFailureCode(sessionErr)
+		}
 	default:
 		outcome.Status, outcome.ErrorCode = OperationFailed, "UNKNOWN_EXIT_CODE"
 	}
 	return outcome
+}
+
+// Restic emits JSON error events on stderr. Count them separately from stdout
+// and merge after the process joins; raw messages and paths never leave here.
+type backupWarningSink struct {
+	pending    []byte
+	count      int64
+	discarding bool
+}
+
+func (s *backupWarningSink) Write(chunk []byte) (int, error) {
+	length := len(chunk)
+	for len(chunk) > 0 {
+		index := bytes.IndexByte(chunk, '\n')
+		part := chunk
+		if index >= 0 {
+			part = chunk[:index]
+		}
+		if len(s.pending)+len(part) > 1<<20 {
+			clear(s.pending)
+			s.pending = nil
+			s.discarding = true
+		}
+		if !s.discarding {
+			s.pending = append(s.pending, part...)
+		}
+		if index < 0 {
+			break
+		}
+		s.finish()
+		chunk = chunk[index+1:]
+	}
+	return length, nil
+}
+
+func (s *backupWarningSink) finish() {
+	if !s.discarding {
+		var event struct {
+			Type string `json:"message_type"`
+		}
+		if json.Unmarshal(s.pending, &event) == nil && event.Type == "error" {
+			s.count++
+		}
+	}
+	clear(s.pending)
+	s.pending = nil
+	s.discarding = false
 }
 
 func writeSecretFile(directory, name string, payload []byte) (string, error) {
@@ -171,31 +326,59 @@ type progressSink struct {
 	lastWrite   time.Time
 	lastPercent float64
 	pendingLine []byte
+	summary     *domain.BackupSummary
+	warnings    int64
+	errorCode   string
+	cancel      context.CancelFunc
 }
 
 func (p *progressSink) Write(chunk []byte) (int, error) {
-	p.pendingLine = append(p.pendingLine, chunk...)
-	for {
-		index := -1
-		for i, b := range p.pendingLine {
-			if b == '\n' {
-				index = i
-				break
-			}
+	length := len(chunk)
+	for len(chunk) > 0 && p.errorCode == "" {
+		index := bytes.IndexByte(chunk, '\n')
+		part := chunk
+		if index >= 0 {
+			part = chunk[:index]
 		}
+		if len(p.pendingLine)+len(part) > 1<<20 {
+			p.fail("INVALID_ENGINE_OUTPUT")
+			break
+		}
+		p.pendingLine = append(p.pendingLine, part...)
 		if index < 0 {
 			break
 		}
-		line := p.pendingLine[:index]
-		p.pendingLine = p.pendingLine[index+1:]
-		p.consume(line)
+		p.consume(p.pendingLine)
+		p.pendingLine = p.pendingLine[:0]
+		chunk = chunk[index+1:]
 	}
-	return len(chunk), nil
+	return length, nil
+}
+
+func (p *progressSink) finish() {
+	if p.errorCode == "" && len(p.pendingLine) > 0 {
+		p.consume(p.pendingLine)
+	}
+	p.pendingLine = nil
+}
+
+func (p *progressSink) fail(code string) {
+	if p.errorCode == "" {
+		p.errorCode = code
+		p.pendingLine = nil
+		if p.cancel != nil {
+			p.cancel()
+		}
+	}
 }
 
 func (p *progressSink) consume(line []byte) {
 	event, ok, err := restic.ParseEvent(line)
-	if err != nil || !ok {
+	if err != nil {
+		p.fail("INVALID_ENGINE_OUTPUT")
+		return
+	}
+	if !ok {
 		return
 	}
 	switch event.Type {
@@ -208,26 +391,57 @@ func (p *progressSink) consume(line []byte) {
 			p.persist()
 		}
 	case "summary":
+		if p.sawSummary {
+			p.fail("INVALID_ENGINE_OUTPUT")
+			return
+		}
 		p.sawSummary = true
 		p.snapshotID = event.SnapshotID
+		p.summary = event.Summary
+		if p.summary != nil {
+			p.summary.WarningCount = p.warnings
+		}
 		p.filesNew, p.dataAdded = event.FilesNew, event.DataAdded
 		if event.FilesDone > 0 {
 			p.files = event.FilesDone
 		}
+		p.bytes = event.BytesDone
 		p.persist()
+		if p.state != nil {
+			if err := p.state.operationLog(p.operation, "backup", "INFO", "BACKUP_SUMMARY", p.files, p.bytes); err != nil {
+				p.fail("STATE_STORAGE_UNAVAILABLE")
+			}
+		}
+	case "error":
+		p.warnings++
+		if p.state != nil {
+			if err := p.state.operationLog(p.operation, "backup", "WARN", "ENGINE_READ_ERROR", p.files, p.bytes); err != nil {
+				p.fail("STATE_STORAGE_UNAVAILABLE")
+			}
+		}
 	}
 }
 
 func (p *progressSink) persist() {
-	record, found, err := p.state.Operation(p.operation)
-	if err != nil || !found {
+	if p.state == nil {
 		return
 	}
-	record.FilesDone, record.TotalFiles = p.files, p.totalFiles
-	record.BytesDone, record.TotalBytes = p.bytes, p.totalBytes
-	record.FilesNew, record.DataAdded = p.filesNew, p.dataAdded
-	if p.snapshotID != "" {
-		record.SnapshotID = p.snapshotID
+	if err := p.state.updateOperation(p.operation, func(record *OperationRecord) {
+		if record.Terminal() {
+			return
+		}
+		record.FilesDone, record.TotalFiles = p.files, p.totalFiles
+		record.BytesDone, record.TotalBytes = p.bytes, p.totalBytes
+		record.FilesNew, record.DataAdded = p.filesNew, p.dataAdded
+		record.Summary = p.summary
+		if p.snapshotID != "" {
+			record.SnapshotID = p.snapshotID
+		}
+	}); err != nil {
+		p.fail("STATE_STORAGE_UNAVAILABLE")
+		return
 	}
-	_ = p.state.PutOperation(record)
+	if err := p.state.operationLog(p.operation, "backup", "INFO", "BACKUP_PROGRESS", p.files, p.bytes); err != nil {
+		p.fail("STATE_STORAGE_UNAVAILABLE")
+	}
 }

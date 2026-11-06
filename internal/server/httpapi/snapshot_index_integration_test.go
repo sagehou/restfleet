@@ -53,7 +53,7 @@ func TestSnapshotIndexMarksManagedAndMissing(t *testing.T) {
 	index := func(entries []domain.IndexedSnapshot) {
 		t.Helper()
 		operationID := uuid.Must(uuid.NewV7())
-		operation, err := store.EnqueueSnapshotIndex(ctx, domain.Operation{ID: operationID, RepositoryID: &repository.Id})
+		operation, err := store.EnqueueSnapshotIndex(ctx, domain.Operation{ID: operationID, RepositoryID: &repository.Id}, "")
 		if err != nil {
 			t.Fatal(err)
 		}

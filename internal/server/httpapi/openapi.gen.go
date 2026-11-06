@@ -108,6 +108,51 @@ func (e AgentInventoryCpuArch) Valid() bool {
 	}
 }
 
+// Defines values for BackupLogEntryLevel.
+const (
+	BackupLogEntryLevelERROR BackupLogEntryLevel = "ERROR"
+	BackupLogEntryLevelINFO  BackupLogEntryLevel = "INFO"
+	BackupLogEntryLevelWARN  BackupLogEntryLevel = "WARN"
+)
+
+// Valid indicates whether the value is a known member of the BackupLogEntryLevel enum.
+func (e BackupLogEntryLevel) Valid() bool {
+	switch e {
+	case BackupLogEntryLevelERROR:
+		return true
+	case BackupLogEntryLevelINFO:
+		return true
+	case BackupLogEntryLevelWARN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BackupLogEntrySection.
+const (
+	BackupLogEntrySectionAgent    BackupLogEntrySection = "agent"
+	BackupLogEntrySectionBackup   BackupLogEntrySection = "backup"
+	BackupLogEntrySectionPostHook BackupLogEntrySection = "post_hook"
+	BackupLogEntrySectionPreHook  BackupLogEntrySection = "pre_hook"
+)
+
+// Valid indicates whether the value is a known member of the BackupLogEntrySection enum.
+func (e BackupLogEntrySection) Valid() bool {
+	switch e {
+	case BackupLogEntrySectionAgent:
+		return true
+	case BackupLogEntrySectionBackup:
+		return true
+	case BackupLogEntrySectionPostHook:
+		return true
+	case BackupLogEntrySectionPreHook:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BackupOperationSource.
 const (
 	MANUAL    BackupOperationSource = "MANUAL"
@@ -443,6 +488,7 @@ const (
 	PlanBackupHealthOVERDUE  PlanBackupHealth = "OVERDUE"
 	PlanBackupHealthPAUSED   PlanBackupHealth = "PAUSED"
 	PlanBackupHealthUNKNOWN  PlanBackupHealth = "UNKNOWN"
+	PlanBackupHealthWARNING  PlanBackupHealth = "WARNING"
 )
 
 // Valid indicates whether the value is a known member of the PlanBackupHealth enum.
@@ -459,6 +505,8 @@ func (e PlanBackupHealth) Valid() bool {
 	case PlanBackupHealthPAUSED:
 		return true
 	case PlanBackupHealthUNKNOWN:
+		return true
+	case PlanBackupHealthWARNING:
 		return true
 	default:
 		return false
@@ -736,9 +784,35 @@ type AgentRevoke struct {
 	Reason string `json:"reason"`
 }
 
+// BackupLogEntry defines model for BackupLogEntry.
+type BackupLogEntry struct {
+	BytesDone  int64                 `json:"bytes_done"`
+	Code       string                `json:"code"`
+	FilesDone  int64                 `json:"files_done"`
+	Level      BackupLogEntryLevel   `json:"level"`
+	ObservedAt time.Time             `json:"observed_at"`
+	Section    BackupLogEntrySection `json:"section"`
+	Sequence   int64                 `json:"sequence"`
+}
+
+// BackupLogEntryLevel defines model for BackupLogEntry.Level.
+type BackupLogEntryLevel string
+
+// BackupLogEntrySection defines model for BackupLogEntry.Section.
+type BackupLogEntrySection string
+
+// BackupLogPage defines model for BackupLogPage.
+type BackupLogPage struct {
+	Items        []BackupLogEntry `json:"items"`
+	NextSequence int64            `json:"next_sequence"`
+}
+
 // BackupOperation defines model for BackupOperation.
 type BackupOperation struct {
-	AgentId           openapi_types.UUID    `json:"agent_id"`
+	AgentId openapi_types.UUID `json:"agent_id"`
+
+	// Attempt Execution attempt within the retry chain.
+	Attempt           *int                  `json:"attempt,omitempty"`
 	BytesDone         *int64                `json:"bytes_done,omitempty"`
 	CancelReason      *string               `json:"cancel_reason,omitempty"`
 	CancelRequestedAt *time.Time            `json:"cancel_requested_at,omitempty"`
@@ -757,6 +831,7 @@ type BackupOperation struct {
 	Source            BackupOperationSource `json:"source"`
 	StartedAt         *time.Time            `json:"started_at,omitempty"`
 	Status            BackupOperationStatus `json:"status"`
+	Summary           *BackupSummary        `json:"summary,omitempty"`
 	TotalBytes        *int64                `json:"total_bytes,omitempty"`
 	TotalFiles        *int64                `json:"total_files,omitempty"`
 	Type              BackupOperationType   `json:"type"`
@@ -781,6 +856,39 @@ type BackupOperationCancel struct {
 type BackupOperationList struct {
 	Items      []BackupOperation `json:"items"`
 	NextCursor *string           `json:"next_cursor,omitempty"`
+}
+
+// BackupResourceLimits Zero or omitted limits retain Restic defaults; maximum duration is also capped by the operation deadline.
+type BackupResourceLimits struct {
+	LimitDownloadKib   *int `json:"limit_download_kib,omitempty"`
+	LimitUploadKib     *int `json:"limit_upload_kib,omitempty"`
+	MaxDurationSeconds *int `json:"max_duration_seconds,omitempty"`
+	ReadConcurrency    *int `json:"read_concurrency,omitempty"`
+}
+
+// BackupRetryPolicy Zero or omitted values use defaults (1 attempt, 60s initial, 1800s maximum); each retry creates a new Operation.
+type BackupRetryPolicy struct {
+	InitialBackoffSeconds *int `json:"initial_backoff_seconds,omitempty"`
+	MaxAttempts           *int `json:"max_attempts,omitempty"`
+	MaxBackoffSeconds     *int `json:"max_backoff_seconds,omitempty"`
+}
+
+// BackupSummary defines model for BackupSummary.
+type BackupSummary struct {
+	BackupEnd           *time.Time `json:"backup_end,omitempty"`
+	BackupStart         *time.Time `json:"backup_start,omitempty"`
+	DataAdded           int64      `json:"data_added"`
+	DataAddedPacked     int64      `json:"data_added_packed"`
+	DirsChanged         int64      `json:"dirs_changed"`
+	DirsNew             int64      `json:"dirs_new"`
+	DirsUnmodified      int64      `json:"dirs_unmodified"`
+	FilesChanged        int64      `json:"files_changed"`
+	FilesNew            int64      `json:"files_new"`
+	FilesUnmodified     int64      `json:"files_unmodified"`
+	TotalBytesProcessed int64      `json:"total_bytes_processed"`
+	TotalDuration       float64    `json:"total_duration"`
+	TotalFilesProcessed int64      `json:"total_files_processed"`
+	WarningCount        int64      `json:"warning_count"`
 }
 
 // BootstrapRequest defines model for BootstrapRequest.
@@ -945,13 +1053,15 @@ type Plan struct {
 	// AcceptedRevision Last revision acknowledged by the Agent.
 	AcceptedRevision int64              `json:"accepted_revision"`
 	AgentId          openapi_types.UUID `json:"agent_id"`
-	BackupHealth     PlanBackupHealth   `json:"backup_health"`
-	CreatedAt        time.Time          `json:"created_at"`
-	DesiredRevision  int64              `json:"desired_revision"`
-	EffectiveConfig  TemplateConfig     `json:"effective_config"`
-	HostId           openapi_types.UUID `json:"host_id"`
-	Id               openapi_types.UUID `json:"id"`
-	Name             string             `json:"name"`
+
+	// BackupHealth WARNING means the latest relevant backup completed with warnings and counts as unhealthy on the dashboard.
+	BackupHealth    PlanBackupHealth   `json:"backup_health"`
+	CreatedAt       time.Time          `json:"created_at"`
+	DesiredRevision int64              `json:"desired_revision"`
+	EffectiveConfig TemplateConfig     `json:"effective_config"`
+	HostId          openapi_types.UUID `json:"host_id"`
+	Id              openapi_types.UUID `json:"id"`
+	Name            string             `json:"name"`
 
 	// Overrides Allowed JSON merge-patch subset stored with the plan.
 	Overrides        *map[string]interface{} `json:"overrides,omitempty"`
@@ -962,7 +1072,7 @@ type Plan struct {
 	UpdatedAt        time.Time               `json:"updated_at"`
 }
 
-// PlanBackupHealth defines model for Plan.BackupHealth.
+// PlanBackupHealth WARNING means the latest relevant backup completed with warnings and counts as unhealthy on the dashboard.
 type PlanBackupHealth string
 
 // PlanStatus defines model for Plan.Status.
@@ -1202,22 +1312,24 @@ type TemplateApplyResponse struct {
 
 // TemplateConfig defines model for TemplateConfig.
 type TemplateConfig struct {
-	EnabledByDefault    *bool                 `json:"enabled_by_default,omitempty"`
-	ExcludeCaches       *bool                 `json:"exclude_caches,omitempty"`
-	ExcludePatterns     *[]string             `json:"exclude_patterns,omitempty"`
-	JitterSeconds       *int                  `json:"jitter_seconds,omitempty"`
+	EnabledByDefault *bool     `json:"enabled_by_default,omitempty"`
+	ExcludeCaches    *bool     `json:"exclude_caches,omitempty"`
+	ExcludePatterns  *[]string `json:"exclude_patterns,omitempty"`
+	JitterSeconds    *int      `json:"jitter_seconds,omitempty"`
+
+	// MisfireGraceSeconds Catch-up grace after downtime or a delayed scheduler loop. Zero disables catch-up; an ordinary poll may wake up to one poll interval plus one second late.
 	MisfireGraceSeconds *int                  `json:"misfire_grace_seconds,omitempty"`
 	OneFileSystem       *bool                 `json:"one_file_system,omitempty"`
 	Paths               []string              `json:"paths"`
 	PostHookIds         *[]openapi_types.UUID `json:"post_hook_ids,omitempty"`
 	PreHookIds          *[]openapi_types.UUID `json:"pre_hook_ids,omitempty"`
 
-	// ResourceLimits Opaque resource limits stored verbatim for the Agent runtime.
-	ResourceLimits    *map[string]interface{} `json:"resource_limits,omitempty"`
-	RetentionPolicyId *openapi_types.UUID     `json:"retention_policy_id,omitempty"`
+	// ResourceLimits Zero or omitted limits retain Restic defaults; maximum duration is also capped by the operation deadline.
+	ResourceLimits    *BackupResourceLimits `json:"resource_limits,omitempty"`
+	RetentionPolicyId *openapi_types.UUID   `json:"retention_policy_id,omitempty"`
 
-	// RetryPolicy Opaque retry metadata stored verbatim for the Agent scheduler.
-	RetryPolicy *map[string]interface{} `json:"retry_policy,omitempty"`
+	// RetryPolicy Zero or omitted values use defaults (1 attempt, 60s initial, 1800s maximum); each retry creates a new Operation.
+	RetryPolicy *BackupRetryPolicy `json:"retry_policy,omitempty"`
 
 	// ScheduleCron Standard five-field cron in the template timezone.
 	ScheduleCron string `json:"schedule_cron"`
@@ -1301,12 +1413,20 @@ type ListBackupOperationsParams struct {
 
 // CancelBackupOperationParams defines parameters for CancelBackupOperation.
 type CancelBackupOperationParams struct {
-	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	XCSRFToken     CsrfToken      `json:"X-CSRF-Token"`
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// ListBackupOperationLogsParams defines parameters for ListBackupOperationLogs.
+type ListBackupOperationLogsParams struct {
+	AfterSequence *int64 `form:"after_sequence,omitempty" json:"after_sequence,omitempty"`
+	Limit         *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // RetryBackupOperationParams defines parameters for RetryBackupOperation.
 type RetryBackupOperationParams struct {
-	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+	XCSRFToken     CsrfToken      `json:"X-CSRF-Token"`
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
 // BootstrapParams defines parameters for Bootstrap.
@@ -1551,6 +1671,9 @@ type ServerInterface interface {
 
 	// (POST /api/v1/backup-operations/{operation_id}/cancel)
 	CancelBackupOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID, params CancelBackupOperationParams)
+
+	// (GET /api/v1/backup-operations/{operation_id}/logs)
+	ListBackupOperationLogs(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID, params ListBackupOperationLogsParams)
 
 	// (POST /api/v1/backup-operations/{operation_id}/retry)
 	RetryBackupOperation(w http.ResponseWriter, r *http.Request, operationId openapi_types.UUID, params RetryBackupOperationParams)
@@ -2008,8 +2131,86 @@ func (siw *ServerInterfaceWrapper) CancelBackupOperation(w http.ResponseWriter, 
 		return
 	}
 
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CancelBackupOperation(w, r, operationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBackupOperationLogs operation middleware
+func (siw *ServerInterfaceWrapper) ListBackupOperationLogs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "operation_id" -------------
+	var operationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "operation_id", r.PathValue("operation_id"), &operationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBackupOperationLogsParams
+
+	// ------------- Optional query parameter "after_sequence" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after_sequence", r.URL.Query(), &params.AfterSequence, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after_sequence"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after_sequence", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBackupOperationLogs(w, r, operationId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2059,6 +2260,29 @@ func (siw *ServerInterfaceWrapper) RetryBackupOperation(w http.ResponseWriter, r
 	} else {
 		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
 		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
 		return
 	}
 
@@ -4401,6 +4625,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/templates/{template_id}/dependent-plans", wrapper.ListTemplateDependentPlans)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations", wrapper.ListBackupOperations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}", wrapper.GetBackupOperation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}/logs", wrapper.ListBackupOperationLogs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}/cancel", wrapper.CancelBackupOperation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/backup-operations/{operation_id}/retry", wrapper.RetryBackupOperation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/snapshots", wrapper.ListSnapshots)

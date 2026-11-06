@@ -79,6 +79,7 @@ type CredentialJob struct {
 	RepositoryAvailable bool
 	LeaseExpiresAt      time.Time
 	Payload             []byte
+	GatewayRead         *GatewayReadBinding
 }
 
 // CredentialTestOutcome codes are a closed vocabulary; subprocess/database
@@ -90,6 +91,13 @@ func ValidCredentialTestCode(code string) bool {
 		return true
 	}
 	return false
+}
+
+// BackupRequestKey contains hashes only; raw HTTP keys and reasons are not persisted.
+type BackupRequestKey struct {
+	Scope [32]byte
+	Key   [32]byte
+	Body  [32]byte
 }
 
 // BackupOperation is one scheduled backup run reported by an Agent. Credential
@@ -123,36 +131,45 @@ type BackupOperation struct {
 	// DispatchedAt records that a JobDispatch was claimed for this operation.
 	// The row stays QUEUED until JobAccepted so a lost dispatch is retried.
 	DispatchedAt *time.Time
+	Attempt      int
+	Summary      *BackupSummary
 }
 
 type BackupOperationProgress struct {
-	OperationID  uuid.UUID
-	PlanID       uuid.UUID
-	AgentID      uuid.UUID
-	PlanRevision int64
-	ScheduledAt  time.Time
-	Sequence     uint64
-	Stage        string
-	FilesDone    int64
-	TotalFiles   int64
-	BytesDone    int64
-	TotalBytes   int64
-	ObservedAt   time.Time
+	OperationID       uuid.UUID
+	PlanID            uuid.UUID
+	AgentID           uuid.UUID
+	PlanRevision      int64
+	ScheduledAt       time.Time
+	Sequence          uint64
+	Stage             string
+	FilesDone         int64
+	TotalFiles        int64
+	BytesDone         int64
+	TotalBytes        int64
+	ObservedAt        time.Time
+	ParentOperationID *uuid.UUID
+	RootOperationID   *uuid.UUID
+	Attempt           int
 }
 
 type BackupOperationResult struct {
-	OperationID  uuid.UUID
-	PlanID       uuid.UUID
-	AgentID      uuid.UUID
-	PlanRevision int64
-	ScheduledAt  time.Time
-	Status       string
-	ErrorCode    string
-	ExitCode     int
-	SnapshotID   string
-	FilesNew     int64
-	DataAdded    int64
-	FinishedAt   time.Time
+	OperationID       uuid.UUID
+	PlanID            uuid.UUID
+	AgentID           uuid.UUID
+	PlanRevision      int64
+	ScheduledAt       time.Time
+	Status            string
+	ErrorCode         string
+	ExitCode          int
+	SnapshotID        string
+	FilesNew          int64
+	DataAdded         int64
+	FinishedAt        time.Time
+	ParentOperationID *uuid.UUID
+	RootOperationID   *uuid.UUID
+	Attempt           int
+	Summary           *BackupSummary
 }
 
 // Snapshot indexes one Restic snapshot. A NULL PlanID/AgentID/OperationID and
