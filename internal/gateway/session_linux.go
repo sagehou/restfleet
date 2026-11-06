@@ -411,7 +411,7 @@ func (s *BackupSession) removeLock(w http.ResponseWriter, r *http.Request, path 
 		s.deny(w, r, true, "lock_not_owned", http.StatusForbidden)
 		return
 	}
-	if !s.record(r.Context(), true, "lock_cleanup", "owned_lock") {
+	if !s.record(true, "lock_cleanup", "owned_lock") {
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -429,7 +429,7 @@ func (s *BackupSession) removeLock(w http.ResponseWriter, r *http.Request, path 
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *BackupSession) record(ctx context.Context, authenticated bool, action, reason string) bool {
+func (s *BackupSession) record(authenticated bool, action, reason string) bool {
 	// A disconnected client cannot cancel the durable security observation.
 	ctx, cancel := context.WithTimeout(s.ctx, 3*time.Second)
 	defer cancel()
@@ -437,7 +437,7 @@ func (s *BackupSession) record(ctx context.Context, authenticated bool, action, 
 }
 
 func (s *BackupSession) deny(w http.ResponseWriter, r *http.Request, authenticated bool, reason string, status int) {
-	if !s.record(r.Context(), authenticated, "denied", reason) {
+	if !s.record(authenticated, "denied", reason) {
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		return
 	}

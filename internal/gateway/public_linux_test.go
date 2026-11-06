@@ -514,18 +514,20 @@ func TestPublicClientDisconnectDoesNotPoisonGlobalAudit(t *testing.T) {
 	}
 	go func() {
 		response, err := f.client.Do(r)
-		if err == nil { _ = response.Body.Close() }
+		if err == nil {
+			_ = response.Body.Close()
+		}
 	}()
 	var auditCtx context.Context
 	select {
 	case auditCtx = <-entered:
-	case <-time.After(2*time.Second):
+	case <-time.After(2 * time.Second):
 		t.Fatal("audit did not start")
 	}
 	cancel()
 	select {
 	case <-disconnected:
-	case <-time.After(2*time.Second):
+	case <-time.After(2 * time.Second):
 		t.Fatal("server did not observe client disconnect")
 	}
 	if deadline, ok := auditCtx.Deadline(); auditCtx.Err() != nil || !ok || time.Until(deadline) > 3*time.Second {
@@ -534,7 +536,7 @@ func TestPublicClientDisconnectDoesNotPoisonGlobalAudit(t *testing.T) {
 	once.Do(func() { close(release) })
 	select {
 	case <-committed:
-	case <-time.After(2*time.Second):
+	case <-time.After(2 * time.Second):
 		t.Fatal("audit did not commit")
 	}
 	if !recorder.Ready() {
