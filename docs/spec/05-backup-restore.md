@@ -78,7 +78,7 @@ V1 统一 `--group-by tags`，并在 retention 中使用相同分组逻辑。用
 
 ## 4. Pre/Post Hook
 
-Agent MUST 通过本机 `--hooks-file` 读取 version=1 的受保护 JSON allowlist，文件及父目录归 Agent 服务用户所有，权限分别为 0400/0600、0700。`hooks` 是至多 64 项的数组，每项包含 UUIDv7 `id`、规范绝对路径 `executable`、本机 `args` 和 1..3600 的 `timeout_seconds`。MUST 拒绝 symlink、重复 ID、未知字段、过长参数和可被其他用户写入的 executable。中心仅下发每阶段至多 16 个 ID；未知本机 ID MUST 拒绝配置，保留 last-known-good。
+Agent MUST 通过本机 `--hooks-file` 读取 version=1 的受保护 JSON allowlist，文件及父目录归 Agent 服务用户所有，权限分别为 0400/0600、0700。`hooks` 是至多 64 项的数组，每项包含 UUIDv7 `id`、规范绝对路径 `executable`、本机 `args` 和 1..3600 的 `timeout_seconds`。MUST 拒绝 symlink、重复 ID、未知字段、过长参数和可被其他用户写入的 executable。executable 及祖先目录 MUST 属于 root 或 Agent 服务用户，祖先 MUST 不可由其他用户写入；root 所有且带 sticky bit 的临时目录 MAY 作为受保护子目录的祖先。执行前 MUST 重验，防止 allowlist 接受后放宽权限。中心仅下发每阶段至多 16 个 ID；未知本机 ID MUST 拒绝配置，保留 last-known-good。
 
 执行顺序：
 

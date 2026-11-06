@@ -59,6 +59,9 @@ func TestHookAllowlistRejectsUnsafeFilesAndStopsProcessGroup(t *testing.T) {
 	if err := os.Chmod(executable, 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err:=os.Chmod(directory,0777);err!=nil{t.Fatal(err)}
+	if safeHookExecutable(executable) || state.runHooks(context.Background(),[]uuid.UUID{id})==nil{t.Fatal("writable executable ancestor accepted")}
+	if err:=os.Chmod(directory,0700);err!=nil{t.Fatal(err)}
 	link := filepath.Join(directory, "link.json")
 	if err := os.Symlink(path, link); err != nil {
 		t.Fatal(err)

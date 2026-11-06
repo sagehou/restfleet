@@ -27,6 +27,7 @@ func TestParseSnapshotIndex(t *testing.T) {
 
 func TestParseSnapshotIndexRejectsMalformed(t *testing.T) {
 	for _, raw := range []string{
+		`null`,
 		`{}`,
 		`[{"id":"short","tree":"` + strings.Repeat("b", 64) + `","time":"2026-10-21T10:00:00Z"}]`,
 		`[{"id":"` + strings.Repeat("a", 64) + `","tree":"short","time":"2026-10-21T10:00:00Z"}]`,

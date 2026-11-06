@@ -3,6 +3,7 @@ package gateway
 import (
  "bytes"
  "context"
+ "crypto/rand"
  "crypto/sha256"
  "crypto/tls"
  "encoding/hex"
@@ -40,6 +41,7 @@ import (
 func TestPinnedAgentOfflineScheduleAndCentralGatewayIndex(t *testing.T){
  resticBinary,rcloneBinary:=os.Getenv("RESTFLEET_TEST_RESTIC_BINARY"),os.Getenv("RESTFLEET_TEST_RCLONE_BINARY")
  if resticBinary=="" || rcloneBinary==""{t.Skip("CI supplies pinned Restic and rclone")}
+ if os.Geteuid()==0{t.Fatal("pinned Agent conformance needs an unprivileged runner to verify unreadable files")}
  ctx,cancel:=context.WithTimeout(context.Background(),90*time.Second);defer cancel()
  f:=newServiceFixture(t,1,"real")
  if err:=os.WriteFile(filepath.Join(f.state,"real-rclone"),[]byte(rcloneBinary),0600);err!=nil{t.Fatal(err)}
@@ -72,13 +74,14 @@ func TestPinnedAgentOfflineScheduleAndCentralGatewayIndex(t *testing.T){
  filename:="file ; $(literal).txt"
  contents:=[]byte("offline scheduled backup content\n")
  if err=os.WriteFile(filepath.Join(source,filename),contents,0600);err!=nil{t.Fatal(err)}
- plan:=domain.PlanSchedule{PlanID:uuid.Must(uuid.NewV7()),Revision:1,Name:"offline",HostID:binding.HostID,RepositoryID:binding.RepositoryID,Cron:"0 0 * * *",Timezone:"UTC",MisfireGraceSeconds:120,ConcurrencyPolicy:"FORBID",Paths:[]string{source},ConfigHash:strings.Repeat("b",64)}
+ plan:=domain.PlanSchedule{PlanID:uuid.Must(uuid.NewV7()),Revision:1,Name:"offline",HostID:binding.HostID,RepositoryID:binding.RepositoryID,Cron:"0 0 * * *",Timezone:"UTC",MisfireGraceSeconds:120,ConcurrencyPolicy:"FORBID",Paths:[]string{source},ConfigHash:strings.Repeat("b",64),Execution:&domain.BackupExecution{ResourceLimits:&domain.BackupResourceLimits{LimitUploadKiB:128}}}
  desired,err:=domain.NewDefaultDesiredState(binding.AgentID,1,time.Now());if err!=nil{t.Fatal(err)}
  desired.Plans=[]domain.PlanSchedule{plan}
  canonical,err:=desired.CanonicalJSON();if err!=nil{t.Fatal(err)};sum:=sha256.Sum256(canonical)
- snapshot:=&agentv1.DesiredStateSnapshot{Revision:1,GeneratedAt:timestamppb.New(desired.GeneratedAt),ConfigHash:"sha256:"+hex.EncodeToString(sum[:]),RuntimePolicy:&agentv1.RuntimePolicy{MaxParallelIoJobs:1,LogLimitBytes:domain.DefaultLogLimitBytes},Plans:[]*agentv1.PlanSchedule{{PlanId:plan.PlanID.String(),Revision:1,Name:plan.Name,HostId:plan.HostID.String(),RepositoryId:plan.RepositoryID.String(),Cron:plan.Cron,Timezone:plan.Timezone,MisfireGraceSeconds:120,ConcurrencyPolicy:plan.ConcurrencyPolicy,Paths:plan.Paths,ConfigHash:plan.ConfigHash}}}
+ execution,err:=json.Marshal(plan.Execution);if err!=nil{t.Fatal(err)}
+ snapshot:=&agentv1.DesiredStateSnapshot{Revision:1,GeneratedAt:timestamppb.New(desired.GeneratedAt),ConfigHash:"sha256:"+hex.EncodeToString(sum[:]),RuntimePolicy:&agentv1.RuntimePolicy{MaxParallelIoJobs:1,LogLimitBytes:domain.DefaultLogLimitBytes},Plans:[]*agentv1.PlanSchedule{{PlanId:plan.PlanID.String(),Revision:1,Name:plan.Name,HostId:plan.HostID.String(),RepositoryId:plan.RepositoryID.String(),Cron:plan.Cron,Timezone:plan.Timezone,MisfireGraceSeconds:120,ConcurrencyPolicy:plan.ConcurrencyPolicy,Paths:plan.Paths,ConfigHash:plan.ConfigHash,ExecutionConfigJson:execution}}}
  if accepted,err:=state.ApplyDesiredState(binding.AgentID,snapshot);err!=nil || !accepted.Accepted{t.Fatal("offline configuration not accepted")}
- runScheduled:=func() agent.OperationRecord{
+ runScheduled:=func(expected string,cancelWhileRunning bool) agent.OperationRecord{
   t.Helper()
   scheduled:=time.Now().UTC().Add(-time.Second)
   runtime:=agent.PlanRuntime{PlanID:plan.PlanID,PlanRevision:1,ConfigHash:plan.ConfigHash,NextRunAt:scheduled}
@@ -88,25 +91,39 @@ func TestPinnedAgentOfflineScheduleAndCentralGatewayIndex(t *testing.T){
   go func(){done<-state.RunLocalScheduler(work,10*time.Millisecond,agent.BackupExecutor{State:state,Binary:resticBinary},nil)}()
   defer func(){stop();if err:=<-done;err!=nil && !errors.Is(err,context.Canceled){t.Error("scheduler failed")}}()
   operationID:=schedule.OperationID(plan.PlanID,scheduled)
+  canceled:=false
   for {
    record,found,err:=state.Operation(operationID);if err!=nil{t.Fatal(err)}
    if found && record.Terminal(){
-    if record.Status!=agent.OperationSucceeded || record.ExitCode!=0 || record.Summary==nil{t.Fatalf("offline backup = %s/%s/%d",record.Status,record.ErrorCode,record.ExitCode)}
+    if record.Status!=expected || (expected!=agent.OperationCanceled && record.Summary==nil){t.Fatalf("offline backup = %s/%s/%d",record.Status,record.ErrorCode,record.ExitCode)}
+    if cancelWhileRunning && !canceled{t.Fatal("backup completed before cancellation exercised")}
     return record
    }
+   if cancelWhileRunning && found && record.BytesDone>0 && !canceled{canceled=state.CancelOperation(operationID)}
    select{case <-ctx.Done():t.Fatal("offline backup timed out");case <-time.After(10*time.Millisecond):}
   }
  }
- first:=runScheduled()
+ first:=runScheduled(agent.OperationSucceeded,false)
  if len(first.SnapshotID)!=64 || first.Summary.TotalFilesProcessed!=1{t.Fatal("real backup summary missing")}
- second:=runScheduled()
+ second:=runScheduled(agent.OperationSucceeded,false)
  if second.SnapshotID!="" || second.Summary.TotalFilesProcessed!=1{t.Fatal("unchanged scheduled backup created snapshot")}
+ unreadable:=filepath.Join(source,"unreadable.txt")
+ if err=os.WriteFile(unreadable,[]byte("partial read fixture"),0000);err!=nil{t.Fatal(err)}
+ if err=os.WriteFile(filepath.Join(source,"readable.txt"),[]byte("changed tree despite the unreadable source"),0600);err!=nil{t.Fatal(err)}
+ partial:=runScheduled(agent.OperationSucceededWarnings,false)
+ if partial.ExitCode!=3 || len(partial.SnapshotID)!=64 || partial.Summary.WarningCount<1{t.Fatal("real Restic exit 3 lost its warning result")}
+ if err=os.Chmod(unreadable,0600);err!=nil{t.Fatal(err)}
+ large:=make([]byte,2<<20);if _,err=rand.Read(large);err!=nil{t.Fatal(err)}
+ if err=os.WriteFile(filepath.Join(source,"cancel.bin"),large,0600);err!=nil{t.Fatal(err)};clear(large)
+ canceled:=runScheduled(agent.OperationCanceled,true)
+ if canceled.SnapshotID!="" || !service.repositories[0].owner.ready(){t.Fatal("canceled backup left a snapshot or poisoned the owner")}
  locks,err:=os.ReadDir(filepath.Join(repository,"locks"));if err!=nil || len(locks)!=0{t.Fatal("Agent failed to clean session-owned lock")}
  // Restart preserves both unacknowledged results and the accepted schedule.
  if err=state.Close();err!=nil{t.Fatal(err)}
  state,err=agent.OpenState(stateDirectory);if err!=nil{t.Fatal(err)}
  reports,err:=state.ReportableOperations(time.Now().UTC(),0)
- if err!=nil || len(reports)!=2 || reports[0].Uploaded || reports[1].Uploaded{t.Fatal("offline results lost across Agent restart")}
+ if err!=nil || len(reports)!=4{t.Fatal("offline results lost across Agent restart")}
+ for _,record:=range reports{if record.Uploaded{t.Fatal("unacknowledged offline result was discarded")}}
  if revision,err:=state.AcceptedRevision();err!=nil || revision!=1{t.Fatal("last accepted configuration lost")}
  root,err:=os.MkdirTemp("/dev/shm","rf-central-read-");if err!=nil{t.Fatal(err)};defer os.RemoveAll(root)
  centralRuntime,err:=rclone.NewRuntime(root,rcloneBinary);if err!=nil{t.Fatal(err)};defer centralRuntime.Close()
@@ -115,13 +132,16 @@ func TestPinnedAgentOfflineScheduleAndCentralGatewayIndex(t *testing.T){
  cert,readKey,err:=ca.IssueGatewayReader(readBinding,time.Now());if err!=nil{t.Fatal(err)};defer clear(readKey)
  access:=&centralrestic.GatewayReadAccess{Origin:origin,Binding:readBinding,CertificatePEM:cert,PrivateKeyPEM:readKey,CABundlePEM:f.certificate}
  indexed,err:=reader.SnapshotIndex(ctx,centralrestic.SnapshotIndexRequest{Gateway:access,GatewayID:binding.GatewayID,RepositoryID:binding.RepositoryID,Password:[]byte(password)},nil)
- if err!=nil || len(indexed.Entries)!=1 || indexed.Entries[0].SnapshotID!=first.SnapshotID{t.Fatal("central reader did not index actual Agent snapshot")}
+ if err!=nil || len(indexed.Entries)!=2{t.Fatal("central reader did not index actual Agent snapshots")}
+ firstTree:=""
+ for _,entry:=range indexed.Entries{if entry.SnapshotID==first.SnapshotID{firstTree=entry.TreeID}}
+ if firstTree==""{t.Fatal("original Agent snapshot missing from index")}
  // A new task gets a new reader identity and reads through the same owner.
  readBinding.OperationID=uuid.Must(uuid.NewV7())
  cert,listKey,err:=ca.IssueGatewayReader(readBinding,time.Now());if err!=nil{t.Fatal(err)};defer clear(listKey)
  access=&centralrestic.GatewayReadAccess{Origin:origin,Binding:readBinding,CertificatePEM:cert,PrivateKeyPEM:listKey,CABundlePEM:f.certificate}
  listed,err:=reader.List(ctx,centralrestic.ListRequest{Gateway:access,GatewayID:binding.GatewayID,RepositoryID:binding.RepositoryID,Password:[]byte(password),SnapshotID:first.SnapshotID,Path:source},nil)
- if err!=nil || listed.TreeID!=indexed.Entries[0].TreeID || len(listed.Entries)!=1 || listed.Entries[0].Name!=filename || listed.Entries[0].Size!=int64(len(contents)){t.Fatal("central list did not match actual backup")}
+ if err!=nil || listed.TreeID!=firstTree || len(listed.Entries)!=1 || listed.Entries[0].Name!=filename || listed.Entries[0].Size!=int64(len(contents)){t.Fatal("central list did not match actual backup")}
  entries,err:=os.ReadDir(root);if err!=nil || len(entries)!=1 || entries[0].Name()!=".lock"{t.Fatal("central reader materialized a second cloud runtime")}
  // Agent storage contains no cloud config, Crypt or central reader private key.
  saved,err:=os.ReadFile(filepath.Join(stateDirectory,"repository-credential.json"));if err!=nil{t.Fatal(err)}
@@ -143,7 +163,7 @@ func TestPinnedAgentOfflineScheduleAndCentralGatewayIndex(t *testing.T){
  defer func(){stopReconnect();if err:=<-agentDone;err!=nil{t.Error("Agent control loop failed")}}()
  select{case <-feedback.done:case <-ctx.Done():t.Fatal("results/logs did not replay after control outage")}
  if reports,err=state.ReportableOperations(time.Now().UTC(),0);err!=nil || len(reports)!=0{t.Fatal("durable result ACK was not applied")}
- entries,err=os.ReadDir(filepath.Join(repository,"snapshots"));if err!=nil || len(entries)!=1{t.Fatal("control reconnect duplicated a backup")}
+ entries,err=os.ReadDir(filepath.Join(repository,"snapshots"));if err!=nil || len(entries)!=2{t.Fatal("control reconnect duplicated a backup")}
 }
 
 // This peer supplies transport failures only. Production persistence and
@@ -189,9 +209,9 @@ func(f *backupFeedbackServer) Connect(stream agentv1.AgentControlService_Connect
    }else{f.logs[chunk.OperationId]=proto.Clone(chunk).(*agentv1.JobLogChunk)}
    var events []domain.BackupLogEntry
    if json.Unmarshal(chunk.EntriesJson,&events)!=nil{f.t.Error("malformed backup logs")}
-   for _,event:=range events{if event.Code=="BACKUP_SUCCEEDED"{f.finished[chunk.OperationId]=true}}
+   for _,event:=range events{if event.Code=="BACKUP_SUCCEEDED" || event.Code=="BACKUP_SUCCEEDED_WITH_WARNINGS" || event.Code=="CANCELED"{f.finished[chunk.OperationId]=true}}
    drop:=!f.droppedLog;f.droppedLog=true
-   complete:=!drop && f.replayedResult && f.replayedLog && len(f.results)==2 && len(f.finished)==2
+   complete:=!drop && f.replayedResult && f.replayedLog && len(f.results)==4 && len(f.finished)==4
    f.mu.Unlock()
    if drop{return status.Error(codes.Unavailable,"lost log acknowledgement")}
    if err=send(&agentv1.ServerToAgent{Payload:&agentv1.ServerToAgent_JobLogAccepted{JobLogAccepted:&agentv1.JobLogAccepted{OperationId:chunk.OperationId,ThroughSequence:chunk.LastSequence}}});err!=nil{return err}

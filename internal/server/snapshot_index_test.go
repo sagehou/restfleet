@@ -61,3 +61,13 @@ func TestSnapshotIndexerUsesReadyProjectionAndVisitsEveryPage(t *testing.T) {
 		}
 	}
 }
+
+func TestSnapshotPlanMappingRejectsConflictingAndMalformedTags(t *testing.T){
+ first,second:=uuid.Must(uuid.NewV7()),uuid.Must(uuid.NewV7())
+ for _,tags:=range [][]string{
+  {"restfleet:managed","restfleet:plan:"+first.String(),"restfleet:plan:"+second.String(),"restfleet:plan:"+first.String()},
+  {"restfleet:managed","restfleet:plan:invalid","restfleet:plan:"+first.String()},
+  {"restfleet:plan:"+first.String()},
+ }{if resolveSnapshotPlan(tags)!=nil{t.Fatal("untrusted snapshot became managed")}}
+ if got:=resolveSnapshotPlan([]string{"restfleet:managed","restfleet:plan:"+first.String()});got==nil || *got!=first{t.Fatal("valid managed snapshot lost mapping")}
+}

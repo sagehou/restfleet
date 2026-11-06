@@ -137,7 +137,7 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 	var runResult restic.Result
 	var runErr error
 	sessionErr := e.State.WithGatewaySession(runCtx, operation, deadline, func(sessionCtx context.Context, endpoint string) error {
-		request.Repository = endpoint
+		request.Repository = "rest:" + endpoint
 		args, err := restic.BackupArgs(request, prepared)
 		if err != nil {
 			return err

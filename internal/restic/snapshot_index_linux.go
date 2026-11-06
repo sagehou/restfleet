@@ -93,6 +93,8 @@ func (p *Provisioner) SnapshotIndex(
 }
 
 func parseSnapshotIndex(raw []byte) (domain.SnapshotIndexResult, error) {
+	trimmed:=bytes.TrimSpace(raw)
+	if len(trimmed)==0 || trimmed[0]!='['{return domain.SnapshotIndexResult{},ErrInvalidOutput}
 	var wire []struct {
 		ID             string   `json:"id"`
 		Tree           string   `json:"tree"`
@@ -135,6 +137,7 @@ func parseSnapshotIndex(raw []byte) (domain.SnapshotIndexResult, error) {
 			ProgramVersion: item.ProgramVersion,
 		}
 		if item.Summary != nil {
+			if item.Summary.FilesNew<0 || item.Summary.DataAdded<0{return domain.SnapshotIndexResult{},ErrInvalidOutput}
 			entry.FilesNew, entry.BytesAdded = item.Summary.FilesNew, item.Summary.DataAdded
 		}
 		result.Entries = append(result.Entries, entry)

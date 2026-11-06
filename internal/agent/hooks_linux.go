@@ -82,7 +82,18 @@ func safeHookExecutable(path string) bool {
 		return false
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	return ok && (stat.Uid == 0 || stat.Uid == uint32(os.Geteuid()))
+	if !ok || (stat.Uid != 0 && stat.Uid != uint32(os.Geteuid())) {return false}
+	for directory:=filepath.Dir(path);;directory=filepath.Dir(directory){
+		parent,err:=os.Lstat(directory)
+		if err!=nil || !parent.IsDir(){return false}
+		owner,ok:=parent.Sys().(*syscall.Stat_t)
+		if !ok || (owner.Uid!=0 && owner.Uid!=uint32(os.Geteuid())){return false}
+		// A root-owned sticky temporary directory protects its trusted child's
+		// name; every other writable ancestor could replace the executable.
+		if parent.Mode().Perm()&0022!=0 && !(owner.Uid==0 && parent.Mode()&os.ModeSticky!=0){return false}
+		if directory==filepath.Dir(directory){break}
+	}
+	return true
 }
 
 func (s *State) validateHooks(execution *domain.BackupExecution) bool {
