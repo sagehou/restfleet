@@ -25,7 +25,7 @@ func rotationConfigFixture() GatewayRotationConfig {
 		Next: GatewayPreparation{Version: 1, AgentID: id, RuntimeID: next, SourcePublic: bytes.Repeat([]byte{3}, 32),
 			AdmissionLifetimeSeconds: 600, MaterialSocket: "/run/restfleet-gateway/ipc/material.sock",
 			AuthoritySocket: "/run/restfleet-gateway/ipc/next-authority.sock", GatewayUID: uid},
-		PlanFile: "/var/lib/restfleet/gateway-rotation/plan.json",
+		PlanFile:        "/var/lib/restfleet/gateway-rotation/plan.json",
 		AuditConfigFile: "/var/lib/restfleet/gateway-rotation/audit.json", WaitSeconds: 60}
 }
 
@@ -138,7 +138,7 @@ func TestGatewayRecoveryProtectedCanonicalMetadata(t *testing.T) {
 		append(append([]byte(nil), raw...), raw...),
 		bytes.Replace(raw, []byte(`"version":1`), []byte(`"version":2`), 1),
 		bytes.Replace(raw, []byte(`"version":1`), []byte(`"version":1,"private-secret-canary":true`), 1),
-		bytes.Replace(raw, []byte(`"source_public":"`) , []byte(`"source_public":"AAAA`), 1),
+		bytes.Replace(raw, []byte(`"source_public":"`), []byte(`"source_public":"AAAA`), 1),
 		[]byte("private-config-canary"),
 	} {
 		if os.WriteFile(path, bad, 0600) != nil {

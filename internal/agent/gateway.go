@@ -57,7 +57,7 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 	}
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	transport := &http.Transport{DialContext: dialer.DialContext,
-		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, Certificates: []tls.Certificate{certificate}},
+		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, Certificates: []tls.Certificate{certificate}},
 		TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 25 * time.Second,
 		MaxResponseHeaderBytes: 16 << 10, MaxConnsPerHost: 2, IdleConnTimeout: time.Minute, DisableCompression: true}
 	defer transport.CloseIdleConnections()

@@ -11,8 +11,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -187,6 +187,7 @@ type wireEvent struct {
 	MessageType string   `json:"message_type"`
 	PercentDone *float64 `json:"percent_done"`
 	FilesDone   *int64   `json:"files_done"`
+	FilesProcessed *int64 `json:"total_files_processed"`
 	TotalFiles  *int64   `json:"total_files"`
 	BytesDone   *int64   `json:"bytes_done"`
 	TotalBytes  *int64   `json:"total_bytes"`
@@ -204,8 +205,23 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		return Event{}, false, nil
 	}
 	var wire wireEvent
+	var header struct { MessageType string `json:"message_type"` }
+	if json.Unmarshal(line, &header) != nil || header.MessageType == "" {
+		return Event{}, false, errors.New("restic: invalid JSONL message")
+	}
+	if header.MessageType != "status" && header.MessageType != "summary" && header.MessageType != "error" {
+		return Event{}, false, nil
+	}
 	if err := json.Unmarshal(line, &wire); err != nil {
-		return Event{}, false, fmt.Errorf("restic: invalid JSONL message: %w", err)
+		return Event{}, false, errors.New("restic: invalid JSONL message")
+	}
+	for _, counter := range []*int64{wire.FilesDone, wire.TotalFiles, wire.BytesDone, wire.TotalBytes, wire.FilesNew, wire.DataAdded, wire.FilesProcessed} {
+		if counter != nil && *counter < 0 {
+			return Event{}, false, errors.New("restic: invalid JSONL counter")
+		}
+	}
+	if wire.PercentDone != nil && (*wire.PercentDone < 0 || *wire.PercentDone > 1) {
+		return Event{}, false, errors.New("restic: invalid JSONL percentage")
 	}
 	switch wire.MessageType {
 	case "status":
@@ -227,6 +243,14 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		}
 		return event, true, nil
 	case "summary":
+		if wire.FilesNew == nil || wire.DataAdded == nil {
+			return Event{}, false, errors.New("restic: incomplete JSONL summary")
+		}
+		if wire.SnapshotID != "" {
+			if _, err := hex.DecodeString(wire.SnapshotID); err != nil || len(wire.SnapshotID) != 64 || wire.SnapshotID != strings.ToLower(wire.SnapshotID) {
+				return Event{}, false, errors.New("restic: invalid snapshot id")
+			}
+		}
 		event := Event{Type: "summary", SnapshotID: wire.SnapshotID}
 		if wire.FilesNew != nil {
 			event.FilesNew = *wire.FilesNew
@@ -236,6 +260,9 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		}
 		if wire.FilesDone != nil {
 			event.FilesDone = *wire.FilesDone
+		}
+		if wire.FilesProcessed != nil {
+			event.FilesDone = *wire.FilesProcessed
 		}
 		return event, true, nil
 	case "error":
@@ -271,7 +298,12 @@ func (r Run) Execute(ctx context.Context) (Result, error) {
 		binary = "restic"
 	}
 	command := exec.Command(binary, r.Args...)
-	command.Env = append(os.Environ(), r.Env...)
+	for _, name := range []string{"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TZ"} {
+		if value, ok := os.LookupEnv(name); ok {
+			command.Env = append(command.Env, name+"="+value)
+		}
+	}
+	command.Env = append(command.Env, r.Env...)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if r.Stdout != nil {
 		command.Stdout = r.Stdout

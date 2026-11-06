@@ -27,6 +27,8 @@ const (
 	// maxPendingResultIDs mirrors the Server Hello bound. Extra results are
 	// still replayed after Welcome, so the cap never drops a result.
 	maxPendingResultIDs = 100
+	maxReportsPerBatch = 32
+	resultRetryInterval = 30 * time.Second
 )
 
 // OperationRecord is the durable local view of one scheduled run. It exists
@@ -146,6 +148,22 @@ func (s *State) ConsumeCancel(id uuid.UUID) bool {
 }
 
 func (s *State) MarkOperationUploaded(id uuid.UUID) error {
+	return s.updateOperation(id, func(record *OperationRecord) {
+		if record.Terminal() {
+			record.Uploaded = true
+		}
+	})
+}
+
+func (s *State) markOperationReported(id uuid.UUID, now time.Time) error {
+	return s.updateOperation(id, func(record *OperationRecord) {
+		record.LastReportedAt = now
+	})
+}
+
+// updateOperation reads and changes only the selected fields in one transaction.
+// Progress/report writers cannot restore a stale RUNNING view over a result.
+func (s *State) updateOperation(id uuid.UUID, update func(*OperationRecord)) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(operationsBucket))
 		if bucket == nil {
@@ -159,7 +177,7 @@ func (s *State) MarkOperationUploaded(id uuid.UUID) error {
 		if err := json.Unmarshal(value, &record); err != nil {
 			return err
 		}
-		record.Uploaded = true
+		update(&record)
 		payload, err := json.Marshal(record)
 		if err != nil {
 			return err
@@ -314,7 +332,16 @@ func (s *State) NextRuns(limit int) ([]PlanRuntime, error) {
 // ReportableOperations returns terminal results that still need upload and
 // running records whose progress is older than the throttling interval.
 func (s *State) ReportableOperations(now time.Time, progressInterval time.Duration) ([]OperationRecord, error) {
-	items := make([]OperationRecord, 0)
+	items := make([]OperationRecord, 0, maxReportsPerBatch+1)
+	less := func(i, j int) bool {
+		if items[i].Terminal() != items[j].Terminal() {
+			return items[i].Terminal()
+		}
+		if !items[i].LastReportedAt.Equal(items[j].LastReportedAt) {
+			return items[i].LastReportedAt.Before(items[j].LastReportedAt)
+		}
+		return items[i].ID.String() < items[j].ID.String()
+	}
 	err := s.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(operationsBucket))
 		if bucket == nil {
@@ -326,15 +353,22 @@ func (s *State) ReportableOperations(now time.Time, progressInterval time.Durati
 				return err
 			}
 			switch {
-			case record.Terminal() && !record.Uploaded:
+			case record.Terminal() && !record.Uploaded && (progressInterval == 0 || now.Sub(record.LastReportedAt) >= resultRetryInterval):
 				items = append(items, record)
 			case record.Status == OperationRunning && now.Sub(record.LastReportedAt) >= progressInterval:
 				items = append(items, record)
 			}
+			sort.Slice(items, less)
+			if len(items) > maxReportsPerBatch {
+				items = items[:maxReportsPerBatch]
+			}
 			return nil
 		})
 	})
-	return items, err
+	if err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 // PendingResultIDs lists stored terminal results the Server has not confirmed.

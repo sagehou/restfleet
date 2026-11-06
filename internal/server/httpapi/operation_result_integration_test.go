@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +14,7 @@ import (
 )
 
 func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
-	store, pool, _, enrolled, repository, _ := deliveryFixture(t, "onedrive")
+	store, pool, b, enrolled, repository, _ := deliveryFixture(t, "onedrive")
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	var userID uuid.UUID
@@ -42,6 +44,40 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 		queued, planID, enrolled.AgentId, hash, now); err != nil {
 		t.Fatal(err)
 	}
+	// A second enrolled Host may report its own plan but cannot select the ID
+	// of an existing operation belonging to the first Host.
+	otherHost := createTestHost(t, b, "Other operation Host")
+	otherCredential := createBackendCredential(t, b, "onedrive")
+	otherRepository := createTestRepository(t, b, otherHost.Id, otherCredential.Id, "Other operation Repository")
+	token := createTestEnrollmentToken(t, b, otherHost.Id)
+	csr, key := agentCSR(t)
+	clear(key)
+	response := b.request(t, http.MethodPost, "/api/v1/agent-enrollment", enrollRequest(token.Token, csr, uuid.Must(uuid.NewV7())), nil)
+	if response.Code != http.StatusCreated { t.Fatal("second Host enrollment failed") }
+	var other AgentEnrollmentResponse
+	decodeResponse(t, response, &other)
+	otherPlan := uuid.Must(uuid.NewV7())
+	if _, err := pool.Exec(ctx, `insert into plans(id,name,host_id,agent_id,repository_id,template_id,template_revision,
+		effective_config,config_hash,status,desired_revision,accepted_revision,created_at,updated_at)
+		values($1,'other-operation-guard',$2,$3,$4,$5,1,'{}'::jsonb,$6,'ACTIVE',1,0,$7,$7)`,
+		otherPlan, other.HostId, other.AgentId, otherRepository.Id, templateID, hash, now); err != nil { t.Fatal(err) }
+	for _, attack := range []func() error{
+		func() error { return store.MarkOperationDispatched(ctx, other.AgentId, queued) },
+		func() error { return store.RejectManualOperation(ctx, other.AgentId, queued, now) },
+		func() error { return store.UpsertOperationProgress(ctx, domain.BackupOperationProgress{
+			OperationID:queued, PlanID:otherPlan, AgentID:other.AgentId, PlanRevision:1, ScheduledAt:now, ObservedAt:now, Sequence:1, Stage:"backup"}) },
+		func() error { return store.UpsertOperationResult(ctx, domain.BackupOperationResult{
+			OperationID:queued, PlanID:otherPlan, AgentID:other.AgentId, PlanRevision:1, ScheduledAt:now, FinishedAt:now, Status:"SUCCEEDED", SnapshotID:strings.Repeat("d",64)}) },
+		func() error { return store.UpsertOperationResult(ctx, domain.BackupOperationResult{
+			OperationID:queued, PlanID:planID, AgentID:enrolled.AgentId, PlanRevision:2, ScheduledAt:now, FinishedAt:now, Status:"FAILED"}) },
+	} {
+		if err := attack(); !errors.Is(err,domain.ErrPlanBindingInvalid) { t.Fatalf("cross-bound operation accepted: %v",err) }
+	}
+	protected, err := store.BackupOperation(ctx,queued)
+	if err != nil || protected.Status!="QUEUED" || protected.StartedAt!=nil || protected.FinishedAt!=nil { t.Fatalf("foreign report changed operation: %+v %v",protected,err) }
+	var leaked int
+	if err := pool.QueryRow(ctx,"select count(*) from backup_operation_events where operation_id=$1",queued).Scan(&leaked); err!=nil || leaked!=0 {t.Fatalf("foreign event persisted: %d %v",leaked,err)}
+	if err := pool.QueryRow(ctx,"select count(*) from snapshots where operation_id=$1",queued).Scan(&leaked); err!=nil || leaked!=0 {t.Fatalf("foreign snapshot persisted: %d %v",leaked,err)}
 	if err := store.RejectManualOperation(ctx, enrolled.AgentId, queued, now); err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +115,16 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 	if health != "HEALTHY" {
 		t.Fatalf("late result changed plan health = %s", health)
 	}
+	progressID := uuid.Must(uuid.NewV7())
+	progress := domain.BackupOperationProgress{OperationID:progressID,PlanID:planID,AgentID:enrolled.AgentId,
+		PlanRevision:1,ScheduledAt:now,ObservedAt:now,Sequence:2,Stage:"backup",FilesDone:8}
+	if err:=store.UpsertOperationProgress(ctx,progress);err!=nil {t.Fatal(err)}
+	progress.Sequence,progress.FilesDone=1,1
+	if err:=store.UpsertOperationProgress(ctx,progress);err!=nil {t.Fatal(err)}
+	progress.Sequence=2
+	if err:=store.UpsertOperationProgress(ctx,progress);err!=nil {t.Fatal(err)}
+	current,err:=store.BackupOperation(ctx,progressID)
+	if err!=nil || current.FilesDone!=8 {t.Fatalf("stale/duplicate progress regressed counters: %+v %v",current,err)}
 }
 
 func TestBackupOperationPaginationAdvances(t *testing.T) {

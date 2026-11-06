@@ -55,7 +55,7 @@ func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operat
 	if operation.RepositoryID == nil || operation.RequestedByUserID == nil || *operation.RequestedByUserID == uuid.Nil ||
 		operation.ID.Version() != 7 || len(path) == 0 || len(path) > 4096 ||
 		len(cursor) > 4096 || (cursor != "" && (!strings.HasPrefix(cursor, "/") ||
-			strings.IndexFunc(cursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
+		strings.IndexFunc(cursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
 		return operation, domain.ErrOperationTransition
 	}
 	payload, err := json.Marshal(map[string]string{"snapshot_id": snapshotID, "path": path, "cursor": cursor})
@@ -228,7 +228,7 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 			len(result.SnapshotID) != 64 || len(result.TreeID) != 64 || len(result.Path) == 0 ||
 			len(result.Path) > 4096 || len(result.Entries) > 5000 || result.Scanned < 0 ||
 			len(result.NextCursor) > 4096 || (result.NextCursor != "" && (!strings.HasPrefix(result.NextCursor, "/") ||
-				strings.IndexFunc(result.NextCursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
+			strings.IndexFunc(result.NextCursor, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0)) {
 			return domain.ErrOperationTransition
 		}
 		for _, entry := range result.Entries {

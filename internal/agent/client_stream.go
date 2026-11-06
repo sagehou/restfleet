@@ -116,6 +116,9 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	rotationPending := false
 	reports := time.NewTicker(5 * time.Second)
 	defer reports.Stop()
+	if err := reportOperations(stream, &agentSequence, protocol, state, 0, resultAck); err != nil {
+		return true, err
+	}
 
 	for {
 		select {
@@ -344,11 +347,11 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	state.schedulerMu.Lock()
 	defer state.schedulerMu.Unlock()
 	operationID, err := uuid.Parse(job.GetOperationId())
-	if err != nil {
+	if err != nil || operationID.Version() != 7 || operationID.Variant() != uuid.RFC4122 {
 		return errors.New("job dispatch has an invalid operation id")
 	}
 	planID, err := uuid.Parse(job.GetPlanId())
-	if err != nil {
+	if err != nil || planID.Version() != 7 || planID.Variant() != uuid.RFC4122 {
 		return errors.New("job dispatch has an invalid plan id")
 	}
 	reject := func(code string) error {
@@ -360,6 +363,23 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	}
 	if job.GetType() != "BACKUP" {
 		return reject("TYPE_UNSUPPORTED")
+	}
+	existing, exists, err := state.Operation(operationID)
+	if err != nil {
+		return reject("PERSIST_FAILED")
+	}
+	if exists {
+		if existing.PlanID != planID || existing.PlanRevision != job.GetPlanRevision() || existing.ConfigHash != job.GetConfigHash() {
+			return reject("OPERATION_BINDING_MISMATCH")
+		}
+		if existing.Terminal() {
+			return sendOperationResult(stream, sequence, protocol, existing)
+		}
+		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
+			Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
+				JobId: job.GetJobId(), OperationId: job.GetOperationId(),
+			}},
+		})
 	}
 	desired, ok, err := state.ActiveDesiredState()
 	if err != nil || !ok {
@@ -387,6 +407,9 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	if !deadline.After(time.Now()) {
 		return reject("DEADLINE_EXCEEDED")
 	}
+	if job.GetNotBefore().AsTime().After(time.Now()) {
+		return nil
+	}
 	// A JobCancel can arrive before its JobDispatch when a dispatch was lost and
 	// the server retried. Never start Restic in that case; persist and report a
 	// canceled result so the Server can close the operation.
@@ -405,20 +428,6 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 			return reject("PERSIST_FAILED")
 		}
 		return sendOperationResult(stream, sequence, protocol, record)
-	}
-	existing, exists, err := state.Operation(operationID)
-	if err != nil {
-		return reject("PERSIST_FAILED")
-	}
-	if exists {
-		if existing.Terminal() {
-			return sendOperationResult(stream, sequence, protocol, existing)
-		}
-		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
-			Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
-				JobId: job.GetJobId(), OperationId: job.GetOperationId(),
-			}},
-		})
 	}
 	running, err := state.RunningOperations()
 	if err != nil {

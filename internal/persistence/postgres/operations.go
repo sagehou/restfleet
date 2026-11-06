@@ -87,15 +87,19 @@ func (s *Store) UpsertOperationProgress(ctx context.Context, progress domain.Bac
 		}
 		return tx.Commit(ctx)
 	}
-	if _, err = tx.Exec(ctx, `insert into backup_operation_events(operation_id,sequence,stage,files_done,total_files,bytes_done,total_bytes,observed_at)
+	eventTag, err := tx.Exec(ctx, `insert into backup_operation_events(operation_id,sequence,stage,files_done,total_files,bytes_done,total_bytes,observed_at)
 		values($1,$2,$3,$4,$5,$6,$7,$8) on conflict (operation_id,sequence) do nothing`,
 		progress.OperationID, progress.Sequence, progress.Stage, progress.FilesDone, progress.TotalFiles,
-		progress.BytesDone, progress.TotalBytes, progress.ObservedAt); err != nil {
+		progress.BytesDone, progress.TotalBytes, progress.ObservedAt)
+	if err != nil {
 		return err
 	}
+	if eventTag.RowsAffected() == 0 {
+		return tx.Commit(ctx)
+	}
 	if _, err = tx.Exec(ctx, `update backup_operations set files_done=$2,total_files=$3,bytes_done=$4,total_bytes=$5,updated_at=$6
-		where id=$1 and finished_at is null`, progress.OperationID, progress.FilesDone, progress.TotalFiles,
-		progress.BytesDone, progress.TotalBytes, progress.ObservedAt); err != nil {
+		where id=$1 and finished_at is null and $7=(select max(sequence) from backup_operation_events where operation_id=$1)`, progress.OperationID, progress.FilesDone, progress.TotalFiles,
+		progress.BytesDone, progress.TotalBytes, progress.ObservedAt, progress.Sequence); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -384,19 +388,39 @@ func (s *Store) PendingCancelOperations(ctx context.Context, agentID uuid.UUID) 
 
 // RejectManualOperation closes a dispatched manual job the Agent refused.
 func (s *Store) RejectManualOperation(ctx context.Context, agentID, id uuid.UUID, now time.Time) error {
-	_, err := s.pool.Exec(ctx, `update backup_operations
+	return s.updateAgentOperation(ctx, agentID, id, `update backup_operations
 		set status='FAILED',error_code='AGENT_REJECTED',finished_at=$2,updated_at=$2
-		where id=$1 and agent_id=$3 and source='MANUAL' and status in ('QUEUED','RUNNING','CANCEL_REQUESTED') and finished_at is null`, id, now, agentID)
-	return err
+		where id=$1 and source='MANUAL' and status in ('QUEUED','RUNNING','CANCEL_REQUESTED') and finished_at is null`, now)
 }
 
 // MarkOperationDispatched records JobAccepted. It keeps a canceled row in
 // CANCEL_REQUESTED but records started_at, proving the Agent received the job;
 // the unstarted-cancellation closure must not close a run that may be active.
 func (s *Store) MarkOperationDispatched(ctx context.Context, agentID, id uuid.UUID) error {
-	_, err := s.pool.Exec(ctx, `update backup_operations
+	return s.updateAgentOperation(ctx, agentID, id, `update backup_operations
 		set status=case when status='QUEUED' then 'RUNNING' else status end,
 		    started_at=coalesce(started_at,now()),updated_at=now()
-		where id=$1 and agent_id=$2 and status in ('QUEUED','CANCEL_REQUESTED') and finished_at is null`, id, agentID)
-	return err
+		where id=$1 and status in ('QUEUED','CANCEL_REQUESTED') and finished_at is null`)
+}
+
+func (s *Store) updateAgentOperation(ctx context.Context, agentID, id uuid.UUID, query string, values ...any) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var owner uuid.UUID
+	if err := tx.QueryRow(ctx, "select agent_id from backup_operations where id=$1 for update", id).Scan(&owner); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrPlanBindingInvalid
+		}
+		return err
+	}
+	if owner != agentID {
+		return domain.ErrPlanBindingInvalid
+	}
+	if _, err := tx.Exec(ctx, query, append([]any{id}, values...)...); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

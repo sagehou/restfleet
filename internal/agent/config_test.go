@@ -1,10 +1,10 @@
 package agent
 
 import (
-	"testing"
-	"time"
 	"crypto/sha256"
 	"encoding/hex"
+	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -160,7 +160,7 @@ func desiredSnapshot(t *testing.T, agentID uuid.UUID, revision int64, plans ...d
 		})
 	}
 	return &agentv1.DesiredStateSnapshot{
-		Plans: protoPlans,
+		Plans:    protoPlans,
 		Revision: state.Revision, GeneratedAt: timestamppb.New(state.GeneratedAt),
 		ConfigHash: state.ConfigHash,
 		RuntimePolicy: &agentv1.RuntimePolicy{

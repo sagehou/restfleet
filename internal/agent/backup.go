@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -64,12 +65,14 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 		PasswordFile: passwordFile, HostID: plan.HostID, PlanID: plan.PlanID,
 		Paths: plan.Paths, ExcludePatterns: plan.ExcludePatterns,
 		ExcludeCaches: plan.ExcludeCaches, OneFileSystem: plan.OneFileSystem,
-		TLSClientCertFile: certFile, CACertFile: caFile,
+		TLSClientCertFile: certFile, CACertFile: caFile, SkipIfUnchanged: true,
 	}
-	progress := &progressSink{state: e.State, operation: operation}
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	progress := &progressSink{state: e.State, operation: operation, cancel: stop}
 	var runResult restic.Result
 	var runErr error
-	sessionErr := e.State.WithGatewaySession(ctx, operation, deadline, func(sessionCtx context.Context, endpoint string) error {
+	sessionErr := e.State.WithGatewaySession(runCtx, operation, deadline, func(sessionCtx context.Context, endpoint string) error {
 		request.Repository = endpoint
 		args, err := restic.BackupArgs(request, prepared)
 		if err != nil {
@@ -81,6 +84,10 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 		}.Execute(sessionCtx)
 		return runErr
 	})
+	progress.finish()
+	if progress.errorCode != "" {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: progress.errorCode, ExitCode: runResult.ExitCode}
+	}
 	if errors.Is(runErr, restic.ErrCanceled) || errors.Is(sessionErr, context.Canceled) {
 		return OperationOutcome{Status: OperationCanceled, ErrorCode: "CANCELED", ExitCode: runResult.ExitCode,
 			FilesDone: progress.files, TotalFiles: progress.totalFiles, BytesDone: progress.bytes,
@@ -99,13 +106,13 @@ func classify(exitCode int, snapshotID string, sawSummary bool, progress *progre
 		FilesNew: progress.filesNew, DataAdded: progress.dataAdded}
 	switch exitCode {
 	case 0:
-		if !sawSummary || snapshotID == "" {
+		if !sawSummary {
 			outcome.Status, outcome.ErrorCode = OperationFailed, "INVALID_ENGINE_OUTPUT"
 			return outcome
 		}
 		outcome.Status = OperationSucceeded
 	case 3:
-		if snapshotID == "" {
+		if !sawSummary || snapshotID == "" {
 			outcome.Status, outcome.ErrorCode = OperationFailed, "INVALID_ENGINE_OUTPUT"
 			return outcome
 		}
@@ -117,6 +124,10 @@ func classify(exitCode int, snapshotID string, sawSummary bool, progress *progre
 		outcome.Status, outcome.ErrorCode = OperationFailed, "REPOSITORY_LOCKED"
 	case 12:
 		outcome.Status, outcome.ErrorCode = OperationFailed, "WRONG_REPOSITORY_PASSWORD"
+	case 10:
+		outcome.Status, outcome.ErrorCode = OperationFailed, "REPOSITORY_MISSING"
+	case 1:
+		outcome.Status, outcome.ErrorCode = OperationFailed, "BACKUP_FAILED"
 	default:
 		outcome.Status, outcome.ErrorCode = OperationFailed, "UNKNOWN_EXIT_CODE"
 	}
@@ -171,31 +182,57 @@ type progressSink struct {
 	lastWrite   time.Time
 	lastPercent float64
 	pendingLine []byte
+	errorCode string
+	cancel context.CancelFunc
 }
 
 func (p *progressSink) Write(chunk []byte) (int, error) {
-	p.pendingLine = append(p.pendingLine, chunk...)
-	for {
-		index := -1
-		for i, b := range p.pendingLine {
-			if b == '\n' {
-				index = i
-				break
-			}
+	length := len(chunk)
+	for len(chunk) > 0 && p.errorCode == "" {
+		index := bytes.IndexByte(chunk, '\n')
+		part := chunk
+		if index >= 0 {
+			part = chunk[:index]
 		}
+		if len(p.pendingLine)+len(part) > 1<<20 {
+			p.fail("INVALID_ENGINE_OUTPUT")
+			break
+		}
+		p.pendingLine = append(p.pendingLine, part...)
 		if index < 0 {
 			break
 		}
-		line := p.pendingLine[:index]
-		p.pendingLine = p.pendingLine[index+1:]
-		p.consume(line)
+		p.consume(p.pendingLine)
+		p.pendingLine = p.pendingLine[:0]
+		chunk = chunk[index+1:]
 	}
-	return len(chunk), nil
+	return length, nil
+}
+
+func (p *progressSink) finish() {
+	if p.errorCode == "" && len(p.pendingLine) > 0 {
+		p.consume(p.pendingLine)
+	}
+	p.pendingLine = nil
+}
+
+func (p *progressSink) fail(code string) {
+	if p.errorCode == "" {
+		p.errorCode = code
+		p.pendingLine = nil
+		if p.cancel != nil {
+			p.cancel()
+		}
+	}
 }
 
 func (p *progressSink) consume(line []byte) {
 	event, ok, err := restic.ParseEvent(line)
-	if err != nil || !ok {
+	if err != nil {
+		p.fail("INVALID_ENGINE_OUTPUT")
+		return
+	}
+	if !ok {
 		return
 	}
 	switch event.Type {
@@ -208,6 +245,10 @@ func (p *progressSink) consume(line []byte) {
 			p.persist()
 		}
 	case "summary":
+		if p.sawSummary {
+			p.fail("INVALID_ENGINE_OUTPUT")
+			return
+		}
 		p.sawSummary = true
 		p.snapshotID = event.SnapshotID
 		p.filesNew, p.dataAdded = event.FilesNew, event.DataAdded
@@ -219,15 +260,20 @@ func (p *progressSink) consume(line []byte) {
 }
 
 func (p *progressSink) persist() {
-	record, found, err := p.state.Operation(p.operation)
-	if err != nil || !found {
+	if p.state == nil {
 		return
 	}
-	record.FilesDone, record.TotalFiles = p.files, p.totalFiles
-	record.BytesDone, record.TotalBytes = p.bytes, p.totalBytes
-	record.FilesNew, record.DataAdded = p.filesNew, p.dataAdded
-	if p.snapshotID != "" {
-		record.SnapshotID = p.snapshotID
+	if err := p.state.updateOperation(p.operation, func(record *OperationRecord) {
+		if record.Terminal() {
+			return
+		}
+		record.FilesDone, record.TotalFiles = p.files, p.totalFiles
+		record.BytesDone, record.TotalBytes = p.bytes, p.totalBytes
+		record.FilesNew, record.DataAdded = p.filesNew, p.dataAdded
+		if p.snapshotID != "" {
+			record.SnapshotID = p.snapshotID
+		}
+	}); err != nil {
+		p.fail("STATE_STORAGE_UNAVAILABLE")
 	}
-	_ = p.state.PutOperation(record)
 }

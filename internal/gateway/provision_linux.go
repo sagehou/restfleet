@@ -22,43 +22,43 @@ import (
 )
 
 var (
-	ErrProvision  = errors.New("gateway runtime provisioning unavailable or inconsistent")
-	ErrFinalize   = errors.New("gateway runtime finalization unavailable or inconsistent")
-	maxProvision  = 32 << 10
-	maxPlan       = 16 << 10
-	maxRegistr    = 4096
+	ErrProvision = errors.New("gateway runtime provisioning unavailable or inconsistent")
+	ErrFinalize  = errors.New("gateway runtime finalization unavailable or inconsistent")
+	maxProvision = 32 << 10
+	maxPlan      = 16 << 10
+	maxRegistr   = 4096
 )
 
 // ProvisionConfig is protected Gateway-local static metadata for one fresh
 // runtime. It contains paths, public pins and ranges only; source seeds are
 // created locally and never enter this file.
 type ProvisionConfig struct {
-	Version                  int    `json:"version"`
-	Environment              string `json:"environment"`
+	Version                  int       `json:"version"`
+	Environment              string    `json:"environment"`
 	AgentID                  uuid.UUID `json:"agent_id"`
-	AdmissionLifetimeSeconds int64  `json:"admission_lifetime_seconds"`
-	LifetimeSeconds          int64  `json:"lifetime_seconds"`
-	MaterialSocket           string `json:"material_socket"`
-	AuthoritySocket          string `json:"authority_socket"`
-	GatewayUID               uint32 `json:"gateway_uid"`
-	SharedGroup              uint32 `json:"shared_group"`
-	CentralPinFile           string `json:"central_pin_file"`
-	AuditSourceFile          string `json:"audit_source_file"`
-	RepositorySourceFile     string `json:"repository_source_file"`
-	AuditQueueDirectory      string `json:"audit_queue_directory"`
-	QueueDirectory           string `json:"queue_directory"`
-	RuntimeDirectory         string `json:"runtime_directory"`
-	RcloneBinary             string `json:"rclone_binary"`
-	CertificateFile          string `json:"certificate_file"`
-	TLSKeyFile               string `json:"tls_key_file"`
-	ClientCAFile             string `json:"client_ca_file"`
-	ListenAddress            string `json:"listen_address"`
-	MaxBytes                 int64  `json:"max_bytes"`
-	MaxRecords               int    `json:"max_records"`
-	MaxSessions              int    `json:"max_sessions"`
-	ServerUID                uint32 `json:"server_uid"`
-	ReplaySocket             string `json:"replay_socket"`
-	StartupWaitSeconds       int    `json:"startup_wait_seconds"`
+	AdmissionLifetimeSeconds int64     `json:"admission_lifetime_seconds"`
+	LifetimeSeconds          int64     `json:"lifetime_seconds"`
+	MaterialSocket           string    `json:"material_socket"`
+	AuthoritySocket          string    `json:"authority_socket"`
+	GatewayUID               uint32    `json:"gateway_uid"`
+	SharedGroup              uint32    `json:"shared_group"`
+	CentralPinFile           string    `json:"central_pin_file"`
+	AuditSourceFile          string    `json:"audit_source_file"`
+	RepositorySourceFile     string    `json:"repository_source_file"`
+	AuditQueueDirectory      string    `json:"audit_queue_directory"`
+	QueueDirectory           string    `json:"queue_directory"`
+	RuntimeDirectory         string    `json:"runtime_directory"`
+	RcloneBinary             string    `json:"rclone_binary"`
+	CertificateFile          string    `json:"certificate_file"`
+	TLSKeyFile               string    `json:"tls_key_file"`
+	ClientCAFile             string    `json:"client_ca_file"`
+	ListenAddress            string    `json:"listen_address"`
+	MaxBytes                 int64     `json:"max_bytes"`
+	MaxRecords               int       `json:"max_records"`
+	MaxSessions              int       `json:"max_sessions"`
+	ServerUID                uint32    `json:"server_uid"`
+	ReplaySocket             string    `json:"replay_socket"`
+	StartupWaitSeconds       int       `json:"startup_wait_seconds"`
 }
 
 // ProvisionState is durable public coordination metadata. It contains the
@@ -93,8 +93,8 @@ type ProvisionAuditRegistration struct {
 }
 
 type ProvisionOutput struct {
-	Version           int                       `json:"version"`
-	Preparation       ProvisionPreparation      `json:"preparation"`
+	Version           int                        `json:"version"`
+	Preparation       ProvisionPreparation       `json:"preparation"`
 	AuditRegistration ProvisionAuditRegistration `json:"audit_registration"`
 }
 
@@ -223,7 +223,7 @@ func Provision(config ProvisionConfig, statePath string) (ProvisionOutput, error
 		return ProvisionOutput{}, ErrProvision
 	}
 	state := ProvisionState{Version: 1, Config: config, RuntimeID: runtimeID,
-		AuditOrigin: domain.GatewayAuditBinding{OriginID: originID, RuntimeID: runtimeID},
+		AuditOrigin:       domain.GatewayAuditBinding{OriginID: originID, RuntimeID: runtimeID},
 		AuditSourcePublic: auditPublic, RepositorySourcePublic: repositoryPublic}
 	raw, err := json.Marshal(state)
 	if err != nil || security.PersistProtectedGatewayFile(statePath, raw) != nil {
@@ -263,7 +263,7 @@ func provisionOutput(state ProvisionState) ProvisionOutput {
 	c := state.Config
 	return ProvisionOutput{Version: 1,
 		Preparation: ProvisionPreparation{Version: 1, AgentID: c.AgentID, RuntimeID: state.RuntimeID,
-			SourcePublic: append(ed25519.PublicKey(nil), state.RepositorySourcePublic...),
+			SourcePublic:             append(ed25519.PublicKey(nil), state.RepositorySourcePublic...),
 			AdmissionLifetimeSeconds: c.AdmissionLifetimeSeconds, LifetimeSeconds: c.LifetimeSeconds,
 			MaterialSocket: c.MaterialSocket, AuthoritySocket: c.AuthoritySocket,
 			GatewayUID: c.GatewayUID, SharedGroup: c.SharedGroup},

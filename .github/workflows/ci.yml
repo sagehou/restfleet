@@ -129,7 +129,6 @@ jobs:
         with:
           name: generated-sources
           path: ${{ runner.temp }}/generated-sources.patch
-      - run: git diff --exit-code
       - run: make lint
       - run: make migrate
       - run: make test
@@ -159,6 +158,8 @@ jobs:
         with:
           name: sbom
           path: build/sbom.cdx.json
+      - name: Verify generated sources are committed
+        run: git diff --exit-code
 
   images:
     runs-on: ubuntu-latest

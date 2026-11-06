@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
+	"math"
 	"strings"
 	"time"
 
@@ -31,6 +33,11 @@ func (c *ControlPlane) RecordOperationProgress(ctx context.Context, progress dom
 		progress.AgentID.Version() != 7 || progress.AgentID.Variant() != uuid.RFC4122 {
 		return domain.ErrNotFound
 	}
+	if progress.PlanRevision < 1 || progress.Sequence == 0 || progress.Sequence > math.MaxInt64 ||
+		progress.Stage != "backup" || progress.ScheduledAt.IsZero() || progress.ObservedAt.IsZero() ||
+		progress.FilesDone < 0 || progress.TotalFiles < 0 || progress.BytesDone < 0 || progress.TotalBytes < 0 {
+		return &ValidationError{Field: "progress", Code: "INVALID_OPERATION_PROGRESS"}
+	}
 	return c.store.UpsertOperationProgress(ctx, progress)
 }
 
@@ -42,6 +49,18 @@ func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.
 		result.PlanID.Version() != 7 || result.PlanID.Variant() != uuid.RFC4122 ||
 		result.AgentID.Version() != 7 || result.AgentID.Variant() != uuid.RFC4122 {
 		return domain.ErrNotFound
+	}
+	if result.PlanRevision < 1 || result.ScheduledAt.IsZero() || result.FinishedAt.IsZero() ||
+		result.FilesNew < 0 || result.DataAdded < 0 || result.ExitCode < -1 || result.ExitCode > 255 ||
+		len(result.ErrorCode) > 64 || strings.IndexFunc(result.ErrorCode, func(r rune) bool {
+			return r != '_' && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
+		}) >= 0 {
+		return &ValidationError{Field: "result", Code: "INVALID_OPERATION_RESULT"}
+	}
+	if result.SnapshotID != "" {
+		if _, err := hex.DecodeString(result.SnapshotID); err != nil || len(result.SnapshotID) != 64 || result.SnapshotID != strings.ToLower(result.SnapshotID) {
+			return &ValidationError{Field: "snapshot_id", Code: "INVALID_SNAPSHOT_ID"}
+		}
 	}
 	switch result.Status {
 	case "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS", "FAILED", "CANCELED", "LOST", "MISSED", "CONCURRENCY_SKIPPED":

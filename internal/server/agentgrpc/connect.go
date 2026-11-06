@@ -179,7 +179,8 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			progress := message.GetJobProgress()
 			operationID, opErr := uuid.Parse(progress.GetOperationId())
 			planID, planErr := uuid.Parse(progress.GetPlanId())
-			if opErr != nil || planErr != nil || progress.GetScheduledAt() == nil || progress.GetObservedAt() == nil {
+			if opErr != nil || planErr != nil || progress.GetScheduledAt() == nil || progress.GetObservedAt() == nil ||
+				progress.GetScheduledAt().CheckValid() != nil || progress.GetObservedAt().CheckValid() != nil {
 				return s.invalidMessage(stream, meta, "JOB_PROGRESS_INVALID")
 			}
 			if err := s.control.RecordOperationProgress(stream.Context(), domain.BackupOperationProgress{
@@ -190,13 +191,19 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				BytesDone: progress.GetBytesDone(), TotalBytes: progress.GetTotalBytes(),
 				ObservedAt: progress.GetObservedAt().AsTime().UTC(),
 			}); err != nil {
+				var validation *control.ValidationError
+				if errors.As(err, &validation) || errors.Is(err, domain.ErrPlanBindingInvalid) || errors.Is(err, domain.ErrNotFound) {
+					return s.invalidMessage(stream, meta, "JOB_PROGRESS_INVALID")
+				}
 				return status.Error(codes.Unavailable, "job progress persistence failed")
 			}
 		case message.GetJobResult() != nil:
 			result := message.GetJobResult()
 			operationID, opErr := uuid.Parse(result.GetOperationId())
 			planID, planErr := uuid.Parse(result.GetPlanId())
-			if opErr != nil || planErr != nil || result.GetScheduledAt() == nil || result.GetFinishedAt() == nil {
+			if opErr != nil || planErr != nil || result.GetScheduledAt() == nil || result.GetFinishedAt() == nil ||
+				result.GetScheduledAt().CheckValid() != nil || result.GetFinishedAt().CheckValid() != nil ||
+				result.GetExitCode() < -1 || result.GetExitCode() > 255 {
 				return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
 			}
 			if err := s.control.RecordOperationResult(stream.Context(), domain.BackupOperationResult{
@@ -207,7 +214,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				FinishedAt: result.GetFinishedAt().AsTime().UTC(),
 			}); err != nil {
 				var validation *control.ValidationError
-				if errors.As(err, &validation) {
+				if errors.As(err, &validation) || errors.Is(err, domain.ErrPlanBindingInvalid) || errors.Is(err, domain.ErrNotFound) {
 					return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
 				}
 				return status.Error(codes.Unavailable, "job result persistence failed")
@@ -227,6 +234,9 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				return s.invalidMessage(stream, meta, "JOB_ACCEPTED_INVALID")
 			}
 			if err := s.control.MarkJobDispatched(stream.Context(), agentID, operationID); err != nil {
+				if errors.Is(err, domain.ErrPlanBindingInvalid) {
+					return s.invalidMessage(stream, meta, "JOB_ACCEPTED_INVALID")
+				}
 				return status.Error(codes.Unavailable, "job acceptance persistence failed")
 			}
 		case message.GetJobRejected() != nil:
@@ -235,6 +245,9 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				return s.invalidMessage(stream, meta, "JOB_REJECTED_INVALID")
 			}
 			if err := s.control.RejectManualOperation(stream.Context(), agentID, operationID); err != nil {
+				if errors.Is(err, domain.ErrPlanBindingInvalid) {
+					return s.invalidMessage(stream, meta, "JOB_REJECTED_INVALID")
+				}
 				return status.Error(codes.Unavailable, "job rejection persistence failed")
 			}
 		case message.GetJobCancelAccepted() != nil:
