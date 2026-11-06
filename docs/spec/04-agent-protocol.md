@@ -284,7 +284,7 @@ Server 在 `Welcome.server_capabilities[]` 宣告增量能力。Agent 只有同�
 Agent 将 Restic `--json` JSONL 映射为：
 
 - `status` → `JobProgress`；
-- `error` → bounded structured warning；
+- stderr 的 JSON `error` → bounded structured warning，进程退出后合并计数；
 - `summary` → final statistics/snapshot ID；
 - process exit code → Operation terminal classification。
 

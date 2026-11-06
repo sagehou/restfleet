@@ -122,6 +122,8 @@ exit_code
 
 Restic JSON `summary` 是成功输出的必要证据。未知字段忽略；缺失关键字段按 engine output error 处理。
 
+Restic 的 JSON `error` 事件来自 stderr，Agent MUST 分别读取 stdout 的进度/summary 和 stderr 的固定类型计数，并在子进程完全退出后合并 warning_count，避免并发修改 summary。stderr 单行缓冲 MUST 不超过 1MiB；非 JSON、未知消息和超限行 MUST NOT 作为日志上传或用于猜测可重试错误。exit 3 的 warning_count MUST 至少为 1。
+
 ## 6. Retry
 
 自动 retry 仅用于暂态错误：

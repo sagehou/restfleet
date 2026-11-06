@@ -307,6 +307,7 @@ type Run struct {
 	Args      []string
 	Env       []string
 	Stdout    io.Writer
+	Stderr    io.Writer
 	KillGrace time.Duration
 	StderrCap int
 }
@@ -345,6 +346,9 @@ func (r Run) Execute(ctx context.Context) (Result, error) {
 	}
 	stderr := &limitedBuffer{limit: limit}
 	command.Stderr = stderr
+	if r.Stderr != nil {
+		command.Stderr = io.MultiWriter(stderr, r.Stderr)
+	}
 	if err := command.Start(); err != nil {
 		return Result{}, err
 	}
