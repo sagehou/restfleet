@@ -179,6 +179,8 @@ create table secrets (
 
 普通 repository/API query 不 join/decrypt secrets。Secret access 通过独立 store interface，并生成 audit/security metric。
 
+`jobs.gateway_read_binding` MAY 保存中心 snapshot index/list 的 repository/operation/admission/runtime UUID 与 configuration hash，不含私钥或秘密。enqueue、claim、续租和结果提交 MUST 验证原 owner 绑定；无效任务 MUST 以固定失败码收尾，不能写成功索引或解除 Gateway 占用。当前 owner 的 OAuth token CAS 更新不改变该读绑定，也不授权中心更新云端秘密。
+
 ### 5.3.1 storage_credentials / storage_credential_revisions（schema 5）
 
 M4 第一批 MUST 复用 migration 00003 的实际 secrets 字段（kind、algorithm、key_id、ciphertext、nonce、wrapped_data_key、wrap_nonce、aad、created_at），不得以逻辑 schema 示例另建不兼容的加密格式。

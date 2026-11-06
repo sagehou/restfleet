@@ -30,6 +30,7 @@ type SnapshotIndexRequest struct {
 	GatewayID    uuid.UUID
 	RepositoryID uuid.UUID
 	Password     []byte
+ Gateway *GatewayReadAccess
 }
 
 func (r *SnapshotIndexRequest) normalize() error {
@@ -52,6 +53,15 @@ func (p *Provisioner) SnapshotIndex(
 	if err := request.normalize(); err != nil {
 		return domain.SnapshotIndexResult{}, err
 	}
+ if request.Gateway!=nil {
+  var result domain.SnapshotIndexResult
+  err:=p.withGatewayRepository(ctx,*request.Gateway,request.GatewayID,request.RepositoryID,request.Password,func(work context.Context,dir,repository,passwordFile string) error {
+   raw,err:=p.run(work,dir,repository,passwordFile,"--no-lock","--tls-client-cert",dir+"/client.pem","--cacert",dir+"/ca.pem","snapshots")
+   if err!=nil{return err};defer clear(raw)
+   result,err=parseSnapshotIndex(raw);return err
+  })
+  return result,err
+ }
 	var result domain.SnapshotIndexResult
 	err := p.runtime.WithConfig(ctx, request.Config, request.Remote, persist,
 		func(ctx context.Context, config, binary string) error {

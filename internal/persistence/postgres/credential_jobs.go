@@ -197,10 +197,10 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	defer func() { _ = tx.Rollback(ctx) }()
 	var operationID uuid.UUID
 	var attempt, maxAttempts int
-	err = tx.QueryRow(ctx, `select id,operation_id,attempt,max_attempts,payload from jobs
+	err = tx.QueryRow(ctx, `select id,operation_id,attempt,max_attempts,payload,gateway_read_binding from jobs
 		where queue in ('CREDENTIAL_TEST','REPOSITORY_INITIALIZE','SNAPSHOT_LIST','SNAPSHOT_INDEX') and ((status='READY' and available_at<=clock_timestamp())
 		or (status='LEASED' and lease_expires_at<=clock_timestamp()))
-		order by available_at,id for update skip locked limit 1`).Scan(&job.ID, &operationID, &attempt, &maxAttempts, &job.Payload)
+		order by available_at,id for update skip locked limit 1`).Scan(&job.ID, &operationID, &attempt, &maxAttempts, &job.Payload,&job.GatewayRead)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return job, domain.ErrNotFound
 	}
@@ -231,13 +231,18 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	if err != nil {
 		return job, err
 	}
-	if err = ensureNoBackupAdmission(ctx, tx, job.Credential.ID); err != nil {
-		return job, err
-	}
 	var now time.Time
 	if err = tx.QueryRow(ctx, "select clock_timestamp()").Scan(&now); err != nil {
 		return job, err
 	}
+	if err = ensureReadJobBinding(ctx,tx,job); err != nil {
+  if job.GatewayRead==nil || (!errors.Is(err,domain.ErrRepositoryBusy) && !errors.Is(err,domain.ErrRepositoryUnavailable)) {return job,err}
+  job.Operation.ErrorCode="REPOSITORY_UNAVAILABLE"
+  to:="FAILED";if job.Operation.Status=="QUEUED"{to="REJECTED"}
+  if err=finishSnapshotReadJob(ctx,tx,&job,to,now);err!=nil{return job,err}
+  if err=tx.Commit(ctx);err!=nil{return job,err}
+  return domain.CredentialJob{},domain.ErrNotFound
+ }
 	if attempt >= maxAttempts {
 		job.Operation.ErrorCode = "WORKER_LOST"
 		if err = finishCredentialJob(ctx, tx, &job, "TIMED_OUT", now); err != nil {
@@ -286,10 +291,10 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 	if err != nil {
 		return job, err
 	}
-	if err = appendAudit(ctx, tx, audit); err != nil {
-		return job, err
-	}
-	if job.Repository != nil {
+ if job.GatewayRead==nil {
+  if err=appendAudit(ctx,tx,audit);err!=nil{return job,err}
+ }
+ if job.Repository != nil {
 		repoAudit, err := credentialJobAudit(job.Operation, "REPOSITORY_SECRET_ACCESS", runtimeReason, now)
 		if err != nil {
 			return job, err
@@ -302,6 +307,13 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 			return job, err
 		}
 	}
+ if job.GatewayRead!=nil {
+  audit,err:=credentialJobAudit(job.Operation,"GATEWAY_CENTRAL_READ_AUTHORIZATION","READ_RUNTIME",now)
+  if err!=nil{return job,err}
+  audit.ResourceType,audit.ResourceID="REPOSITORY",job.Repository.ID
+  if err=appendAudit(ctx,tx,audit);err!=nil{return job,err}
+  if err=ensureReadJobBinding(ctx,tx,job);err!=nil{return job,err}
+ }
 	if err = ensureCredentialLease(ctx, tx, job.ID, owner); err != nil {
 		return job, err
 	}
@@ -312,8 +324,8 @@ func (s *Store) ClaimCredentialJob(ctx context.Context, owner uuid.UUID) (domain
 func lockCredentialJob(ctx context.Context, tx pgx.Tx, id, owner uuid.UUID) (domain.CredentialJob, error) {
 	job := domain.CredentialJob{ID: id, Owner: owner}
 	var operationID uuid.UUID
-	err := tx.QueryRow(ctx, `select operation_id,lease_expires_at,payload from jobs where id=$1 and
-		status='LEASED' and lease_owner=$2 and lease_expires_at>clock_timestamp() for update`, id, owner).Scan(&operationID, &job.LeaseExpiresAt, &job.Payload)
+	err := tx.QueryRow(ctx, `select operation_id,lease_expires_at,payload,gateway_read_binding from jobs where id=$1 and
+		status='LEASED' and lease_owner=$2 and lease_expires_at>clock_timestamp() for update`, id, owner).Scan(&operationID, &job.LeaseExpiresAt, &job.Payload,&job.GatewayRead)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return job, domain.ErrJobLeaseLost
 	}
@@ -341,8 +353,8 @@ func lockCredentialJob(ctx context.Context, tx pgx.Tx, id, owner uuid.UUID) (dom
 		}
 	}
 	job.Credential, err = scanCredential(tx.QueryRow(ctx, "select "+credentialColumns+" from storage_credentials where id=$1 for update", job.Operation.StorageCredentialID))
-	if err == nil {
-		err = ensureNoBackupAdmission(ctx, tx, job.Credential.ID)
+	if err == nil && job.GatewayRead==nil {
+		err = ensureNoBackupAdmission(ctx, tx,job.Credential.ID)
 	}
 	if err == nil {
 		err = ensureProvisionLease(ctx, tx, job)
@@ -356,6 +368,11 @@ func (s *Store) RenewCredentialJob(ctx context.Context, id, owner uuid.UUID) err
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+ job,err:=lockCredentialJob(ctx,tx,id,owner)
+ if err!=nil{return err}
+ if job.GatewayRead!=nil {
+  if err=ensureReadJobBinding(ctx,tx,job);err!=nil{return err}
+ }
 	var operationID uuid.UUID
 	err = tx.QueryRow(ctx, `update jobs set lease_expires_at=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
 		where id=$1 and status='LEASED' and lease_owner=$2 and lease_expires_at>clock_timestamp() returning operation_id`, id, owner).Scan(&operationID)
@@ -383,7 +400,7 @@ func (s *Store) RenewCredentialJob(ctx context.Context, id, owner uuid.UUID) err
 }
 
 func credentialUnchanged(job domain.CredentialJob) bool {
-	return job.Credential.Status != "DISABLED" && job.Credential.SecretRevision == job.Operation.SecretRevision
+	return job.Credential.Status != "DISABLED" && (job.GatewayRead!=nil || job.Credential.SecretRevision == job.Operation.SecretRevision)
 }
 
 func (s *Store) RefreshCredentialJob(ctx context.Context, id, owner uuid.UUID, expected int64, e domain.SecretEnvelope) (domain.StorageCredential, error) {
@@ -396,6 +413,7 @@ func (s *Store) RefreshCredentialJob(ctx context.Context, id, owner uuid.UUID, e
 	if err != nil {
 		return job.Credential, err
 	}
+ if job.GatewayRead!=nil{return job.Credential,domain.ErrOperationTransition}
 	if !credentialUnchanged(job) || job.Operation.SecretRevision != expected || (job.Repository != nil && !job.RepositoryAvailable) {
 		return job.Credential, domain.ErrRevisionConflict
 	}
@@ -493,6 +511,9 @@ func (s *Store) CompleteCredentialJob(ctx context.Context, id, owner uuid.UUID, 
 }
 
 func finishCredentialJob(ctx context.Context, tx pgx.Tx, job *domain.CredentialJob, to string, now time.Time) error {
+	if job.Operation.Type=="SNAPSHOT_INDEX" || job.Operation.Type=="SNAPSHOT_LIST" {
+  return finishSnapshotReadJob(ctx,tx,job,to,now)
+ }
 	if job.Repository != nil {
 		return finishRepositoryJob(ctx, tx, job, to, now, "", 0)
 	}

@@ -79,10 +79,10 @@ paths:
         "403":
           description: 非本 Host 仓库或中心授权失效
         "409":
-          description: 幂等参数冲突、同仓库已有活动会话或后台探测忙碌。仅探测忙碌返回 Retry-After=1，且不创建或消耗 operation 去重记录。
+          description: 幂等参数冲突、同仓库已有活动会话或后台探测忙碌。活动会话或探测忙碌返回 Retry-After=1，且不创建或消耗 operation 去重记录。
           headers:
             Retry-After:
-              description: 仅后台探测忙碌时返回；Agent 最多在 30 秒内以相同 operation_id 和 deadline 重试，不重试其他 409。
+              description: 仅未创建会话的忙碌返回；最多在 30 秒内以相同 operation_id 和 deadline 重试，不重试其他 409。
               schema:
                 type: string
                 enum: ["1"]
@@ -115,10 +115,103 @@ paths:
           description: 本次运行没有该会话
         "503":
           description: 清理失败或未完成
+  /gateway/v1/repositories/{repository_id}/read-sessions/{operation_id}:
+    parameters:
+      - name: repository_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: operation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: openGatewayReadSession
+      security:
+        - centralReaderMTLS: []
+      description: |
+        仅中心短期 reader mTLS 身份，绑定 repository/operation/admission/runtime；全部 ID 为 UUIDv7。
+        复用当前 owner、云端材料和 token watcher，与备份/探测串行，不启动第二个云端 writer。
+        最长 5min，且受请求、证书、原授权与占用期限约束。相同请求返回原会话，不延长期限。
+        Agent 不可调用；reader 也不可调用 backup-sessions。会话对象只接受 GET/HEAD。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [deadline]
+              properties:
+                deadline:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: 返回原会话
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupSession"
+        "202":
+          description: 会话已接收；STARTING 时通过 GET 等待 ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupSession"
+        "400":
+          description: 无效请求
+        "403":
+          description: 角色、绑定、证书或当前授权无效
+        "409":
+          description: 参数冲突或忙碌；仅未创建会话的忙碌返回 Retry-After=1，允许同请求在 30 秒内重试
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                enum: ["1"]
+        "503":
+          description: Gateway 或容量不可用
+    get:
+      operationId: getGatewayReadSession
+      security:
+        - centralReaderMTLS: []
+      responses:
+        "200":
+          description: 当前 reader 的会话状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupSession"
+        "403":
+          description: 无权访问
+        "404":
+          description: 本次运行没有该会话
+    delete:
+      operationId: closeGatewayReadSession
+      security:
+        - centralReaderMTLS: []
+      description: 等待本次会话清理；不删除对象，不释放 fence。重复关闭幂等，原 ID 不可重新打开。
+      responses:
+        "204":
+          description: 会话已清理
+        "403":
+          description: 无权访问
+        "404":
+          description: 本次运行没有该会话
+        "503":
+          description: 清理失败或未完成
 components:
   securitySchemes:
     agentMTLS:
       type: mutualTLS
+    centralReaderMTLS:
+      type: mutualTLS
+      description: 中心 CA 签发的独立 repository-reader URI SAN，最长 15min；不接受 Agent 身份
   schemas:
     BackupSession:
       type: object

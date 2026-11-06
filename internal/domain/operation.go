@@ -79,6 +79,7 @@ type CredentialJob struct {
 	RepositoryAvailable bool
 	LeaseExpiresAt      time.Time
 	Payload             []byte
+ GatewayRead *GatewayReadBinding
 }
 
 // CredentialTestOutcome codes are a closed vocabulary; subprocess/database

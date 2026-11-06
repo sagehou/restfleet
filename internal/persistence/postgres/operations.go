@@ -341,7 +341,7 @@ func (s *Store) CreateManualOperation(ctx context.Context, operation domain.Back
 // QUEUED row can be closed safely; a claimed row must stay non-terminal until
 // the Agent proves it stopped, so a concurrent dispatch can never execute
 // unnoticed. The terminal result remains authoritative.
-func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason string, now time.Time, request domain.BackupRequestKey, audit domain.AuditEvent) (domain.BackupOperation, error) {
+func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, _ string, now time.Time, request domain.BackupRequestKey, audit domain.AuditEvent) (domain.BackupOperation, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return domain.BackupOperation{}, err
@@ -354,7 +354,7 @@ func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason 
 	if found {
 		return original, tx.Commit(ctx)
 	}
-	reason = "USER_CANCELED"
+	reason := "USER_CANCELED"
 	operation, err := scanBackupOperation(tx.QueryRow(ctx, "select "+backupOperationColumns+" from backup_operations where id=$1 for update", id))
 	if err != nil {
 		return domain.BackupOperation{}, err

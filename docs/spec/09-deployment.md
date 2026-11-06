@@ -548,6 +548,8 @@ Agent 客户端 MUST 复用本机 TLSIdentity 和已保存 Repository credential
 
 ### 7.27 Gateway 正常轮换与受控恢复（ADR-0036）
 
+中心元数据读取的增量协议见 ADR-0041 与 `api/openapi/gateway-v1.yaml`。部署 MUST 先升级中心再升级 Gateway；未支持 read-session 的 Gateway 只能使读取明确失败，MUST NOT 触发第二个云端进程或绕过原占用。Gateway 的 `client_ca_file` MUST 信任同一中心 CA 并区分 reader 与 Agent 身份。短期 reader key 只在中心 `/dev/shm` 的 0700/0600 临时目录/文件使用，结束 MUST 清理。
+
 正式部署或 Actions MAY 以中心服务 UID 显式执行；开发工作区 MUST NOT 执行：
 
 ```text

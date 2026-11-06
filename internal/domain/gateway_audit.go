@@ -65,6 +65,12 @@ func GatewayAudit(event GatewayEvent) (AuditEvent, bool) {
 			return invalid, false
 		}
 		return invalid, true
+ case "central_read_start":
+  if !scoped || event.Authenticated || event.Reason!="requested"{return invalid,false}
+  action="GATEWAY_CENTRAL_READ_START"
+ case "central_read_end":
+  if !scoped || event.Authenticated || event.Reason!="finished"{return invalid,false}
+  action="GATEWAY_CENTRAL_READ_END"
 	case "session_start":
 		if !scoped || event.Authenticated || event.Reason != "requested" {
 			return invalid, false

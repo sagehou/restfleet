@@ -155,6 +155,10 @@ restic snapshots --json
 
 解析完整 snapshot ID、tags、paths、summary 和 program_version。Managed tags 用于映射 Host/Plan。无法映射的 snapshot 作为 `UNMANAGED` 展示，绝不能自动 retention。
 
+周期索引 MUST 复用仓库 API 的动态 READY 投影，按 UUID cursor 遍历全部仓库，每页最多 200 项；MUST NOT 只查持久化 `status='READY'` 或固定第一页。
+
+有未释放 Gateway 占用时，snapshot index/list MUST 经当前 owner 的短期 mTLS read-session 执行，Restic 使用 `--no-lock` 与受保护 TLS/密码文件。worker MUST NOT 读取云端配置或传入 OAuth refresh callback；Gateway 继续使用原材料与 token watcher，并与备份/探测串行。会话最长 5min，且不超过原授权、占用或证书期限。中心未知/陈旧绑定、撤回/到期或旧 Gateway 不支持 read-session 时 MUST 失败，不得回退启动第二个 rclone。没有占用的中心读取仍 MUST 通过原仓库 lease 与无占用检查。见 ADR-0041。
+
 ### 7.2 文件树
 
 快照浏览按需运行：

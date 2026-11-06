@@ -113,8 +113,6 @@ jobs:
           docker cp restfleet-restic-conformance:/usr/bin/restic "${RUNNER_TEMP}/restic"
           docker rm restfleet-restic-conformance
           "${RUNNER_TEMP}/restic" version
-      - name: Verify Gateway service formatting
-        run: test -z "$(gofmt -l internal/gateway/service*_linux*.go internal/gateway/conformance_linux_test.go)"
       - run: make generate
       - name: Format Go sources and retain generated source changes
         id: generated
@@ -129,6 +127,8 @@ jobs:
         with:
           name: generated-sources
           path: ${{ runner.temp }}/generated-sources.patch
+      - name: Verify Gateway service formatting
+        run: test -z "$(gofmt -l internal/gateway/service*_linux*.go internal/gateway/conformance_linux_test.go)"
       - run: make lint
       - run: make migrate
       - run: make test

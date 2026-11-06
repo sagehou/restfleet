@@ -141,6 +141,12 @@ Gateway MUST 验证证书链、当前有效期与规范 Agent 身份，并匹配
 - Repo password rotation 通过 Restic key 管理完成，但旧 key 删除属于 maintenance 操作；
 - V1 MUST 提供身份续证/吊销；Repo password rotation 可以为 V1.1，但 Schema 必须支持多个 key revision。旧 Gateway secret 引用保留兼容，MUST NOT 用于生产密码回退。
 
+### 7.2 中心只读身份
+
+中心 snapshot index/list MUST 在存在未释放 Gateway 占用时复用当前 owner，MUST NOT 启动第二个 rclone 或解除占用。中心为 durable read job 本机生成短期 Ed25519 key，以现有 CA 签发独立 `urn:restfleet:repository-reader:<repository>:<operation>:<admission>:<runtime>` 身份，最长 15min；私钥 MUST 留在中心受保护 tmpfs，不向 Agent 或 Gateway 交付。Enrollment/续证 MUST 覆盖 CSR 自报身份，普通 Agent MUST NOT 获得 reader 角色；reader MUST NOT 用作 Agent。
+
+Gateway MUST 核验当前有效证书、仓库、任务、admission/runtime 与原 owner，且每次对象请求仅接受 GET/HEAD。read-session DELETE 只清理本次会话，MUST NOT 删除对象或释放 fence。中心 enqueue/claim/续租/结果提交 MUST 核验持久 binding 与最新授权；授权失效 MUST 失败收尾，不保存索引或阻塞后续任务。秘密访问和签发意图 MUST 同事务审计，Gateway 开始/结束使用独立固定事件。详见 ADR-0041。
+
 ## 8. 中心 Secret 管理
 
 数据库中的 secret 使用 envelope encryption：

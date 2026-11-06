@@ -1,4 +1,5 @@
 -- +goose Up
+alter table jobs add column gateway_read_binding jsonb;
 alter table backup_operations add column attempt integer not null default 1 check (attempt between 1 and 10000);
 alter table backup_operations add column summary_json jsonb;
 alter table plans add column last_result_at timestamptz;
@@ -38,6 +39,7 @@ $restfleet_permissions$;
 -- +goose StatementEnd
 
 -- +goose Down
+alter table jobs drop column gateway_read_binding;
 drop table backup_operation_requests;
 drop table backup_operation_logs;
 drop table backup_operation_log_heads;

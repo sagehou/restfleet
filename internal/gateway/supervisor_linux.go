@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+ "github.com/sagehou/restfleet/internal/domain"
 	"github.com/sagehou/restfleet/internal/rclone"
 )
 
@@ -34,6 +35,7 @@ type BackupRequest struct {
 	CredentialID uuid.UUID
 	Config       []byte
 	Remote       string
+ Reader *domain.GatewayReadBinding
 }
 
 // Access is borrowed only for the callback lifetime. Password is cleared after
@@ -49,6 +51,7 @@ type Access struct {
 type activeBackup struct {
 	binding      Binding
 	agentID      uuid.UUID
+ reader *domain.GatewayReadBinding
 	credentialID uuid.UUID
 	cancel       context.CancelFunc
 	session      *BackupSession
@@ -118,7 +121,7 @@ func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	entry := &activeBackup{binding: request.Binding, credentialID: request.CredentialID, cancel: cancel, audit: s.audit}
+	entry := &activeBackup{binding: request.Binding, credentialID: request.CredentialID, cancel: cancel, audit: s.audit,reader:request.Reader}
 	if local != nil {
 		if s.identityAuth {
 			entry.agentID = local.authorization.binding.AgentID
@@ -169,13 +172,15 @@ func (s *Supervisor) withBackup(ctx context.Context, request BackupRequest,
 	if entry.guard != nil && !entry.guard() {
 		return ErrAuthorization
 	}
-	if !recordBackup(ctx, entry.audit, request.Binding, "session_start", "requested") {
+	startAction,endAction:="session_start","session_end"
+ if entry.reader!=nil{startAction,endAction="central_read_start","central_read_end"}
+ if !recordBackup(ctx, entry.audit, request.Binding, startAction, "requested") {
 		return ErrGatewayAudit
 	}
 	defer func() {
 		// End auditing happens after runtime cleanup but before releasing capacity.
 		// It cannot use an already canceled lease context or wait without a bound.
-		if !recordBackup(context.WithoutCancel(ctx), entry.audit, request.Binding, "session_end", "finished") && result == nil {
+		if !recordBackup(context.WithoutCancel(ctx), entry.audit, request.Binding, endAction, "finished") && result == nil {
 			result = ErrGatewayAudit
 		}
 	}()
@@ -245,6 +250,7 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 	}
 	defer clear(password)
 	session.guard = entry.guard
+ session.reader=entry.reader
 	defer func() {
 		// Unpublish before cancellation; already-routed requests are joined by Close.
 		s.mu.Lock()

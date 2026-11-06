@@ -14,6 +14,8 @@
 - API 不返回任何可复用 secret，除创建/轮换时的一次性响应；
 - 长任务返回 `202 Accepted + Operation resource`，不在 HTTP handler 中阻塞执行。
 
+独立 Gateway 的会话契约位于 `api/openapi/gateway-v1.yaml`。`read-sessions` 仅接受中心任务的短期 reader mTLS，MUST 与 Agent `backup-sessions` 角色隔离；数据请求只允许 GET/HEAD。两类会话均不经过 Control API，也不释放中心占用。
+
 ## 2. 认证与 Session
 
 ### 2.1 Bootstrap
