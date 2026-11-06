@@ -616,6 +616,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backup-operations/{operation_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Ordered typed events; raw engine or Hook output is never exposed. */
+        get: operations["listBackupOperationLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/backup-operations/{operation_id}/cancel": {
         parameters: {
             query?: never;
@@ -1091,9 +1110,62 @@ export interface components {
             parent_operation_id?: string;
             /** Format: uuid */
             root_operation_id?: string;
+            /** @description Execution attempt within the retry chain. */
+            attempt?: number;
+            summary?: components["schemas"]["BackupSummary"];
             /** Format: date-time */
             cancel_requested_at?: string;
             cancel_reason?: string;
+        };
+        BackupSummary: {
+            /** Format: int64 */
+            files_new: number;
+            /** Format: int64 */
+            files_changed: number;
+            /** Format: int64 */
+            files_unmodified: number;
+            /** Format: int64 */
+            dirs_new: number;
+            /** Format: int64 */
+            dirs_changed: number;
+            /** Format: int64 */
+            dirs_unmodified: number;
+            /** Format: int64 */
+            data_added: number;
+            /** Format: int64 */
+            data_added_packed: number;
+            /** Format: int64 */
+            total_files_processed: number;
+            /** Format: int64 */
+            total_bytes_processed: number;
+            /** Format: date-time */
+            backup_start?: string;
+            /** Format: date-time */
+            backup_end?: string;
+            /** Format: double */
+            total_duration: number;
+            /** Format: int64 */
+            warning_count: number;
+        };
+        BackupLogEntry: {
+            /** Format: int64 */
+            sequence: number;
+            /** Format: date-time */
+            observed_at: string;
+            /** @enum {string} */
+            section: "backup" | "pre_hook" | "post_hook" | "agent";
+            /** @enum {string} */
+            level: "INFO" | "WARN" | "ERROR";
+            code: string;
+            /** Format: int64 */
+            files_done: number;
+            /** Format: int64 */
+            bytes_done: number;
+        };
+        BackupLogPage: {
+            items: components["schemas"]["BackupLogEntry"][];
+            /** Format: int64 */
+            next_sequence: number;
         };
         BackupOperationCancel: {
             reason?: string;
@@ -2779,11 +2851,42 @@ export interface operations {
             503: components["responses"]["Problem"];
         };
     };
+    listBackupOperationLogs: {
+        parameters: {
+            query?: {
+                after_sequence?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One bounded log page with a monotonic continuation cursor. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupLogPage"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
     cancelBackupOperation: {
         parameters: {
             query?: never;
             header: {
                 "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
             path: {
                 operation_id: string;
@@ -2820,6 +2923,7 @@ export interface operations {
             query?: never;
             header: {
                 "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
             path: {
                 operation_id: string;

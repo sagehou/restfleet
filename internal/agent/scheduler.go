@@ -2,8 +2,8 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,7 +24,7 @@ type OperationOutcome struct {
 	TotalBytes int64
 	FilesNew   int64
 	DataAdded  int64
-	Summary *domain.BackupSummary
+	Summary    *domain.BackupSummary
 }
 
 // PlanExecutor runs one scheduled operation. Implementations own Restic and the
@@ -175,92 +175,146 @@ func (s *State) executeOperation(ctx context.Context, executor PlanExecutor, pla
 		defer s.workers.Done()
 		defer endRun()
 		for {
-		outcome:=OperationOutcome{Status:OperationFailed,ErrorCode:"STATE_STORAGE_UNAVAILABLE"}
-		if err:=s.operationLog(record.ID,"backup","INFO","BACKUP_STARTED",0,0);err==nil {
-			outcome = executor.Execute(runCtx, plan, record.ID, record.ScheduledAt, deadline)
-		}
-		code,level:=outcome.ErrorCode,"ERROR"
-		switch outcome.Status {
-		case OperationSucceeded:code,level="BACKUP_SUCCEEDED","INFO"
-		case OperationSucceededWarnings:code,level="BACKUP_SUCCEEDED_WITH_WARNINGS","WARN"
-		case OperationCanceled:code="CANCELED"
-		}
-		if code==""{code="BACKUP_FAILED"}
-		if err:=s.operationLog(record.ID,"backup",level,code,outcome.FilesDone,outcome.BytesDone);err!=nil {outcome.Status,outcome.ErrorCode=OperationFailed,"STATE_STORAGE_UNAVAILABLE"}
-		record.Status = outcome.Status
-		record.ExitCode = outcome.ExitCode
-		record.ErrorCode = outcome.ErrorCode
-		record.SnapshotID = outcome.SnapshotID
-		record.FilesDone = outcome.FilesDone
-		record.TotalFiles = outcome.TotalFiles
-		record.BytesDone = outcome.BytesDone
-		record.TotalBytes = outcome.TotalBytes
-		record.FilesNew = outcome.FilesNew
-		record.DataAdded = outcome.DataAdded
-		record.Summary=outcome.Summary
-		record.FinishedAt = time.Now().UTC()
-		next,err:=s.finishWithRetry(plan,record,deadline,runCtx.Err()==nil)
-		if err!=nil {if onError!=nil{onError(err)};return}
-		if next==nil {return}
-		record=*next
-		deadline=record.Deadline
-		nextCtx,endNext:=s.BeginOperation(runCtx,record.ID)
-		defer endNext()
-		runCtx=nextCtx
-		timer:=time.NewTimer(time.Until(record.RetryAt))
-		select {
-		case <-runCtx.Done():
-			timer.Stop()
-			record.Status,record.ErrorCode,record.FinishedAt=OperationCanceled,"CANCELED",time.Now().UTC()
-			_ = s.operationLog(record.ID,"backup","ERROR",record.ErrorCode,0,0)
-			if err:=s.PutOperation(record);err!=nil && onError!=nil{onError(err)}
-			return
-		case <-timer.C:
-		}
-		active,found,err:=s.ActiveDesiredState()
-		current:=false
-		if err==nil && found {for _,candidate:=range active.Plans {current=current || candidate.PlanID==plan.PlanID && candidate.Revision==plan.Revision && candidate.ConfigHash==plan.ConfigHash}}
-		if !current || !time.Now().Before(deadline) {
-			record.Status,record.ErrorCode,record.FinishedAt=OperationCanceled,"CONFIG_SUPERSEDED",time.Now().UTC()
-			_ = s.operationLog(record.ID,"backup","ERROR",record.ErrorCode,0,0)
-			if err:=s.PutOperation(record);err!=nil && onError!=nil{onError(err)}
-			return
-		}
+			outcome := OperationOutcome{Status: OperationFailed, ErrorCode: "STATE_STORAGE_UNAVAILABLE"}
+			if err := s.operationLog(record.ID, "backup", "INFO", "BACKUP_STARTED", 0, 0); err == nil {
+				outcome = executor.Execute(runCtx, plan, record.ID, record.ScheduledAt, deadline)
+			}
+			code, level := outcome.ErrorCode, "ERROR"
+			switch outcome.Status {
+			case OperationSucceeded:
+				code, level = "BACKUP_SUCCEEDED", "INFO"
+			case OperationSucceededWarnings:
+				code, level = "BACKUP_SUCCEEDED_WITH_WARNINGS", "WARN"
+			case OperationCanceled:
+				code = "CANCELED"
+			}
+			if code == "" {
+				code = "BACKUP_FAILED"
+			}
+			if err := s.operationLog(record.ID, "backup", level, code, outcome.FilesDone, outcome.BytesDone); err != nil {
+				outcome.Status, outcome.ErrorCode = OperationFailed, "STATE_STORAGE_UNAVAILABLE"
+			}
+			record.Status = outcome.Status
+			record.ExitCode = outcome.ExitCode
+			record.ErrorCode = outcome.ErrorCode
+			record.SnapshotID = outcome.SnapshotID
+			record.FilesDone = outcome.FilesDone
+			record.TotalFiles = outcome.TotalFiles
+			record.BytesDone = outcome.BytesDone
+			record.TotalBytes = outcome.TotalBytes
+			record.FilesNew = outcome.FilesNew
+			record.DataAdded = outcome.DataAdded
+			record.Summary = outcome.Summary
+			record.FinishedAt = time.Now().UTC()
+			next, err := s.finishWithRetry(plan, record, deadline, runCtx.Err() == nil)
+			if err != nil {
+				if onError != nil {
+					onError(err)
+				}
+				return
+			}
+			if next == nil {
+				return
+			}
+			record = *next
+			deadline = record.Deadline
+			nextCtx, endNext := s.BeginOperation(runCtx, record.ID)
+			defer endNext()
+			runCtx = nextCtx
+			timer := time.NewTimer(time.Until(record.RetryAt))
+			select {
+			case <-runCtx.Done():
+				timer.Stop()
+				record.Status, record.ErrorCode, record.FinishedAt = OperationCanceled, "CANCELED", time.Now().UTC()
+				_ = s.operationLog(record.ID, "backup", "ERROR", record.ErrorCode, 0, 0)
+				if err := s.PutOperation(record); err != nil && onError != nil {
+					onError(err)
+				}
+				return
+			case <-timer.C:
+			}
+			active, found, err := s.ActiveDesiredState()
+			current := false
+			if err == nil && found {
+				for _, candidate := range active.Plans {
+					current = current || candidate.PlanID == plan.PlanID && candidate.Revision == plan.Revision && candidate.ConfigHash == plan.ConfigHash
+				}
+			}
+			if !current || !time.Now().Before(deadline) {
+				record.Status, record.ErrorCode, record.FinishedAt = OperationCanceled, "CONFIG_SUPERSEDED", time.Now().UTC()
+				_ = s.operationLog(record.ID, "backup", "ERROR", record.ErrorCode, 0, 0)
+				if err := s.PutOperation(record); err != nil && onError != nil {
+					onError(err)
+				}
+				return
+			}
 		}
 	}()
 }
 
 // The failed attempt and its next identity are committed together. Waiting
 // keeps the same capacity slot; a crash reports the pending attempt as LOST.
-func (s *State) finishWithRetry(plan domain.PlanSchedule,record OperationRecord,deadline time.Time,allowRetry bool) (*OperationRecord,error) {
+func (s *State) finishWithRetry(plan domain.PlanSchedule, record OperationRecord, deadline time.Time, allowRetry bool) (*OperationRecord, error) {
 	var next *OperationRecord
-	err:=s.db.Update(func(tx *bolt.Tx) error {
-		bucket,err:=tx.CreateBucketIfNotExists([]byte(operationsBucket));if err!=nil{return err}
-		payload,err:=json.Marshal(record);if err!=nil{return err}
-		if err:=bucket.Put(record.ID[:],payload);err!=nil{return err}
-		if !allowRetry || record.Status!=OperationFailed || !domain.RetryableBackupError(record.ErrorCode) || plan.Execution==nil || plan.Execution.RetryPolicy==nil {return nil}
-		attempt:=record.Attempt
-		if attempt==0 {attempt=1}
-		policy:=plan.Execution.RetryPolicy
-		if attempt>=policy.Attempts(){return nil}
-		retryAt:=time.Now().UTC().Add(time.Duration(policy.Backoff(attempt))*time.Second)
-		var desired domain.DesiredState
-		if raw:=tx.Bucket([]byte(desiredActiveBucket)).Get([]byte(desiredStateKey));raw==nil || json.Unmarshal(raw,&desired)!=nil{return nil}
-		current:=false
-		for _,candidate:=range desired.Plans {current=current || candidate.PlanID==plan.PlanID && candidate.Revision==plan.Revision && candidate.ConfigHash==plan.ConfigHash}
-		if !current{return nil}
-		if runtimes:=tx.Bucket([]byte(planRuntimeBucket));runtimes!=nil {
-			var runtime PlanRuntime
-			if raw:=runtimes.Get(plan.PlanID[:]);raw!=nil && json.Unmarshal(raw,&runtime)==nil && !runtime.NextRunAt.IsZero() && runtime.NextRunAt.Before(deadline){deadline=runtime.NextRunAt}
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists([]byte(operationsBucket))
+		if err != nil {
+			return err
 		}
-		if !retryAt.Before(deadline){return nil}
-		id,err:=uuid.NewV7();if err!=nil{return err}
-		root:=record.RootOperationID
-		if root==uuid.Nil {root=record.ID}
-		next=&OperationRecord{ID:id,PlanID:record.PlanID,PlanRevision:record.PlanRevision,ConfigHash:record.ConfigHash,ScheduledAt:retryAt,
-			StartedAt:time.Now().UTC(),Status:OperationRunning,ParentOperationID:record.ID,RootOperationID:root,Attempt:attempt+1,RetryAt:retryAt,Deadline:deadline}
-		payload,err=json.Marshal(next);if err!=nil{return err}
-		return bucket.Put(next.ID[:],payload)
+		payload, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		if err := bucket.Put(record.ID[:], payload); err != nil {
+			return err
+		}
+		if !allowRetry || record.Status != OperationFailed || !domain.RetryableBackupError(record.ErrorCode) || plan.Execution == nil || plan.Execution.RetryPolicy == nil {
+			return nil
+		}
+		attempt := record.Attempt
+		if attempt == 0 {
+			attempt = 1
+		}
+		policy := plan.Execution.RetryPolicy
+		if attempt >= policy.Attempts() {
+			return nil
+		}
+		retryAt := time.Now().UTC().Add(time.Duration(policy.Backoff(attempt)) * time.Second)
+		var desired domain.DesiredState
+		if raw := tx.Bucket([]byte(desiredActiveBucket)).Get([]byte(desiredStateKey)); raw == nil || json.Unmarshal(raw, &desired) != nil {
+			return nil
+		}
+		current := false
+		for _, candidate := range desired.Plans {
+			current = current || candidate.PlanID == plan.PlanID && candidate.Revision == plan.Revision && candidate.ConfigHash == plan.ConfigHash
+		}
+		if !current {
+			return nil
+		}
+		if runtimes := tx.Bucket([]byte(planRuntimeBucket)); runtimes != nil {
+			var runtime PlanRuntime
+			if raw := runtimes.Get(plan.PlanID[:]); raw != nil && json.Unmarshal(raw, &runtime) == nil && !runtime.NextRunAt.IsZero() && runtime.NextRunAt.Before(deadline) {
+				deadline = runtime.NextRunAt
+			}
+		}
+		if !retryAt.Before(deadline) {
+			return nil
+		}
+		id, err := uuid.NewV7()
+		if err != nil {
+			return err
+		}
+		root := record.RootOperationID
+		if root == uuid.Nil {
+			root = record.ID
+		}
+		next = &OperationRecord{ID: id, PlanID: record.PlanID, PlanRevision: record.PlanRevision, ConfigHash: record.ConfigHash, ScheduledAt: retryAt,
+			StartedAt: time.Now().UTC(), Status: OperationRunning, ParentOperationID: record.ID, RootOperationID: root, Attempt: attempt + 1, RetryAt: retryAt, Deadline: deadline}
+		payload, err = json.Marshal(next)
+		if err != nil {
+			return err
+		}
+		return bucket.Put(next.ID[:], payload)
 	})
-	return next,err
+	return next, err
 }

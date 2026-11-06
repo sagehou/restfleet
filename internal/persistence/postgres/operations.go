@@ -17,7 +17,7 @@ func scanBackupOperation(row rowScanner) (domain.BackupOperation, error) {
 	err := row.Scan(&o.ID, &o.PlanID, &o.AgentID, &o.Type, &o.Source, &o.Status, &o.PlanRevision, &o.ConfigHash,
 		&o.ScheduledAt, &o.StartedAt, &o.FinishedAt, &o.ExitCode, &o.ErrorCode, &o.SnapshotID,
 		&o.FilesDone, &o.TotalFiles, &o.BytesDone, &o.TotalBytes, &o.CreatedAt, &o.UpdatedAt,
-		&o.ParentOperationID, &o.RootOperationID, &o.CancelRequestedAt, &o.CancelReason, &o.DispatchedAt,&o.Attempt,&o.Summary)
+		&o.ParentOperationID, &o.RootOperationID, &o.CancelRequestedAt, &o.CancelReason, &o.DispatchedAt, &o.Attempt, &o.Summary)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return o, domain.ErrNotFound
 	}
@@ -68,7 +68,7 @@ func (s *Store) UpsertOperationProgress(ctx context.Context, progress domain.Bac
 	if !exists {
 		return domain.ErrPlanBindingInvalid
 	}
-	if err := lockReportedOperation(ctx, tx, progress.OperationID, progress.AgentID, progress.PlanID, progress.PlanRevision,progress.ParentOperationID,progress.RootOperationID,progress.Attempt); err != nil {
+	if err := lockReportedOperation(ctx, tx, progress.OperationID, progress.AgentID, progress.PlanID, progress.PlanRevision, progress.ParentOperationID, progress.RootOperationID, progress.Attempt); err != nil {
 		return err
 	}
 	tag, err := tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,started_at,created_at,updated_at,parent_operation_id,root_operation_id,attempt)
@@ -80,12 +80,12 @@ func (s *Store) UpsertOperationProgress(ctx context.Context, progress domain.Bac
 			and (backup_operations.parent_operation_id is not distinct from excluded.parent_operation_id or $9=0)
 			and (backup_operations.root_operation_id is not distinct from excluded.root_operation_id or $9=0)
 			and (backup_operations.attempt=excluded.attempt or $9=0)`,
-		progress.OperationID, progress.PlanID, progress.AgentID, progress.PlanRevision, progress.ScheduledAt, progress.ObservedAt,progress.ParentOperationID,progress.RootOperationID,progress.Attempt)
+		progress.OperationID, progress.PlanID, progress.AgentID, progress.PlanRevision, progress.ScheduledAt, progress.ObservedAt, progress.ParentOperationID, progress.RootOperationID, progress.Attempt)
 	if err != nil {
 		return persistenceError(err)
 	}
 	if tag.RowsAffected() == 0 {
-		if err := lockReportedOperation(ctx, tx, progress.OperationID, progress.AgentID, progress.PlanID, progress.PlanRevision,progress.ParentOperationID,progress.RootOperationID,progress.Attempt); err != nil {
+		if err := lockReportedOperation(ctx, tx, progress.OperationID, progress.AgentID, progress.PlanID, progress.PlanRevision, progress.ParentOperationID, progress.RootOperationID, progress.Attempt); err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
@@ -128,7 +128,7 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 		return err
 	}
 	finished := result.FinishedAt
-	if err := lockReportedOperation(ctx, tx, result.OperationID, result.AgentID, result.PlanID, result.PlanRevision,result.ParentOperationID,result.RootOperationID,result.Attempt); err != nil {
+	if err := lockReportedOperation(ctx, tx, result.OperationID, result.AgentID, result.PlanID, result.PlanRevision, result.ParentOperationID, result.RootOperationID, result.Attempt); err != nil {
 		return err
 	}
 	tag, err := tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,
@@ -142,20 +142,22 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 			and (backup_operations.root_operation_id is not distinct from excluded.root_operation_id or $13=0)
 			and (backup_operations.attempt=excluded.attempt or $13=0)`,
 		result.OperationID, result.PlanID, result.AgentID, result.Status, result.PlanRevision, result.ScheduledAt,
-		finished, result.ExitCode, result.ErrorCode, result.SnapshotID,result.ParentOperationID,result.RootOperationID,result.Attempt)
+		finished, result.ExitCode, result.ErrorCode, result.SnapshotID, result.ParentOperationID, result.RootOperationID, result.Attempt)
 	if err != nil {
 		return persistenceError(err)
 	}
 	// A terminal row is authoritative: duplicate or late results may be
 	// acknowledged, but must not rewrite it or regress plan health.
 	if tag.RowsAffected() == 0 {
-		if err := lockReportedOperation(ctx, tx, result.OperationID, result.AgentID, result.PlanID, result.PlanRevision,result.ParentOperationID,result.RootOperationID,result.Attempt); err != nil {
+		if err := lockReportedOperation(ctx, tx, result.OperationID, result.AgentID, result.PlanID, result.PlanRevision, result.ParentOperationID, result.RootOperationID, result.Attempt); err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
 	}
-	if result.Summary!=nil {
-		if _,err:=tx.Exec(ctx,`update backup_operations set summary_json=$2,files_done=$3,total_files=$3,bytes_done=$4,total_bytes=$4 where id=$1`,result.OperationID,result.Summary,result.Summary.TotalFilesProcessed,result.Summary.TotalBytesProcessed);err!=nil{return err}
+	if result.Summary != nil {
+		if _, err := tx.Exec(ctx, `update backup_operations set summary_json=$2,files_done=$3,total_files=$3,bytes_done=$4,total_bytes=$4 where id=$1`, result.OperationID, result.Summary, result.Summary.TotalFilesProcessed, result.Summary.TotalBytesProcessed); err != nil {
+			return err
+		}
 	}
 	health := ""
 	success := false
@@ -193,24 +195,34 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 
 // An Agent may select its own operation ID, never another plan's existing row.
 // The INSERT conflict predicate repeats this check for concurrent first reports.
-func lockReportedOperation(ctx context.Context, tx pgx.Tx, id, agentID, planID uuid.UUID, revision int64,parentID,rootID *uuid.UUID,attempt int) error {
+func lockReportedOperation(ctx context.Context, tx pgx.Tx, id, agentID, planID uuid.UUID, revision int64, parentID, rootID *uuid.UUID, attempt int) error {
 	var owner, boundPlan uuid.UUID
 	var boundRevision int64
-	var parent,root *uuid.UUID
+	var parent, root *uuid.UUID
 	var boundAttempt int
 	err := tx.QueryRow(ctx, "select agent_id,plan_id,plan_revision,parent_operation_id,root_operation_id,attempt from backup_operations where id=$1 for update", id).
-		Scan(&owner, &boundPlan, &boundRevision,&parent,&root,&boundAttempt)
+		Scan(&owner, &boundPlan, &boundRevision, &parent, &root, &boundAttempt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		if parentID==nil {
-			if rootID!=nil || attempt>1{return domain.ErrPlanBindingInvalid}
+		if parentID == nil {
+			if rootID != nil || attempt > 1 {
+				return domain.ErrPlanBindingInvalid
+			}
 			return nil
 		}
-		if rootID==nil || *parentID==id || *rootID==id {return domain.ErrPlanBindingInvalid}
-		previous,err:=scanBackupOperation(tx.QueryRow(ctx,"select "+backupOperationColumns+" from backup_operations where id=$1 for share",*parentID))
-		if err!=nil || previous.AgentID!=agentID || previous.PlanID!=planID || previous.PlanRevision!=revision || previous.Status!="FAILED" || !domain.RetryableBackupError(previous.ErrorCode) || attempt!=previous.Attempt+1 || attempt>10 {return domain.ErrPlanBindingInvalid}
-		expectedRoot:=previous.ID
-		if previous.RootOperationID!=nil{expectedRoot=*previous.RootOperationID}
-		if *rootID!=expectedRoot{return domain.ErrPlanBindingInvalid}
+		if rootID == nil || *parentID == id || *rootID == id {
+			return domain.ErrPlanBindingInvalid
+		}
+		previous, err := scanBackupOperation(tx.QueryRow(ctx, "select "+backupOperationColumns+" from backup_operations where id=$1 for share", *parentID))
+		if err != nil || previous.AgentID != agentID || previous.PlanID != planID || previous.PlanRevision != revision || previous.Status != "FAILED" || !domain.RetryableBackupError(previous.ErrorCode) || attempt != previous.Attempt+1 || attempt > 10 {
+			return domain.ErrPlanBindingInvalid
+		}
+		expectedRoot := previous.ID
+		if previous.RootOperationID != nil {
+			expectedRoot = *previous.RootOperationID
+		}
+		if *rootID != expectedRoot {
+			return domain.ErrPlanBindingInvalid
+		}
 		return nil
 	}
 	if err != nil {
@@ -219,11 +231,15 @@ func lockReportedOperation(ctx context.Context, tx pgx.Tx, id, agentID, planID u
 	if owner != agentID || boundPlan != planID || boundRevision != revision {
 		return domain.ErrPlanBindingInvalid
 	}
-	if attempt!=0 && (boundAttempt!=attempt || !sameOptionalUUID(parent,parentID) || !sameOptionalUUID(root,rootID)){return domain.ErrPlanBindingInvalid}
+	if attempt != 0 && (boundAttempt != attempt || !sameOptionalUUID(parent, parentID) || !sameOptionalUUID(root, rootID)) {
+		return domain.ErrPlanBindingInvalid
+	}
 	return nil
 }
 
-func sameOptionalUUID(a,b *uuid.UUID) bool {return a==nil && b==nil || a!=nil && b!=nil && *a==*b}
+func sameOptionalUUID(a, b *uuid.UUID) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
 
 var _ = time.Now
 
@@ -257,36 +273,67 @@ func (s *Store) Snapshots(ctx context.Context, limit int) ([]domain.Snapshot, er
 }
 
 // CreateManualOperation queues a user-triggered backup for one Agent.
-func (s *Store) CreateManualOperation(ctx context.Context,operation domain.BackupOperation,request domain.BackupRequestKey,audit domain.AuditEvent) (domain.BackupOperation,error) {
- tx,err:=s.pool.Begin(ctx);if err!=nil{return operation,err};defer func(){_=tx.Rollback(ctx)}()
- original,found,err:=lockBackupRequest(ctx,tx,request)
- if err!=nil{return operation,err};if found{return original,tx.Commit(ctx)}
- if operation.ParentOperationID!=nil {
-  previous,err:=scanBackupOperation(tx.QueryRow(ctx,"select "+backupOperationColumns+" from backup_operations where id=$1 for share",*operation.ParentOperationID))
-  if err!=nil{return operation,err}
-  if !domain.OperationTerminal(previous.Status){return operation,domain.ErrOperationNotTerminal}
-  if previous.Attempt>=10000{return operation,domain.ErrOperationTransition}
-  operation.PlanID=previous.PlanID
-  operation.RootOperationID=previous.RootOperationID
-  if operation.RootOperationID==nil{operation.RootOperationID=&previous.ID}
-  operation.Attempt=previous.Attempt+1
- }
- plan,err:=scanPlan(tx.QueryRow(ctx,"select "+planColumns+" from plans where id=$1 and archived_at is null for update",operation.PlanID))
- if err!=nil{return operation,err}
- if plan.Status!="ACTIVE"{return operation,domain.ErrPlanStateInvalid}
- if err:=tx.QueryRow(ctx,"select clock_timestamp()").Scan(&operation.CreatedAt);err!=nil{return operation,err}
- operation.AgentID,operation.PlanRevision,operation.ConfigHash=plan.AgentID,plan.DesiredRevision,plan.ConfigHash
- operation.Type,operation.Source,operation.Status="BACKUP","MANUAL","QUEUED"
- operation.UpdatedAt=operation.CreatedAt
- operation.ScheduledAt=&operation.CreatedAt
- if operation.Attempt==0{operation.Attempt=1}
- _,err=tx.Exec(ctx,`insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,created_at,updated_at,parent_operation_id,root_operation_id,attempt)
-  values($1,$2,$3,'BACKUP','MANUAL','QUEUED',$4,$5,$6,$6,$6,$7,$8,$9)`,operation.ID,operation.PlanID,operation.AgentID,operation.PlanRevision,operation.ConfigHash,
-  operation.CreatedAt,operation.ParentOperationID,operation.RootOperationID,operation.Attempt)
- if err!=nil{return operation,persistenceError(err)}
- if err:=appendAudit(ctx,tx,audit);err!=nil{return operation,err}
- if err:=saveBackupRequest(ctx,tx,request,operation);err!=nil{return operation,err}
- return operation,tx.Commit(ctx)
+func (s *Store) CreateManualOperation(ctx context.Context, operation domain.BackupOperation, request domain.BackupRequestKey, audit domain.AuditEvent) (domain.BackupOperation, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return operation, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	original, found, err := lockBackupRequest(ctx, tx, request)
+	if err != nil {
+		return operation, err
+	}
+	if found {
+		return original, tx.Commit(ctx)
+	}
+	if operation.ParentOperationID != nil {
+		previous, err := scanBackupOperation(tx.QueryRow(ctx, "select "+backupOperationColumns+" from backup_operations where id=$1 for share", *operation.ParentOperationID))
+		if err != nil {
+			return operation, err
+		}
+		if !domain.OperationTerminal(previous.Status) {
+			return operation, domain.ErrOperationNotTerminal
+		}
+		if previous.Attempt >= 10000 {
+			return operation, domain.ErrOperationTransition
+		}
+		operation.PlanID = previous.PlanID
+		operation.RootOperationID = previous.RootOperationID
+		if operation.RootOperationID == nil {
+			operation.RootOperationID = &previous.ID
+		}
+		operation.Attempt = previous.Attempt + 1
+	}
+	plan, err := scanPlan(tx.QueryRow(ctx, "select "+planColumns+" from plans where id=$1 and archived_at is null for update", operation.PlanID))
+	if err != nil {
+		return operation, err
+	}
+	if plan.Status != "ACTIVE" {
+		return operation, domain.ErrPlanStateInvalid
+	}
+	if err := tx.QueryRow(ctx, "select clock_timestamp()").Scan(&operation.CreatedAt); err != nil {
+		return operation, err
+	}
+	operation.AgentID, operation.PlanRevision, operation.ConfigHash = plan.AgentID, plan.DesiredRevision, plan.ConfigHash
+	operation.Type, operation.Source, operation.Status = "BACKUP", "MANUAL", "QUEUED"
+	operation.UpdatedAt = operation.CreatedAt
+	operation.ScheduledAt = &operation.CreatedAt
+	if operation.Attempt == 0 {
+		operation.Attempt = 1
+	}
+	_, err = tx.Exec(ctx, `insert into backup_operations(id,plan_id,agent_id,type,source,status,plan_revision,config_hash,scheduled_at,created_at,updated_at,parent_operation_id,root_operation_id,attempt)
+  values($1,$2,$3,'BACKUP','MANUAL','QUEUED',$4,$5,$6,$6,$6,$7,$8,$9)`, operation.ID, operation.PlanID, operation.AgentID, operation.PlanRevision, operation.ConfigHash,
+		operation.CreatedAt, operation.ParentOperationID, operation.RootOperationID, operation.Attempt)
+	if err != nil {
+		return operation, persistenceError(err)
+	}
+	if err := appendAudit(ctx, tx, audit); err != nil {
+		return operation, err
+	}
+	if err := saveBackupRequest(ctx, tx, request, operation); err != nil {
+		return operation, err
+	}
+	return operation, tx.Commit(ctx)
 }
 
 // CancelBackupOperation closes an operation the dispatcher has not claimed and
@@ -300,10 +347,15 @@ func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason 
 		return domain.BackupOperation{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
- original,found,err:=lockBackupRequest(ctx,tx,request)
- if err!=nil{return domain.BackupOperation{},err};if found{return original,tx.Commit(ctx)}
- reason="USER_CANCELED"
- operation, err := scanBackupOperation(tx.QueryRow(ctx, "select "+backupOperationColumns+" from backup_operations where id=$1 for update", id))
+	original, found, err := lockBackupRequest(ctx, tx, request)
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	if found {
+		return original, tx.Commit(ctx)
+	}
+	reason = "USER_CANCELED"
+	operation, err := scanBackupOperation(tx.QueryRow(ctx, "select "+backupOperationColumns+" from backup_operations where id=$1 for update", id))
 	if err != nil {
 		return domain.BackupOperation{}, err
 	}
@@ -314,11 +366,13 @@ func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason 
 		if err := appendAudit(ctx, tx, audit); err != nil {
 			return domain.BackupOperation{}, err
 		}
-		if err:=saveBackupRequest(ctx,tx,request,operation);err!=nil{return operation,err}
+		if err := saveBackupRequest(ctx, tx, request, operation); err != nil {
+			return operation, err
+		}
 		return operation, tx.Commit(ctx)
 	case "QUEUED":
 		if operation.DispatchedAt == nil {
-			operation.Status, operation.FinishedAt,operation.ErrorCode = "CANCELED", &now,"CANCELED"
+			operation.Status, operation.FinishedAt, operation.ErrorCode = "CANCELED", &now, "CANCELED"
 			break
 		}
 		operation.Status = "CANCEL_REQUESTED"
@@ -337,7 +391,9 @@ func (s *Store) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason 
 	if err := appendAudit(ctx, tx, audit); err != nil {
 		return domain.BackupOperation{}, err
 	}
-	if err:=saveBackupRequest(ctx,tx,request,operation);err!=nil{return operation,err}
+	if err := saveBackupRequest(ctx, tx, request, operation); err != nil {
+		return operation, err
+	}
 	return operation, tx.Commit(ctx)
 }
 

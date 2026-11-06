@@ -32,8 +32,8 @@ var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // Store is the persistence port used by control-plane domain operations.
 type Store interface {
-	AppendOperationLogs(context.Context,uuid.UUID,uuid.UUID,[]domain.BackupLogEntry) (uint64,error)
-	OperationLogs(context.Context,uuid.UUID,uint64,int) ([]domain.BackupLogEntry,error)
+	AppendOperationLogs(context.Context, uuid.UUID, uuid.UUID, []domain.BackupLogEntry) (uint64, error)
+	OperationLogs(context.Context, uuid.UUID, uint64, int) ([]domain.BackupLogEntry, error)
 	Ping(context.Context) error
 	SchemaVersion(context.Context) (int, error)
 	BootstrapRequired(context.Context) (bool, error)
@@ -91,7 +91,7 @@ type Store interface {
 	BackupOperations(context.Context, uuid.UUID, int) ([]domain.BackupOperation, error)
 	BackupOperation(context.Context, uuid.UUID) (domain.BackupOperation, error)
 	FleetBackupCounts(context.Context) (plans, operations, running, failed24h, unhealthy int64, err error)
-	CreateManualOperation(context.Context, domain.BackupOperation, domain.BackupRequestKey, domain.AuditEvent) (domain.BackupOperation,error)
+	CreateManualOperation(context.Context, domain.BackupOperation, domain.BackupRequestKey, domain.AuditEvent) (domain.BackupOperation, error)
 	ClaimManualOperationDispatch(context.Context, uuid.UUID, time.Time, time.Duration) (domain.BackupOperation, bool, error)
 	CloseUnstartedCancellations(context.Context, time.Time, time.Time) (int64, error)
 	ReconcileLostOperations(context.Context, time.Time, time.Time) (int64, error)

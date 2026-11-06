@@ -155,7 +155,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 		id := uuid.Must(uuid.NewV7())
 		operation := domain.BackupOperation{ID: id, PlanID: planID, AgentID: enrolled.AgentId,
 			PlanRevision: 1, ConfigHash: hash, ScheduledAt: &now, CreatedAt: now}
-		if _,err := store.CreateManualOperation(ctx, operation, testBackupRequest(id.String()), audit(action, id)); err == nil {
+		if _, err := store.CreateManualOperation(ctx, operation, testBackupRequest(id.String()), audit(action, id)); err == nil {
 			t.Fatal("manual backup succeeded without audit")
 		}
 		var count int

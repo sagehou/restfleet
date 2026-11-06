@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
- "crypto/sha256"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"math"
@@ -26,16 +26,26 @@ const (
 	lostReconciliationGrace = 2 * time.Minute
 )
 
-func (c *ControlPlane) RecordOperationLogs(ctx context.Context,agentID,id uuid.UUID,entries []domain.BackupLogEntry) (uint64,error) {
-	if !domain.ValidOperationID(id) || agentID.Version()!=7 || len(entries)==0 || len(entries)>200{return 0,&ValidationError{Field:"logs",Code:"INVALID_OPERATION_LOGS"}}
-	for i,entry:=range entries {if entry.Validate()!=nil || i>0 && entry.Sequence!=entries[i-1].Sequence+1{return 0,&ValidationError{Field:"logs",Code:"INVALID_OPERATION_LOGS"}}}
-	return c.store.AppendOperationLogs(ctx,agentID,id,entries)
+func (c *ControlPlane) RecordOperationLogs(ctx context.Context, agentID, id uuid.UUID, entries []domain.BackupLogEntry) (uint64, error) {
+	if !domain.ValidOperationID(id) || agentID.Version() != 7 || len(entries) == 0 || len(entries) > 200 {
+		return 0, &ValidationError{Field: "logs", Code: "INVALID_OPERATION_LOGS"}
+	}
+	for i, entry := range entries {
+		if entry.Validate() != nil || i > 0 && entry.Sequence != entries[i-1].Sequence+1 {
+			return 0, &ValidationError{Field: "logs", Code: "INVALID_OPERATION_LOGS"}
+		}
+	}
+	return c.store.AppendOperationLogs(ctx, agentID, id, entries)
 }
 
-func (c *ControlPlane) OperationLogs(ctx context.Context,id uuid.UUID,after uint64,limit int) ([]domain.BackupLogEntry,error) {
-	if after>1<<62 || limit<1 || limit>200{return nil,&ValidationError{Field:"logs",Code:"INVALID_LOG_CURSOR"}}
-	if _,err:=c.store.BackupOperation(ctx,id);err!=nil{return nil,err}
-	return c.store.OperationLogs(ctx,id,after,limit)
+func (c *ControlPlane) OperationLogs(ctx context.Context, id uuid.UUID, after uint64, limit int) ([]domain.BackupLogEntry, error) {
+	if after > 1<<62 || limit < 1 || limit > 200 {
+		return nil, &ValidationError{Field: "logs", Code: "INVALID_LOG_CURSOR"}
+	}
+	if _, err := c.store.BackupOperation(ctx, id); err != nil {
+		return nil, err
+	}
+	return c.store.OperationLogs(ctx, id, after, limit)
 }
 
 // RecordOperationProgress ingests one throttled progress report. The Agent owns
@@ -73,8 +83,8 @@ func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.
 			return &ValidationError{Field: "snapshot_id", Code: "INVALID_SNAPSHOT_ID"}
 		}
 	}
-	if result.Summary!=nil && (result.Summary.Validate()!=nil || result.Summary.FilesNew!=result.FilesNew || result.Summary.DataAdded!=result.DataAdded) {
-		return &ValidationError{Field:"summary",Code:"INVALID_BACKUP_SUMMARY"}
+	if result.Summary != nil && (result.Summary.Validate() != nil || result.Summary.FilesNew != result.FilesNew || result.Summary.DataAdded != result.DataAdded) {
+		return &ValidationError{Field: "summary", Code: "INVALID_BACKUP_SUMMARY"}
 	}
 	switch result.Status {
 	case "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS", "FAILED", "CANCELED", "LOST", "MISSED", "CONCURRENCY_SKIPPED":
@@ -104,27 +114,42 @@ func (c *ControlPlane) FleetBackupCounts(ctx context.Context) (plans, operations
 // QueueBackupNow creates a manual backup operation for the Agent to pick up on
 // its next heartbeat. The plan must already be ACTIVE.
 func (c *ControlPlane) QueueBackupNow(ctx context.Context, planID uuid.UUID, key string, actor domain.User, meta RequestMeta) (domain.BackupOperation, error) {
- return c.queueManualBackup(ctx,planID,key,false,actor,meta)
+	return c.queueManualBackup(ctx, planID, key, false, actor, meta)
 }
 
-func backupRequestKey(actor uuid.UUID,route,key,body string) domain.BackupRequestKey {
- return domain.BackupRequestKey{Scope:sha256.Sum256([]byte(actor.String()+"\nPOST\n"+route)),Key:sha256.Sum256([]byte(key)),Body:sha256.Sum256([]byte(body))}
+func backupRequestKey(actor uuid.UUID, route, key, body string) domain.BackupRequestKey {
+	return domain.BackupRequestKey{Scope: sha256.Sum256([]byte(actor.String() + "\nPOST\n" + route)), Key: sha256.Sum256([]byte(key)), Body: sha256.Sum256([]byte(body))}
 }
 
-func (c *ControlPlane) queueManualBackup(ctx context.Context,target uuid.UUID,key string,retry bool,actor domain.User,meta RequestMeta) (domain.BackupOperation,error) {
- action,resource,route:="PLAN_BACKUP_TRIGGER","PLAN","/api/v1/plans/"+target.String()+"/backup"
- if retry {action,resource,route="BACKUP_OPERATION_RETRY","BACKUP_OPERATION","/api/v1/backup-operations/"+target.String()+"/retry"}
- if actor.Role!=domain.RoleAdmin {
-  if err:=c.RecordDenied(ctx,action,resource,"ROLE_DENIED",meta);err!=nil{return domain.BackupOperation{},err}
-  return domain.BackupOperation{},ErrForbidden
- }
- if err:=validateOperationKey(key);err!=nil{return domain.BackupOperation{},err}
- id,err:=uuid.NewV7();if err!=nil{return domain.BackupOperation{},err}
- operation:=domain.BackupOperation{ID:id,PlanID:target}
- if retry {operation.PlanID=uuid.Nil;operation.ParentOperationID=&target}
- audit,err:=c.userAudit(action,resource,target,actor.ID,meta,"QUEUED");if err!=nil{return domain.BackupOperation{},err}
- audit.Changes=json.RawMessage(`{"source":"MANUAL"}`)
- return c.store.CreateManualOperation(ctx,operation,backupRequestKey(actor.ID,route,key,""),audit)
+func (c *ControlPlane) queueManualBackup(ctx context.Context, target uuid.UUID, key string, retry bool, actor domain.User, meta RequestMeta) (domain.BackupOperation, error) {
+	action, resource, route := "PLAN_BACKUP_TRIGGER", "PLAN", "/api/v1/plans/"+target.String()+"/backup"
+	if retry {
+		action, resource, route = "BACKUP_OPERATION_RETRY", "BACKUP_OPERATION", "/api/v1/backup-operations/"+target.String()+"/retry"
+	}
+	if actor.Role != domain.RoleAdmin {
+		if err := c.RecordDenied(ctx, action, resource, "ROLE_DENIED", meta); err != nil {
+			return domain.BackupOperation{}, err
+		}
+		return domain.BackupOperation{}, ErrForbidden
+	}
+	if err := validateOperationKey(key); err != nil {
+		return domain.BackupOperation{}, err
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	operation := domain.BackupOperation{ID: id, PlanID: target}
+	if retry {
+		operation.PlanID = uuid.Nil
+		operation.ParentOperationID = &target
+	}
+	audit, err := c.userAudit(action, resource, target, actor.ID, meta, "QUEUED")
+	if err != nil {
+		return domain.BackupOperation{}, err
+	}
+	audit.Changes = json.RawMessage(`{"source":"MANUAL"}`)
+	return c.store.CreateManualOperation(ctx, operation, backupRequestKey(actor.ID, route, key, ""), audit)
 }
 
 // ClaimQueuedJob atomically claims the next manual job before the Agent stream
@@ -140,7 +165,7 @@ func (c *ControlPlane) MarkJobDispatched(ctx context.Context, agentID, id uuid.U
 
 // CancelBackupOperation closes a queued operation immediately or asks the
 // Agent to stop a running one. Only a terminal Agent result proves completion.
-func (c *ControlPlane) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason,key string,
+func (c *ControlPlane) CancelBackupOperation(ctx context.Context, id uuid.UUID, reason, key string,
 	actor domain.User, meta RequestMeta,
 ) (domain.BackupOperation, error) {
 	if actor.Role != domain.RoleAdmin {
@@ -149,7 +174,9 @@ func (c *ControlPlane) CancelBackupOperation(ctx context.Context, id uuid.UUID, 
 		}
 		return domain.BackupOperation{}, ErrForbidden
 	}
-	if err:=validateOperationKey(key);err!=nil{return domain.BackupOperation{},err}
+	if err := validateOperationKey(key); err != nil {
+		return domain.BackupOperation{}, err
+	}
 	reason = strings.TrimSpace(reason)
 	if len(reason) > 512 {
 		return domain.BackupOperation{}, &ValidationError{Field: "reason", Code: "INVALID_REASON"}
@@ -158,7 +185,7 @@ func (c *ControlPlane) CancelBackupOperation(ctx context.Context, id uuid.UUID, 
 	if err != nil {
 		return domain.BackupOperation{}, err
 	}
-	operation, err := c.store.CancelBackupOperation(ctx, id, "USER_CANCELED", c.clock().UTC(), backupRequestKey(actor.ID,"/api/v1/backup-operations/"+id.String()+"/cancel",key,reason), audit)
+	operation, err := c.store.CancelBackupOperation(ctx, id, "USER_CANCELED", c.clock().UTC(), backupRequestKey(actor.ID, "/api/v1/backup-operations/"+id.String()+"/cancel", key, reason), audit)
 	if err != nil {
 		return domain.BackupOperation{}, err
 	}
@@ -166,8 +193,8 @@ func (c *ControlPlane) CancelBackupOperation(ctx context.Context, id uuid.UUID, 
 }
 
 // RetryBackupOperation creates a new manual run linked to the failed operation.
-func (c *ControlPlane) RetryBackupOperation(ctx context.Context,id uuid.UUID,key string,actor domain.User,meta RequestMeta) (domain.BackupOperation,error) {
- return c.queueManualBackup(ctx,id,key,true,actor,meta)
+func (c *ControlPlane) RetryBackupOperation(ctx context.Context, id uuid.UUID, key string, actor domain.User, meta RequestMeta) (domain.BackupOperation, error) {
+	return c.queueManualBackup(ctx, id, key, true, actor, meta)
 }
 
 func (c *ControlPlane) PendingCancellations(ctx context.Context, agentID uuid.UUID) ([]domain.BackupOperation, error) {

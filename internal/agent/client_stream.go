@@ -122,7 +122,11 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	if err := reportOperations(stream, &agentSequence, protocol, state, 0, resultAck); err != nil {
 		return true, err
 	}
-	if logAck {if err:=reportLogs(stream,&agentSequence,protocol,state,true);err!=nil{return true,err}}
+	if logAck {
+		if err := reportLogs(stream, &agentSequence, protocol, state, true); err != nil {
+			return true, err
+		}
+	}
 
 	for {
 		select {
@@ -144,7 +148,11 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 			if err := reportOperations(stream, &agentSequence, protocol, state, 5*time.Second, resultAck); err != nil {
 				return true, err
 			}
-			if logAck {if err:=reportLogs(stream,&agentSequence,protocol,state,false);err!=nil{return true,err}}
+			if logAck {
+				if err := reportLogs(stream, &agentSequence, protocol, state, false); err != nil {
+					return true, err
+				}
+			}
 		case <-rotationTimer.C:
 			privateKey, err := LoadOrCreatePrivateKey(state)
 			if err != nil {
@@ -216,11 +224,15 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 				if err := state.MarkOperationUploaded(operationID); err != nil {
 					return true, err
 				}
-			case message.GetJobLogAccepted()!=nil:
-				ack:=message.GetJobLogAccepted()
-				id,err:=uuid.Parse(ack.GetOperationId())
-				if err!=nil || !logAck{return true,errors.New("invalid log acknowledgement")}
-				if err:=state.acknowledgeLogs(id,ack.GetThroughSequence());err!=nil{return true,err}
+			case message.GetJobLogAccepted() != nil:
+				ack := message.GetJobLogAccepted()
+				id, err := uuid.Parse(ack.GetOperationId())
+				if err != nil || !logAck {
+					return true, errors.New("invalid log acknowledgement")
+				}
+				if err := state.acknowledgeLogs(id, ack.GetThroughSequence()); err != nil {
+					return true, err
+				}
 			case message.GetCertificateRotationResponse() != nil && rotationPending:
 				return true, saveRotation(state, identity, message)
 			default:
@@ -364,10 +376,16 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	if err != nil || planID.Version() != 7 || planID.Variant() != uuid.RFC4122 {
 		return errors.New("job dispatch has an invalid plan id")
 	}
-	parentID,rootID:=uuid.Nil,uuid.Nil
-	if job.GetParentOperationId()!="" {
-		parentID,err=uuid.Parse(job.GetParentOperationId());if err!=nil || !domain.ValidOperationID(parentID){return errors.New("job dispatch has an invalid parent id")}
-		rootID,err=uuid.Parse(job.GetRootOperationId());if err!=nil || !domain.ValidOperationID(rootID){return errors.New("job dispatch has an invalid root id")}
+	parentID, rootID := uuid.Nil, uuid.Nil
+	if job.GetParentOperationId() != "" {
+		parentID, err = uuid.Parse(job.GetParentOperationId())
+		if err != nil || !domain.ValidOperationID(parentID) {
+			return errors.New("job dispatch has an invalid parent id")
+		}
+		rootID, err = uuid.Parse(job.GetRootOperationId())
+		if err != nil || !domain.ValidOperationID(rootID) {
+			return errors.New("job dispatch has an invalid root id")
+		}
 	}
 	reject := func(code string) error {
 		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
@@ -461,7 +479,7 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	scheduled := job.GetNotBefore().AsTime().UTC()
 	record := OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
 		ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, StartedAt: time.Now().UTC(), Status: OperationRunning,
-		ParentOperationID:parentID,RootOperationID:rootID,Attempt:int(job.GetAttempt())}
+		ParentOperationID: parentID, RootOperationID: rootID, Attempt: int(job.GetAttempt())}
 	if err := state.PutOperation(record); err != nil {
 		return reject("PERSIST_FAILED")
 	}

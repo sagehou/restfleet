@@ -1,8 +1,8 @@
 package agent
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -27,34 +27,59 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 	if e.State == nil {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: "EXECUTOR_UNAVAILABLE"}
 	}
-	if plan.Execution!=nil && plan.Execution.ResourceLimits!=nil && plan.Execution.ResourceLimits.MaxDurationSeconds>0 {
-		if limited:=time.Now().Add(time.Duration(plan.Execution.ResourceLimits.MaxDurationSeconds)*time.Second);limited.Before(deadline) {deadline=limited}
-	}
-	ctx,cancel:=context.WithDeadline(ctx,deadline)
-	defer cancel()
-	if plan.Execution!=nil {
-		if len(plan.Execution.PreHookIDs)>0 {if err:=e.State.operationLog(operation,"pre_hook","INFO","HOOK_STARTED",0,0);err!=nil{return OperationOutcome{Status:OperationFailed,ErrorCode:"STATE_STORAGE_UNAVAILABLE"}}}
-		if err:=e.State.runHooks(ctx,plan.Execution.PreHookIDs);err!=nil {
-			if errors.Is(ctx.Err(),context.DeadlineExceeded){return OperationOutcome{Status:OperationFailed,ErrorCode:"BACKUP_TIMED_OUT"}}
-			if ctx.Err()!=nil{return OperationOutcome{Status:OperationCanceled,ErrorCode:"CANCELED"}}
-			return OperationOutcome{Status:OperationFailed,ErrorCode:"PRE_HOOK_FAILED"}
+	if plan.Execution != nil && plan.Execution.ResourceLimits != nil && plan.Execution.ResourceLimits.MaxDurationSeconds > 0 {
+		if limited := time.Now().Add(time.Duration(plan.Execution.ResourceLimits.MaxDurationSeconds) * time.Second); limited.Before(deadline) {
+			deadline = limited
 		}
-		if len(plan.Execution.PreHookIDs)>0 {if err:=e.State.operationLog(operation,"pre_hook","INFO","HOOK_FINISHED",0,0);err!=nil{return OperationOutcome{Status:OperationFailed,ErrorCode:"STATE_STORAGE_UNAVAILABLE"}}}
-		defer func(){
-			if ctx.Err()==nil && len(plan.Execution.PostHookIDs)>0 {
-				if err:=e.State.operationLog(operation,"post_hook","INFO","HOOK_STARTED",0,0);err!=nil{outcome.Status,outcome.ErrorCode=OperationFailed,"STATE_STORAGE_UNAVAILABLE";return}
-				code,level:="HOOK_FINISHED","INFO"
-				if err:=e.State.runHooks(ctx,plan.Execution.PostHookIDs);err!=nil {
-					if ctx.Err()!=nil {
-						outcome.Status,outcome.ErrorCode=OperationCanceled,"CANCELED"
-						if errors.Is(ctx.Err(),context.DeadlineExceeded){outcome.Status,outcome.ErrorCode=OperationFailed,"BACKUP_TIMED_OUT"}
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	if plan.Execution != nil {
+		if len(plan.Execution.PreHookIDs) > 0 {
+			if err := e.State.operationLog(operation, "pre_hook", "INFO", "HOOK_STARTED", 0, 0); err != nil {
+				return OperationOutcome{Status: OperationFailed, ErrorCode: "STATE_STORAGE_UNAVAILABLE"}
+			}
+		}
+		if err := e.State.runHooks(ctx, plan.Execution.PreHookIDs); err != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return OperationOutcome{Status: OperationFailed, ErrorCode: "BACKUP_TIMED_OUT"}
+			}
+			if ctx.Err() != nil {
+				return OperationOutcome{Status: OperationCanceled, ErrorCode: "CANCELED"}
+			}
+			return OperationOutcome{Status: OperationFailed, ErrorCode: "PRE_HOOK_FAILED"}
+		}
+		if len(plan.Execution.PreHookIDs) > 0 {
+			if err := e.State.operationLog(operation, "pre_hook", "INFO", "HOOK_FINISHED", 0, 0); err != nil {
+				return OperationOutcome{Status: OperationFailed, ErrorCode: "STATE_STORAGE_UNAVAILABLE"}
+			}
+		}
+		defer func() {
+			if ctx.Err() == nil && len(plan.Execution.PostHookIDs) > 0 {
+				if err := e.State.operationLog(operation, "post_hook", "INFO", "HOOK_STARTED", 0, 0); err != nil {
+					outcome.Status, outcome.ErrorCode = OperationFailed, "STATE_STORAGE_UNAVAILABLE"
+					return
+				}
+				code, level := "HOOK_FINISHED", "INFO"
+				if err := e.State.runHooks(ctx, plan.Execution.PostHookIDs); err != nil {
+					if ctx.Err() != nil {
+						outcome.Status, outcome.ErrorCode = OperationCanceled, "CANCELED"
+						if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+							outcome.Status, outcome.ErrorCode = OperationFailed, "BACKUP_TIMED_OUT"
+						}
 						return
 					}
-					code,level="POST_HOOK_FAILED","WARN"
-					if outcome.Status==OperationSucceeded {outcome.Status,outcome.ErrorCode=OperationSucceededWarnings,"POST_HOOK_FAILED"}
-					if outcome.Summary!=nil{outcome.Summary.WarningCount++}
+					code, level = "POST_HOOK_FAILED", "WARN"
+					if outcome.Status == OperationSucceeded {
+						outcome.Status, outcome.ErrorCode = OperationSucceededWarnings, "POST_HOOK_FAILED"
+					}
+					if outcome.Summary != nil {
+						outcome.Summary.WarningCount++
+					}
 				}
-				if err:=e.State.operationLog(operation,"post_hook",level,code,0,0);err!=nil{outcome.Status,outcome.ErrorCode=OperationFailed,"STATE_STORAGE_UNAVAILABLE"}
+				if err := e.State.operationLog(operation, "post_hook", level, code, 0, 0); err != nil {
+					outcome.Status, outcome.ErrorCode = OperationFailed, "STATE_STORAGE_UNAVAILABLE"
+				}
 			}
 		}()
 	}
@@ -98,11 +123,13 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 		ExcludeCaches: plan.ExcludeCaches, OneFileSystem: plan.OneFileSystem,
 		TLSClientCertFile: certFile, CACertFile: caFile, SkipIfUnchanged: true,
 	}
-	request.CacheDirectory=filepath.Join(e.State.Directory(),"cache")
-	if os.MkdirAll(request.CacheDirectory,0700)!=nil {return OperationOutcome{Status:OperationFailed,ErrorCode:"WORKDIR_UNAVAILABLE"}}
-	if plan.Execution!=nil && plan.Execution.ResourceLimits!=nil {
-		limits:=plan.Execution.ResourceLimits
-		request.LimitUploadKiB,request.LimitDownloadKiB,request.ReadConcurrency=limits.LimitUploadKiB,limits.LimitDownloadKiB,limits.ReadConcurrency
+	request.CacheDirectory = filepath.Join(e.State.Directory(), "cache")
+	if os.MkdirAll(request.CacheDirectory, 0700) != nil {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: "WORKDIR_UNAVAILABLE"}
+	}
+	if plan.Execution != nil && plan.Execution.ResourceLimits != nil {
+		limits := plan.Execution.ResourceLimits
+		request.LimitUploadKiB, request.LimitDownloadKiB, request.ReadConcurrency = limits.LimitUploadKiB, limits.LimitDownloadKiB, limits.ReadConcurrency
 	}
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
@@ -122,12 +149,18 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 		return runErr
 	})
 	progress.finish()
-	if errors.Is(sessionErr,ErrGatewayCleanup) {return OperationOutcome{Status:OperationFailed,ErrorCode:"GATEWAY_CLEANUP_UNCONFIRMED",ExitCode:runResult.ExitCode}}
-	if errors.Is(sessionErr,ErrGatewayBusy) {return OperationOutcome{Status:OperationFailed,ErrorCode:"GATEWAY_BUSY",ExitCode:runResult.ExitCode}}
+	if errors.Is(sessionErr, ErrGatewayCleanup) {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: "GATEWAY_CLEANUP_UNCONFIRMED", ExitCode: runResult.ExitCode}
+	}
+	if errors.Is(sessionErr, ErrGatewayBusy) {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: "GATEWAY_BUSY", ExitCode: runResult.ExitCode}
+	}
 	if progress.errorCode != "" {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: progress.errorCode, ExitCode: runResult.ExitCode}
 	}
-	if errors.Is(ctx.Err(),context.DeadlineExceeded) {return OperationOutcome{Status:OperationFailed,ErrorCode:"BACKUP_TIMED_OUT",ExitCode:runResult.ExitCode}}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: "BACKUP_TIMED_OUT", ExitCode: runResult.ExitCode}
+	}
 	if errors.Is(runErr, restic.ErrCanceled) || errors.Is(sessionErr, context.Canceled) {
 		return OperationOutcome{Status: OperationCanceled, ErrorCode: "CANCELED", ExitCode: runResult.ExitCode,
 			FilesDone: progress.files, TotalFiles: progress.totalFiles, BytesDone: progress.bytes,
@@ -144,7 +177,7 @@ func classify(exitCode int, snapshotID string, sawSummary bool, progress *progre
 		FilesDone: progress.files, TotalFiles: progress.totalFiles,
 		BytesDone: progress.bytes, TotalBytes: progress.totalBytes,
 		FilesNew: progress.filesNew, DataAdded: progress.dataAdded}
-	outcome.Summary=progress.summary
+	outcome.Summary = progress.summary
 	switch exitCode {
 	case 0:
 		if !sawSummary {
@@ -223,10 +256,10 @@ type progressSink struct {
 	lastWrite   time.Time
 	lastPercent float64
 	pendingLine []byte
-	summary *domain.BackupSummary
-	warnings int64
-	errorCode string
-	cancel context.CancelFunc
+	summary     *domain.BackupSummary
+	warnings    int64
+	errorCode   string
+	cancel      context.CancelFunc
 }
 
 func (p *progressSink) Write(chunk []byte) (int, error) {
@@ -294,18 +327,28 @@ func (p *progressSink) consume(line []byte) {
 		}
 		p.sawSummary = true
 		p.snapshotID = event.SnapshotID
-		p.summary=event.Summary
-		if p.summary!=nil {p.summary.WarningCount=p.warnings}
+		p.summary = event.Summary
+		if p.summary != nil {
+			p.summary.WarningCount = p.warnings
+		}
 		p.filesNew, p.dataAdded = event.FilesNew, event.DataAdded
 		if event.FilesDone > 0 {
 			p.files = event.FilesDone
 		}
-		p.bytes=event.BytesDone
+		p.bytes = event.BytesDone
 		p.persist()
-		if p.state!=nil {if err:=p.state.operationLog(p.operation,"backup","INFO","BACKUP_SUMMARY",p.files,p.bytes);err!=nil{p.fail("STATE_STORAGE_UNAVAILABLE")}}
+		if p.state != nil {
+			if err := p.state.operationLog(p.operation, "backup", "INFO", "BACKUP_SUMMARY", p.files, p.bytes); err != nil {
+				p.fail("STATE_STORAGE_UNAVAILABLE")
+			}
+		}
 	case "error":
 		p.warnings++
-		if p.state!=nil {if err:=p.state.operationLog(p.operation,"backup","WARN","ENGINE_READ_ERROR",p.files,p.bytes);err!=nil{p.fail("STATE_STORAGE_UNAVAILABLE")}}
+		if p.state != nil {
+			if err := p.state.operationLog(p.operation, "backup", "WARN", "ENGINE_READ_ERROR", p.files, p.bytes); err != nil {
+				p.fail("STATE_STORAGE_UNAVAILABLE")
+			}
+		}
 	}
 }
 
@@ -320,7 +363,7 @@ func (p *progressSink) persist() {
 		record.FilesDone, record.TotalFiles = p.files, p.totalFiles
 		record.BytesDone, record.TotalBytes = p.bytes, p.totalBytes
 		record.FilesNew, record.DataAdded = p.filesNew, p.dataAdded
-		record.Summary=p.summary
+		record.Summary = p.summary
 		if p.snapshotID != "" {
 			record.SnapshotID = p.snapshotID
 		}
@@ -328,5 +371,7 @@ func (p *progressSink) persist() {
 		p.fail("STATE_STORAGE_UNAVAILABLE")
 		return
 	}
-	if err:=p.state.operationLog(p.operation,"backup","INFO","BACKUP_PROGRESS",p.files,p.bytes);err!=nil{p.fail("STATE_STORAGE_UNAVAILABLE")}
+	if err := p.state.operationLog(p.operation, "backup", "INFO", "BACKUP_PROGRESS", p.files, p.bytes); err != nil {
+		p.fail("STATE_STORAGE_UNAVAILABLE")
+	}
 }
