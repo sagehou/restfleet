@@ -783,6 +783,21 @@ type BackupOperationList struct {
 	NextCursor *string           `json:"next_cursor,omitempty"`
 }
 
+// BackupResourceLimits Zero or omitted limits retain Restic defaults; maximum duration is also capped by the operation deadline.
+type BackupResourceLimits struct {
+	LimitDownloadKib   *int `json:"limit_download_kib,omitempty"`
+	LimitUploadKib     *int `json:"limit_upload_kib,omitempty"`
+	MaxDurationSeconds *int `json:"max_duration_seconds,omitempty"`
+	ReadConcurrency    *int `json:"read_concurrency,omitempty"`
+}
+
+// BackupRetryPolicy Zero or omitted values use defaults (1 attempt, 60s initial, 1800s maximum); each retry creates a new Operation.
+type BackupRetryPolicy struct {
+	InitialBackoffSeconds *int `json:"initial_backoff_seconds,omitempty"`
+	MaxAttempts           *int `json:"max_attempts,omitempty"`
+	MaxBackoffSeconds     *int `json:"max_backoff_seconds,omitempty"`
+}
+
 // BootstrapRequest defines model for BootstrapRequest.
 type BootstrapRequest struct {
 	DisplayName string `json:"display_name"`
@@ -1212,12 +1227,12 @@ type TemplateConfig struct {
 	PostHookIds         *[]openapi_types.UUID `json:"post_hook_ids,omitempty"`
 	PreHookIds          *[]openapi_types.UUID `json:"pre_hook_ids,omitempty"`
 
-	// ResourceLimits Opaque resource limits stored verbatim for the Agent runtime.
-	ResourceLimits    *map[string]interface{} `json:"resource_limits,omitempty"`
-	RetentionPolicyId *openapi_types.UUID     `json:"retention_policy_id,omitempty"`
+	// ResourceLimits Zero or omitted limits retain Restic defaults; maximum duration is also capped by the operation deadline.
+	ResourceLimits    *BackupResourceLimits `json:"resource_limits,omitempty"`
+	RetentionPolicyId *openapi_types.UUID   `json:"retention_policy_id,omitempty"`
 
-	// RetryPolicy Opaque retry metadata stored verbatim for the Agent scheduler.
-	RetryPolicy *map[string]interface{} `json:"retry_policy,omitempty"`
+	// RetryPolicy Zero or omitted values use defaults (1 attempt, 60s initial, 1800s maximum); each retry creates a new Operation.
+	RetryPolicy *BackupRetryPolicy `json:"retry_policy,omitempty"`
 
 	// ScheduleCron Standard five-field cron in the template timezone.
 	ScheduleCron string `json:"schedule_cron"`

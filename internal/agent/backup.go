@@ -106,6 +106,8 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 		return runErr
 	})
 	progress.finish()
+	if errors.Is(sessionErr,ErrGatewayCleanup) {return OperationOutcome{Status:OperationFailed,ErrorCode:"GATEWAY_CLEANUP_UNCONFIRMED",ExitCode:runResult.ExitCode}}
+	if errors.Is(sessionErr,ErrGatewayBusy) {return OperationOutcome{Status:OperationFailed,ErrorCode:"GATEWAY_BUSY",ExitCode:runResult.ExitCode}}
 	if progress.errorCode != "" {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: progress.errorCode, ExitCode: runResult.ExitCode}
 	}
@@ -126,6 +128,7 @@ func classify(exitCode int, snapshotID string, sawSummary bool, progress *progre
 		FilesDone: progress.files, TotalFiles: progress.totalFiles,
 		BytesDone: progress.bytes, TotalBytes: progress.totalBytes,
 		FilesNew: progress.filesNew, DataAdded: progress.dataAdded}
+	outcome.Summary=progress.summary
 	switch exitCode {
 	case 0:
 		if !sawSummary {
@@ -204,6 +207,8 @@ type progressSink struct {
 	lastWrite   time.Time
 	lastPercent float64
 	pendingLine []byte
+	summary *domain.BackupSummary
+	warnings int64
 	errorCode string
 	cancel context.CancelFunc
 }
@@ -273,11 +278,16 @@ func (p *progressSink) consume(line []byte) {
 		}
 		p.sawSummary = true
 		p.snapshotID = event.SnapshotID
+		p.summary=event.Summary
+		if p.summary!=nil {p.summary.WarningCount=p.warnings}
 		p.filesNew, p.dataAdded = event.FilesNew, event.DataAdded
 		if event.FilesDone > 0 {
 			p.files = event.FilesDone
 		}
+		p.bytes=event.BytesDone
 		p.persist()
+	case "error":
+		p.warnings++
 	}
 }
 
@@ -292,6 +302,7 @@ func (p *progressSink) persist() {
 		record.FilesDone, record.TotalFiles = p.files, p.totalFiles
 		record.BytesDone, record.TotalBytes = p.bytes, p.totalBytes
 		record.FilesNew, record.DataAdded = p.filesNew, p.dataAdded
+		record.Summary=p.summary
 		if p.snapshotID != "" {
 			record.SnapshotID = p.snapshotID
 		}

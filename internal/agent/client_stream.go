@@ -355,6 +355,11 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	if err != nil || planID.Version() != 7 || planID.Variant() != uuid.RFC4122 {
 		return errors.New("job dispatch has an invalid plan id")
 	}
+	parentID,rootID:=uuid.Nil,uuid.Nil
+	if job.GetParentOperationId()!="" {
+		parentID,err=uuid.Parse(job.GetParentOperationId());if err!=nil || !domain.ValidOperationID(parentID){return errors.New("job dispatch has an invalid parent id")}
+		rootID,err=uuid.Parse(job.GetRootOperationId());if err!=nil || !domain.ValidOperationID(rootID){return errors.New("job dispatch has an invalid root id")}
+	}
 	reject := func(code string) error {
 		return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
 			Payload: &agentv1.AgentToServer_JobRejected{JobRejected: &agentv1.JobRejected{
@@ -446,7 +451,8 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	}
 	scheduled := job.GetNotBefore().AsTime().UTC()
 	record := OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
-		ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, StartedAt: time.Now().UTC(), Status: OperationRunning}
+		ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, StartedAt: time.Now().UTC(), Status: OperationRunning,
+		ParentOperationID:parentID,RootOperationID:rootID,Attempt:int(job.GetAttempt())}
 	if err := state.PutOperation(record); err != nil {
 		return reject("PERSIST_FAILED")
 	}

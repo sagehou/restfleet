@@ -7,7 +7,7 @@ import (
 
 func TestParseSummaryKeepsNewFilesAndAddedBytes(t *testing.T) {
 	snapshot := strings.Repeat("a", 64)
-	event, ok, err := ParseEvent([]byte(`{"message_type":"summary","snapshot_id":"`+snapshot+`","files_new":3,"data_added":42,"total_files_processed":9}`))
+	event, ok, err := ParseEvent([]byte(`{"message_type":"summary","snapshot_id":"`+snapshot+`","files_new":3,"data_added":42,"total_files_processed":9,"total_bytes_processed":42}`))
 	if err != nil || !ok {
 		t.Fatalf("summary parse = %v, %v", ok, err)
 	}
@@ -34,7 +34,7 @@ func TestParseEventRejectsMalformedRequiredValuesWithoutEchoingInput(t *testing.
 	if _, ok, err := ParseEvent([]byte(`{"message_type":"future","files_done":"unknown-format"}`)); err != nil || ok {
 		t.Fatalf("unknown message should be ignored: %v, %v", ok, err)
 	}
-	if _, ok, err := ParseEvent([]byte(`{"message_type":"summary","files_new":0,"data_added":0}`)); err != nil || !ok {
+	if _, ok, err := ParseEvent([]byte(`{"message_type":"summary","files_new":0,"data_added":0,"total_files_processed":0,"total_bytes_processed":0}`)); err != nil || !ok {
 		t.Fatalf("unchanged summary rejected: %v, %v", ok, err)
 	}
 }

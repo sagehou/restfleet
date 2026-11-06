@@ -123,6 +123,8 @@ type BackupOperation struct {
 	// DispatchedAt records that a JobDispatch was claimed for this operation.
 	// The row stays QUEUED until JobAccepted so a lost dispatch is retried.
 	DispatchedAt *time.Time
+	Attempt int
+	Summary *BackupSummary
 }
 
 type BackupOperationProgress struct {
@@ -138,6 +140,9 @@ type BackupOperationProgress struct {
 	BytesDone    int64
 	TotalBytes   int64
 	ObservedAt   time.Time
+	ParentOperationID *uuid.UUID
+	RootOperationID *uuid.UUID
+	Attempt int
 }
 
 type BackupOperationResult struct {
@@ -153,6 +158,10 @@ type BackupOperationResult struct {
 	FilesNew     int64
 	DataAdded    int64
 	FinishedAt   time.Time
+	ParentOperationID *uuid.UUID
+	RootOperationID *uuid.UUID
+	Attempt int
+	Summary *BackupSummary
 }
 
 // Snapshot indexes one Restic snapshot. A NULL PlanID/AgentID/OperationID and

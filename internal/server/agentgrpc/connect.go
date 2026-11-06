@@ -1,8 +1,10 @@
 package agentgrpc
 
 import (
+	"bytes"
 	"errors"
 	"encoding/json"
+	"io"
 	"slices"
 	"strings"
 	"time"
@@ -188,6 +190,8 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				progress.GetScheduledAt().CheckValid() != nil || progress.GetObservedAt().CheckValid() != nil {
 				return s.invalidMessage(stream, meta, "JOB_PROGRESS_INVALID")
 			}
+			parent,root,err:=reportedOperationLinks(progress.GetParentOperationId(),progress.GetRootOperationId(),progress.GetAttempt())
+			if err!=nil{return s.invalidMessage(stream,meta,"JOB_PROGRESS_INVALID")}
 			if err := s.control.RecordOperationProgress(stream.Context(), domain.BackupOperationProgress{
 				OperationID: operationID, PlanID: planID, AgentID: agentID,
 				PlanRevision: progress.GetPlanRevision(), ScheduledAt: progress.GetScheduledAt().AsTime().UTC(),
@@ -195,6 +199,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				FilesDone: progress.GetFilesDone(), TotalFiles: progress.GetTotalFiles(),
 				BytesDone: progress.GetBytesDone(), TotalBytes: progress.GetTotalBytes(),
 				ObservedAt: progress.GetObservedAt().AsTime().UTC(),
+				ParentOperationID:parent,RootOperationID:root,Attempt:int(progress.GetAttempt()),
 			}); err != nil {
 				var validation *control.ValidationError
 				if errors.As(err, &validation) || errors.Is(err, domain.ErrPlanBindingInvalid) || errors.Is(err, domain.ErrNotFound) {
@@ -211,12 +216,23 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				result.GetExitCode() < -1 || result.GetExitCode() > 255 {
 				return s.invalidMessage(stream, meta, "JOB_RESULT_INVALID")
 			}
+			parent,root,err:=reportedOperationLinks(result.GetParentOperationId(),result.GetRootOperationId(),result.GetAttempt())
+			if err!=nil{return s.invalidMessage(stream,meta,"JOB_RESULT_INVALID")}
+			var summary *domain.BackupSummary
+			if raw:=result.GetSummaryJson();len(raw)>0 {
+				decoder:=json.NewDecoder(bytes.NewReader(raw));decoder.DisallowUnknownFields()
+				if len(raw)>16<<10 || decoder.Decode(&summary)!=nil || summary==nil || summary.Validate()!=nil {return s.invalidMessage(stream,meta,"JOB_RESULT_INVALID")}
+				var extra any
+				if decoder.Decode(&extra)!=io.EOF {return s.invalidMessage(stream,meta,"JOB_RESULT_INVALID")}
+			}
 			if err := s.control.RecordOperationResult(stream.Context(), domain.BackupOperationResult{
 				OperationID: operationID, PlanID: planID, AgentID: agentID,
 				PlanRevision: result.GetPlanRevision(), ScheduledAt: result.GetScheduledAt().AsTime().UTC(),
 				Status: result.GetStatus(), ErrorCode: result.GetErrorCode(), ExitCode: int(result.GetExitCode()),
 				SnapshotID: result.GetSnapshotId(), FilesNew: result.GetFilesNew(), DataAdded: result.GetDataAdded(),
 				FinishedAt: result.GetFinishedAt().AsTime().UTC(),
+				ParentOperationID:parent,RootOperationID:root,Attempt:int(result.GetAttempt()),
+				Summary:summary,
 			}); err != nil {
 				var validation *control.ValidationError
 				if errors.As(err, &validation) || errors.Is(err, domain.ErrPlanBindingInvalid) || errors.Is(err, domain.ErrNotFound) {
@@ -478,12 +494,28 @@ func (s *Service) dispatchQueuedJob(stream agentv1.AgentControlService_ConnectSe
 			CreatedAt: timestamppb.New(operation.CreatedAt), NotBefore: scheduled,
 			Deadline: timestamppb.New(operation.CreatedAt.Add(24 * time.Hour)),
 			PlanId:   operation.PlanID.String(), PlanRevision: operation.PlanRevision, ConfigHash: operation.ConfigHash,
+			ParentOperationId:optionalReportedOperationID(operation.ParentOperationID),RootOperationId:optionalReportedOperationID(operation.RootOperationID),Attempt:int32(operation.Attempt),
 		}},
 	}); err != nil {
 		return err
 	}
 	// The operation stays QUEUED until JobAccepted; a lost dispatch is retried.
 	return nil
+}
+
+func optionalReportedOperationID(id *uuid.UUID) string {if id==nil{return ""};return id.String()}
+
+func reportedOperationLinks(parent,root string,attempt int32) (*uuid.UUID,*uuid.UUID,error) {
+	if attempt<0 || attempt>10000{return nil,nil,errors.New("invalid operation attempt")}
+	if parent=="" && root=="" {
+		if attempt>1{return nil,nil,errors.New("missing operation parent")}
+		return nil,nil,nil
+	}
+	p,err:=uuid.Parse(parent)
+	if err!=nil || !domain.ValidOperationID(p){return nil,nil,errors.New("invalid operation parent")}
+	r,err:=uuid.Parse(root)
+	if err!=nil || !domain.ValidOperationID(r) || attempt<2{return nil,nil,errors.New("invalid operation root")}
+	return &p,&r,nil
 }
 
 // dispatchCancellations repeats pending cancel requests until the Agent reports

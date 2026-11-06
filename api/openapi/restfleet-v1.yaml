@@ -1593,8 +1593,29 @@ components:
         updated_at: { type: string, format: date-time }
         parent_operation_id: { type: string, format: uuid }
         root_operation_id: { type: string, format: uuid }
+        attempt: { type: integer, minimum: 1, description: Execution attempt within the retry chain. }
+        summary: { $ref: "#/components/schemas/BackupSummary" }
         cancel_requested_at: { type: string, format: date-time }
         cancel_reason: { type: string }
+    BackupSummary:
+      type: object
+      additionalProperties: false
+      required: [files_new, files_changed, files_unmodified, dirs_new, dirs_changed, dirs_unmodified, data_added, data_added_packed, total_files_processed, total_bytes_processed, total_duration, warning_count]
+      properties:
+        files_new: { type: integer, format: int64, minimum: 0 }
+        files_changed: { type: integer, format: int64, minimum: 0 }
+        files_unmodified: { type: integer, format: int64, minimum: 0 }
+        dirs_new: { type: integer, format: int64, minimum: 0 }
+        dirs_changed: { type: integer, format: int64, minimum: 0 }
+        dirs_unmodified: { type: integer, format: int64, minimum: 0 }
+        data_added: { type: integer, format: int64, minimum: 0 }
+        data_added_packed: { type: integer, format: int64, minimum: 0 }
+        total_files_processed: { type: integer, format: int64, minimum: 0 }
+        total_bytes_processed: { type: integer, format: int64, minimum: 0 }
+        backup_start: { type: string, format: date-time }
+        backup_end: { type: string, format: date-time }
+        total_duration: { type: number, format: double, minimum: 0 }
+        warning_count: { type: integer, format: int64, minimum: 0 }
     BackupOperationCancel:
       type: object
       additionalProperties: false

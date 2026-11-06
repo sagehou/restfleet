@@ -114,6 +114,27 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 	if health != "HEALTHY" {
 		t.Fatalf("late result changed plan health = %s", health)
 	}
+	// An older offline failure must not regress the newer success or its health.
+	parentID:=uuid.Must(uuid.NewV7())
+	parentResult:=domain.BackupOperationResult{OperationID:parentID,PlanID:planID,AgentID:enrolled.AgentId,PlanRevision:1,
+		ScheduledAt:now.Add(-time.Hour),FinishedAt:now.Add(-time.Minute),Status:"FAILED",ErrorCode:"REPOSITORY_LOCKED",ExitCode:11,Attempt:1}
+	if err:=store.UpsertOperationResult(ctx,parentResult);err!=nil{t.Fatal(err)}
+	if err:=pool.QueryRow(ctx,"select backup_health from plans where id=$1",planID).Scan(&health);err!=nil || health!="HEALTHY" {t.Fatalf("offline old failure regressed health: %s %v",health,err)}
+	childID:=uuid.Must(uuid.NewV7())
+	childResult:=domain.BackupOperationResult{OperationID:childID,PlanID:planID,AgentID:enrolled.AgentId,PlanRevision:1,
+		ScheduledAt:now,FinishedAt:now.Add(time.Second),Status:"SUCCEEDED",ParentOperationID:&parentID,RootOperationID:&parentID,Attempt:2,
+		FilesNew:2,DataAdded:20,Summary:&domain.BackupSummary{FilesNew:2,DataAdded:20,TotalFilesProcessed:9,TotalBytesProcessed:100}}
+	if err:=store.UpsertOperationResult(ctx,childResult);err!=nil{t.Fatal(err)}
+	child,err:=store.BackupOperation(ctx,childID)
+	if err!=nil || child.ParentOperationID==nil || *child.ParentOperationID!=parentID || child.Attempt!=2 || child.Summary==nil || child.FilesDone!=9 || child.BytesDone!=100 {t.Fatalf("retry result/stats lost: %+v %v",child,err)}
+	for _,mutate:=range []func(*domain.BackupOperationResult){
+		func(r *domain.BackupOperationResult){r.AgentID=other.AgentId;r.PlanID=otherPlan},
+		func(r *domain.BackupOperationResult){r.Attempt=5},
+		func(r *domain.BackupOperationResult){r.RootOperationID=&queued},
+	} {
+		attack:=childResult;attack.OperationID=uuid.Must(uuid.NewV7());mutate(&attack)
+		if err:=store.UpsertOperationResult(ctx,attack);!errors.Is(err,domain.ErrPlanBindingInvalid){t.Fatalf("forged retry chain accepted: %v",err)}
+	}
 	progressID := uuid.Must(uuid.NewV7())
 	progress := domain.BackupOperationProgress{OperationID:progressID,PlanID:planID,AgentID:enrolled.AgentId,
 		PlanRevision:1,ScheduledAt:now,ObservedAt:now,Sequence:2,Stage:"backup",FilesDone:8}

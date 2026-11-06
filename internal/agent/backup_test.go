@@ -38,7 +38,7 @@ func TestProgressSinkBoundsAndFinalLine(t *testing.T) {
 		t.Fatal("oversized engine output was not stopped and released")
 	}
 	sink = &progressSink{}
-	for _, chunk := range []string{`{"message_type":"sum`, `mary","files_new":2,"data_added":42}`} {
+	for _, chunk := range []string{`{"message_type":"sum`, `mary","files_new":2,"data_added":42,"total_files_processed":2,"total_bytes_processed":42}`} {
 		_, _ = sink.Write([]byte(chunk))
 	}
 	sink.finish()

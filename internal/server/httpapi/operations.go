@@ -10,6 +10,10 @@ import (
 
 func backupOperationResponse(o domain.BackupOperation) BackupOperation {
 	filesDone, totalFiles, bytesDone, totalBytes := o.FilesDone, o.TotalFiles, o.BytesDone, o.TotalBytes
+	var summary *BackupSummary
+	if s:=o.Summary;s!=nil {summary=&BackupSummary{FilesNew:s.FilesNew,FilesChanged:s.FilesChanged,FilesUnmodified:s.FilesUnmodified,
+		DirsNew:s.DirsNew,DirsChanged:s.DirsChanged,DirsUnmodified:s.DirsUnmodified,DataAdded:s.DataAdded,DataAddedPacked:s.DataAddedPacked,
+		TotalFilesProcessed:s.TotalFilesProcessed,TotalBytesProcessed:s.TotalBytesProcessed,BackupStart:s.BackupStart,BackupEnd:s.BackupEnd,TotalDuration:s.TotalDuration,WarningCount:s.WarningCount}}
 	return BackupOperation{
 		Id: o.ID, PlanId: o.PlanID, AgentId: o.AgentID, Type: BackupOperationType(o.Type),
 		Source: BackupOperationSource(o.Source), Status: BackupOperationStatus(o.Status),
@@ -18,6 +22,8 @@ func backupOperationResponse(o domain.BackupOperation) BackupOperation {
 		FilesDone: &filesDone, TotalFiles: &totalFiles, BytesDone: &bytesDone, TotalBytes: &totalBytes,
 		CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
 		ParentOperationId: o.ParentOperationID, RootOperationId: o.RootOperationID,
+		Attempt:&o.Attempt,
+		Summary:summary,
 		CancelRequestedAt: o.CancelRequestedAt, CancelReason: &o.CancelReason,
 	}
 }

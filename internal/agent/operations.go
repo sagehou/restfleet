@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -53,6 +54,12 @@ type OperationRecord struct {
 	DataAdded      int64     `json:"data_added,omitempty"`
 	Uploaded       bool      `json:"uploaded,omitempty"`
 	LastReportedAt time.Time `json:"last_reported_at,omitempty"`
+	ParentOperationID uuid.UUID `json:"parent_operation_id,omitempty"`
+	RootOperationID uuid.UUID `json:"root_operation_id,omitempty"`
+	Attempt int `json:"attempt,omitempty"`
+	RetryAt time.Time `json:"retry_at,omitempty"`
+	Deadline time.Time `json:"deadline,omitempty"`
+	Summary *domain.BackupSummary `json:"summary,omitempty"`
 }
 
 // Terminal reports whether the record reached a final state.
@@ -351,6 +358,11 @@ func (s *State) ReportableOperations(now time.Time, progressInterval time.Durati
 			var record OperationRecord
 			if err := json.Unmarshal(value, &record); err != nil {
 				return err
+			}
+			if record.ParentOperationID!=uuid.Nil {
+				parent:=bucket.Get(record.ParentOperationID[:])
+				var previous OperationRecord
+				if parent!=nil && (json.Unmarshal(parent,&previous)!=nil || !previous.Uploaded) {return nil}
 			}
 			switch {
 			case record.Terminal() && !record.Uploaded && (progressInterval == 0 || now.Sub(record.LastReportedAt) >= resultRetryInterval):

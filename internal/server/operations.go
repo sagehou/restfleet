@@ -62,6 +62,9 @@ func (c *ControlPlane) RecordOperationResult(ctx context.Context, result domain.
 			return &ValidationError{Field: "snapshot_id", Code: "INVALID_SNAPSHOT_ID"}
 		}
 	}
+	if result.Summary!=nil && (result.Summary.Validate()!=nil || result.Summary.FilesNew!=result.FilesNew || result.Summary.DataAdded!=result.DataAdded) {
+		return &ValidationError{Field:"summary",Code:"INVALID_BACKUP_SUMMARY"}
+	}
 	switch result.Status {
 	case "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS", "FAILED", "CANCELED", "LOST", "MISSED", "CONCURRENCY_SKIPPED":
 	default:
@@ -199,6 +202,7 @@ func (c *ControlPlane) RetryBackupOperation(ctx context.Context, id uuid.UUID,
 		Status: "QUEUED", PlanRevision: plan.DesiredRevision, ConfigHash: plan.ConfigHash,
 		ScheduledAt: &now, CreatedAt: now, UpdatedAt: now,
 		ParentOperationID: &source.ID, RootOperationID: root,
+		Attempt:source.Attempt+1,
 	}
 	audit, err := c.userAudit("BACKUP_OPERATION_RETRY", "BACKUP_OPERATION", newID, actor.ID, meta, "QUEUED")
 	if err != nil {

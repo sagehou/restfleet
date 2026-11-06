@@ -18,6 +18,8 @@ import (
 )
 
 var ErrGatewaySession = errors.New("gateway backup session unavailable")
+var ErrGatewayCleanup = errors.New("gateway backup session cleanup unconfirmed")
+var ErrGatewayBusy = errors.New("gateway backup session admission busy")
 
 type gatewaySessionResponse struct {
 	SessionID    uuid.UUID `json:"session_id"`
@@ -89,17 +91,17 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 		defer cancel()
 		request, err := http.NewRequestWithContext(cleanup, http.MethodDelete, control, nil)
 		if err != nil {
-			result = ErrGatewaySession
+			result = ErrGatewayCleanup
 			return
 		}
 		response, err := client.Do(request)
 		if err != nil {
-			result = ErrGatewaySession
+			result = ErrGatewayCleanup
 			return
 		}
 		_ = response.Body.Close()
 		if response.StatusCode != http.StatusNoContent {
-			result = ErrGatewaySession
+			result = ErrGatewayCleanup
 		}
 	}()
 	for {
@@ -115,7 +117,7 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 			// and ambiguous responses retain cleanup and are never retried here.
 			cleanupRequired = false
 			if readErr != nil || len(raw) > 4096 || time.Until(retryUntil) <= time.Second {
-				return ErrGatewaySession
+				return ErrGatewayBusy
 			}
 			select {
 			case <-ctx.Done():

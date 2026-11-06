@@ -1414,6 +1414,9 @@ type PlanSchedule struct {
 	ExcludeCaches       bool                   `protobuf:"varint,13,opt,name=exclude_caches,json=excludeCaches,proto3" json:"exclude_caches,omitempty"`
 	OneFileSystem       bool                   `protobuf:"varint,14,opt,name=one_file_system,json=oneFileSystem,proto3" json:"one_file_system,omitempty"`
 	ConfigHash          string                 `protobuf:"bytes,15,opt,name=config_hash,json=configHash,proto3" json:"config_hash,omitempty"`
+	// backup_execution_v1: bounded, strict JSON for the documented execution
+	// config, never executable commands or secrets. Absent preserves old hashes.
+	ExecutionConfigJson []byte `protobuf:"bytes,16,opt,name=execution_config_json,json=executionConfigJson,proto3" json:"execution_config_json,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1551,6 +1554,13 @@ func (x *PlanSchedule) GetConfigHash() string {
 		return x.ConfigHash
 	}
 	return ""
+}
+
+func (x *PlanSchedule) GetExecutionConfigJson() []byte {
+	if x != nil {
+		return x.ExecutionConfigJson
+	}
+	return nil
 }
 
 type RuntimePolicy struct {
@@ -2576,7 +2586,7 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\vconfig_hash\x18\x03 \x01(\tR\n" +
 	"configHash\x12H\n" +
 	"\x0eruntime_policy\x18\x04 \x01(\v2!.restfleet.agent.v1.RuntimePolicyR\rruntimePolicy\x126\n" +
-	"\x05plans\x18\x05 \x03(\v2 .restfleet.agent.v1.PlanScheduleR\x05plans\"\x80\x04\n" +
+	"\x05plans\x18\x05 \x03(\v2 .restfleet.agent.v1.PlanScheduleR\x05plans\"\xb4\x04\n" +
 	"\fPlanSchedule\x12\x17\n" +
 	"\aplan_id\x18\x01 \x01(\tR\x06planId\x12\x1a\n" +
 	"\brevision\x18\x02 \x01(\x03R\brevision\x12\x12\n" +
@@ -2594,7 +2604,8 @@ const file_restfleet_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x0eexclude_caches\x18\r \x01(\bR\rexcludeCaches\x12&\n" +
 	"\x0fone_file_system\x18\x0e \x01(\bR\roneFileSystem\x12\x1f\n" +
 	"\vconfig_hash\x18\x0f \x01(\tR\n" +
-	"configHash\"h\n" +
+	"configHash\x122\n" +
+	"\x15execution_config_json\x18\x10 \x01(\fR\x13executionConfigJson\"h\n" +
 	"\rRuntimePolicy\x12/\n" +
 	"\x14max_parallel_io_jobs\x18\x01 \x01(\rR\x11maxParallelIoJobs\x12&\n" +
 	"\x0flog_limit_bytes\x18\x02 \x01(\x04R\rlogLimitBytes\"\xec\x03\n" +

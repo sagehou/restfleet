@@ -4,6 +4,8 @@ import "github.com/google/uuid"
 
 const BackupExecutionCapability = "backup_execution_v1"
 
+func RetryableBackupError(code string) bool { return code=="REPOSITORY_LOCKED" || code=="GATEWAY_BUSY" }
+
 // Zero values retain the V1 defaults; configured values are bounded at both
 // control-plane admission and Agent configuration activation.
 type BackupRetryPolicy struct {

@@ -1,5 +1,7 @@
 # 07 — PostgreSQL 数据库规范
 
+schema 28（ADR-0039）为备份 Operation 保存有界 `attempt` 与结构化 `summary_json`，parent/root 沿用既有外键。新自动 attempt MUST 验证前一终态、暂态原因、Agent/Plan/revision、root 与递增次数；已有行绑定不可被重写。Plan 的 `last_result_at` MUST 防止离线旧结果覆盖更新的健康状态；`last_success_at` MUST 单调向前，结果与快照索引仍同事务提交。旧 Agent 缺少增量字段时保持原报告兼容。
+
 ADR-0033 兼容说明：schema 16 的 Gateway secret 引用继续保留，不新增身份表、verifier 或候选密码状态；生产认证复用 AgentCertificate/Agent 身份，Gateway secret MUST NOT 用于生产密码回退。新 capability 仅接收 Restic 密码，其余交付/ACK/占用 fencing 仍复用原事务。
 
 readiness MUST 检查当前连续编号的全部迁移已应用，不能只取最大已应用版本；后续版本 MUST NOT 掩盖缺失/未应用的前置迁移。Goose 同一版本有多条历史记录时，MUST 以最新记录判断当前应用状态。

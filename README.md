@@ -34,7 +34,7 @@ make test
 make build cross-build
 ```
 
-当前 Server 需要已经迁移到 schema v27 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。编译、测试、认证及运行验证 MUST 只在 GitHub Actions 执行；开发工作区只用于源码/文档编辑和只读检查。Compose 拆分 migrator/runtime 身份，不向宿主机发布 PostgreSQL 或 metrics 端口。以下部署示例不作为开发工作区的验证步骤，MUST NOT 在开发工作区执行。
+当前 Server 需要已经迁移到 schema v28 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。编译、测试、认证及运行验证 MUST 只在 GitHub Actions 执行；开发工作区只用于源码/文档编辑和只读检查。Compose 拆分 migrator/runtime 身份，不向宿主机发布 PostgreSQL 或 metrics 端口。以下部署示例不作为开发工作区的验证步骤，MUST NOT 在开发工作区执行。
 
 首次启动：
 

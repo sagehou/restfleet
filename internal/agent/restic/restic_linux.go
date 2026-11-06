@@ -25,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 )
 
 // BackupRequest is the effective, already-validated plan config for one run.
@@ -190,6 +191,7 @@ type Event struct {
 	FilesNew    int64
 	DataAdded   int64
 	Message     string
+	Summary *domain.BackupSummary
 }
 
 type wireEvent struct {
@@ -197,6 +199,7 @@ type wireEvent struct {
 	PercentDone *float64 `json:"percent_done"`
 	FilesDone   *int64   `json:"files_done"`
 	FilesProcessed *int64 `json:"total_files_processed"`
+	BytesProcessed *int64 `json:"total_bytes_processed"`
 	TotalFiles  *int64   `json:"total_files"`
 	BytesDone   *int64   `json:"bytes_done"`
 	TotalBytes  *int64   `json:"total_bytes"`
@@ -224,7 +227,7 @@ func ParseEvent(line []byte) (Event, bool, error) {
 	if err := json.Unmarshal(line, &wire); err != nil {
 		return Event{}, false, errors.New("restic: invalid JSONL message")
 	}
-	for _, counter := range []*int64{wire.FilesDone, wire.TotalFiles, wire.BytesDone, wire.TotalBytes, wire.FilesNew, wire.DataAdded, wire.FilesProcessed} {
+	for _, counter := range []*int64{wire.FilesDone, wire.TotalFiles, wire.BytesDone, wire.TotalBytes, wire.FilesNew, wire.DataAdded, wire.FilesProcessed,wire.BytesProcessed} {
 		if counter != nil && *counter < 0 {
 			return Event{}, false, errors.New("restic: invalid JSONL counter")
 		}
@@ -252,7 +255,7 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		}
 		return event, true, nil
 	case "summary":
-		if wire.FilesNew == nil || wire.DataAdded == nil {
+		if wire.FilesNew == nil || wire.DataAdded == nil || wire.FilesProcessed==nil || wire.BytesProcessed==nil {
 			return Event{}, false, errors.New("restic: incomplete JSONL summary")
 		}
 		if wire.SnapshotID != "" {
@@ -261,6 +264,9 @@ func ParseEvent(line []byte) (Event, bool, error) {
 			}
 		}
 		event := Event{Type: "summary", SnapshotID: wire.SnapshotID}
+		var summary domain.BackupSummary
+		if json.Unmarshal(line,&summary)!=nil || summary.Validate()!=nil {return Event{},false,errors.New("restic: invalid JSONL summary")}
+		event.Summary=&summary
 		if wire.FilesNew != nil {
 			event.FilesNew = *wire.FilesNew
 		}
@@ -273,6 +279,7 @@ func ParseEvent(line []byte) (Event, bool, error) {
 		if wire.FilesProcessed != nil {
 			event.FilesDone = *wire.FilesProcessed
 		}
+		event.BytesDone=*wire.BytesProcessed
 		return event, true, nil
 	case "error":
 		return Event{Type: "error", Message: wire.Message}, true, nil

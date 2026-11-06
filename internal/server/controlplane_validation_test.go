@@ -79,3 +79,22 @@ func TestOperationReportsAcceptScheduledUUIDv5(t *testing.T) {
 		t.Fatal("non-v7 plan ID accepted")
 	}
 }
+
+func TestOperationReportsRejectMalformedCountersAndSnapshotIDs(t *testing.T) {
+	store:=&operationValidationStore{}
+	control:=&ControlPlane{store:store}
+	now:=time.Now().UTC()
+	valid:=domain.BackupOperationProgress{OperationID:uuid.Must(uuid.NewV7()),PlanID:uuid.Must(uuid.NewV7()),AgentID:uuid.Must(uuid.NewV7()),PlanRevision:1,ScheduledAt:now,ObservedAt:now,Sequence:1,Stage:"backup"}
+	for _,change:=range []func(*domain.BackupOperationProgress){
+		func(p *domain.BackupOperationProgress){p.FilesDone=-1},
+		func(p *domain.BackupOperationProgress){p.Sequence=^uint64(0)},
+		func(p *domain.BackupOperationProgress){p.Sequence=0},
+		func(p *domain.BackupOperationProgress){p.Stage="secret-canary"},
+	} {
+		bad:=valid;change(&bad)
+		if err:=control.RecordOperationProgress(context.Background(),bad);err==nil || store.progress{t.Fatal("malformed progress reached persistence")}
+	}
+	for _,snapshot:=range []string{"short",strings.Repeat("z",64),strings.Repeat("A",64)} {
+		if err:=control.RecordOperationResult(context.Background(),domain.BackupOperationResult{OperationID:valid.OperationID,PlanID:valid.PlanID,AgentID:valid.AgentID,PlanRevision:1,ScheduledAt:now,FinishedAt:now,Status:"SUCCEEDED",SnapshotID:snapshot});err==nil || store.result{t.Fatal("malformed snapshot reached persistence")}
+	}
+}
