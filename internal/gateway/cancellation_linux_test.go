@@ -116,3 +116,37 @@ func TestSessionDoesNotTranslateListFailureIntoEmptyRepository(t *testing.T) {
 	serve(t, s, request(s, secret, http.MethodGet, "locks/", ""), http.StatusBadGateway)
 	serve(t, s, request(s, secret, http.MethodGet, "snapshots/", ""), http.StatusBadGateway)
 }
+
+func TestCanceledRequestStillCommitsBoundedSecurityAudit(t *testing.T) {
+	for _, boundary := range []string{"session", "unrouted"} {
+		t.Run(boundary, func(t *testing.T) {
+			s, secret, _ := fixture(t)
+			observed := false
+			audit := func(ctx context.Context, event Event) error {
+				deadline, bounded := ctx.Deadline()
+				if ctx.Err() != nil || !bounded || time.Until(deadline) > 3*time.Second || event.Action != "denied" {
+					t.Error("client canceled security audit or removed its deadline")
+					return ErrGatewayAudit
+				}
+				observed = true
+				return nil
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if boundary == "session" {
+				s.audit = audit
+				r := request(s, secret, http.MethodPost, object("data", "pending"), "short")
+				r.ContentLength = 7
+				s.ServeHTTP(httptest.NewRecorder(), r.WithContext(ctx))
+			} else {
+				supervisor := &Supervisor{audit: audit}
+				if !supervisor.record(ctx, Binding{}, "denied", "route_unavailable") {
+					t.Fatal("disconnected request poisoned global audit")
+				}
+			}
+			if !observed {
+				t.Fatal("canceled request lost its security audit")
+			}
+		})
+	}
+}

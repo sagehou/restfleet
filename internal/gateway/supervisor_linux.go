@@ -385,7 +385,7 @@ func (s *Supervisor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Supervisor) record(ctx context.Context, binding Binding, action, reason string) bool {
-	return recordBackup(ctx, s.audit, binding, action, reason)
+	return recordBackup(context.WithoutCancel(ctx), s.audit, binding, action, reason)
 }
 
 func recordBackup(ctx context.Context, audit func(context.Context, Event) error, binding Binding, action, reason string) bool {

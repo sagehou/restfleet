@@ -294,6 +294,8 @@ Plan 只能引用 `postgres-dump`。Agent 执行固定 absolute path，不经 sh
 
 Audit payload 禁止包含 secret、完整 Authorization header、Cookie、带凭据 URL 和任意文件内容。敏感字段只记录 `changed: true` 与 secret version。
 
+Gateway 请求拒绝与锁清理意图的审计 MUST 使用独立且至多 3s 的上下文，客户端断线/取消 MUST NOT 取消该可靠写入或因此永久停用 owner。队列、签名来源、时钟或实际可靠写入失败 MUST 继续停止授权；此上下文不延长会话、授权或占用期限，也不授予清理权。
+
 ## 14. 安全验收最低线
 
 发布 V1 前必须证明：

@@ -303,7 +303,7 @@ func TestPinnedAgentOfflineScheduleAndCentralGatewayIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range [][]byte{[]byte("rclone_config"), []byte("test-refresh"), readKey, listKey} {
+	for _, forbidden := range [][]byte{[]byte("rclone_config"), []byte("fixture-access"), []byte("fixture-refresh"), readKey, listKey} {
 		if bytes.Contains(saved, forbidden) {
 			t.Fatal("central secret crossed Agent boundary")
 		}
