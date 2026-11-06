@@ -27,7 +27,8 @@
 所有编译、格式化、代码生成、测试和运行验证只在 GitHub Actions 执行，工作区只做源码/文档编辑和静态检查。
 
 - 基线 [run 39619788725](https://github.com/sagehou/restfleet/actions/runs/39619788725) 成功，仅证明旧基线。
-- `defc3d6` 的 [run 42170110931](https://github.com/sagehou/restfleet/actions/runs/42170110931) 完整通过：lint、迁移、普通/race 测试、构建/交叉构建、六个应用镜像、双架构 migrator、服务 UID 隔离、依赖审计、gitleaks 和生成产物检查。它证明截至该提交的代码；后续安全重试增量仍需当前 PR 检查通过。
+- `defc3d6` 的 [run 42170110931](https://github.com/sagehou/restfleet/actions/runs/42170110931) 完整通过：lint、迁移、普通/race 测试、构建/交叉构建、六个应用镜像、双架构 migrator、服务 UID 隔离、依赖审计、gitleaks 和生成产物检查。
+- 安全重试提交 `670ffd4` 的 [run 42171751669](https://github.com/sagehou/restfleet/actions/runs/42171751669) 通过以上功能、race、构建、镜像和扫描检查，仅最后的生成产物一致性因 Go 格式补丁未提交而失败；Actions 补丁已回填到同一 PR。当前 HEAD 的完整结果以 [PR 检查](https://github.com/sagehou/restfleet/pull/127/checks) 为准，不将该轮称为完整绿色。
 - 该 run 的真实贯通测试使用本地替代云 remote、固定 Restic/rclone 和生产 Agent/Gateway 路径，覆盖离线调度、无变化、exit 3、传输中取消、bbolt 重开、丢失结果/日志 ACK 后的精确补报，以及同一 owner 下的中心 index/list。真实 TLS 客户端断线及可信服务关闭的审计回归也通过。
 - gRPC 故障 peer 只验证传输与补报；生产授权、数据库事务和撤回收尾由独立 PostgreSQL 集成测试覆盖，不能宣称运行过完整部署态 API/DB 故障演练。
 
@@ -35,7 +36,7 @@
 
 | 归属 | 仍需完成 |
 |---|---|
-| #96 备份可靠 | 完成安全重试增量的格式回填和完整 CI；核对配置/手动与定时执行、页面及阶段验收证据；补部署态 API/DB 中断证据 |
+| #96 备份可靠 | 核对配置/手动与定时执行、页面及阶段验收证据；补完整部署态 API/DB 中断证据；阶段退出前确认 PR 当前 HEAD 全部门禁 |
 | #98 恢复可用 | 快照列表分页/filter、cache tree/目录资源边界、单文件下载和 staging restore；中心 snapshot index 输出仍有上限，超限失败而非假装完整索引 |
 | #15 长期运行与发布 | policy CRUD/revision diff、完整 Attention Queue/指标、Gateway 运维收敛、保留维护、通知、灾备、部署及剩余发布验收 |
 

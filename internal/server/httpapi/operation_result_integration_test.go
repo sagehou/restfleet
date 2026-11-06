@@ -165,7 +165,16 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 			t.Fatalf("forged retry chain accepted: %v", err)
 		}
 	}
-	for _, code := range []string{"GATEWAY_UNAVAILABLE", "GATEWAY_RATE_LIMITED", "GATEWAY_CLEANUP_UNCONFIRMED", "GATEWAY_SESSION_FAILED"} {
+	for _, test := range []struct {
+		code  string
+		retry bool
+	}{
+		{"GATEWAY_UNAVAILABLE", true},
+		{"GATEWAY_RATE_LIMITED", true},
+		{"GATEWAY_CLEANUP_UNCONFIRMED", false},
+		{"GATEWAY_SESSION_FAILED", false},
+	} {
+		code := test.code
 		parent := parentResult
 		parent.OperationID, parent.ErrorCode, parent.ExitCode = uuid.Must(uuid.NewV7()), code, 1
 		if err := store.UpsertOperationResult(ctx, parent); err != nil {
@@ -175,7 +184,7 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 		child.OperationID = uuid.Must(uuid.NewV7())
 		child.ParentOperationID, child.RootOperationID = &parent.OperationID, &parent.OperationID
 		err := store.UpsertOperationResult(ctx, child)
-		if domain.RetryableBackupError(code) {
+		if test.retry {
 			if err != nil {
 				t.Fatalf("verified transient retry was rejected: %s %v", code, err)
 			}

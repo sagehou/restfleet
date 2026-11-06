@@ -20,14 +20,14 @@ import (
 
 func TestGatewayRetryRequiresNoAdmissionOrConfirmedCleanup(t *testing.T) {
 	for _, test := range []struct {
-		name          string
-		status        int
-		hint          string
-		cleanup       int
-		cleanupHints  []string
-		runFails      bool
-		want          error
-		wantDeletes   int32
+		name         string
+		status       int
+		hint         string
+		cleanup      int
+		cleanupHints []string
+		runFails     bool
+		want         error
+		wantDeletes  int32
 	}{
 		{name: "not admitted unavailable", status: 503, hint: "GATEWAY_UNAVAILABLE", want: ErrGatewayUnavailable},
 		{name: "not admitted rate limited", status: 429, hint: "GATEWAY_RATE_LIMITED", want: ErrGatewayRateLimited},
@@ -66,7 +66,9 @@ func TestGatewayRetryRequiresNoAdmissionOrConfirmedCleanup(t *testing.T) {
 				if r.Method != http.MethodPost {
 					t.Error("unexpected request method")
 				}
-				var body struct{ Deadline time.Time `json:"deadline"` }
+				var body struct {
+					Deadline time.Time `json:"deadline"`
+				}
 				if json.NewDecoder(r.Body).Decode(&body) != nil || !body.Deadline.Equal(deadline) {
 					t.Error("retry changed original deadline")
 				}
@@ -120,10 +122,10 @@ func (f *gatewayFailureTransport) RoundTrip(r *http.Request) (*http.Response, er
 
 func TestGatewayNetworkRetryDoesNotTreatTLSOrUnknownTextAsTransient(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		failure error
+		name             string
+		failure          error
 		cleanup, deletes int
-		want error
+		want             error
 	}{
 		{"dial before acceptance", &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}, 0, 0, ErrGatewayUnavailable},
 		{"reset after acceptance", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}, 204, 1, ErrGatewayUnavailable},

@@ -426,13 +426,18 @@ func TestPublicRateLimitOverTLS(t *testing.T) {
 	var audits atomic.Int32
 	s := &Supervisor{audit: func(context.Context, Event) error { audits.Add(1); return nil }}
 	f := startPublicFixture(t, s, func(p *PublicServer) { p.rate = 1; p.window = time.Now().Add(time.Hour) })
-	for _, test := range []struct { method, path, hint string; want int }{
+	for _, test := range []struct {
+		method, path, hint string
+		want               int
+	}{
 		{http.MethodGet, "/", "", 403},
 		{http.MethodPost, "/gateway/v1/repositories/" + bindingFixture().RepositoryID.String() + "/backup-sessions/" + bindingFixture().OperationID.String(), "GATEWAY_RATE_LIMITED", 429},
 		{http.MethodGet, "/", "", 429},
 	} {
-		req, err := http.NewRequest(test.method, f.URL + test.path, nil)
-		if err != nil { t.Fatal(err) }
+		req, err := http.NewRequest(test.method, f.URL+test.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		resp, err := f.client.Do(req)
 		if err != nil {
 			t.Fatal("rate-limit TLS request failed")

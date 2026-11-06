@@ -35,8 +35,8 @@ func TestGatewayRetryHintCannotRepeatKnownBackupResult(t *testing.T) {
 			t.Fatal("known source read error became a transient Gateway failure")
 		}
 		for _, test := range []struct {
-			exit int
-			summary bool
+			exit                   int
+			summary                bool
 			snapshot, status, code string
 		}{
 			{1, false, "", OperationFailed, gatewayFailureCode(hint)},

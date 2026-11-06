@@ -232,7 +232,8 @@ func TestServiceReaderMTLSRoleIsolationDeduplicationAndCleanup(t *testing.T) {
 	next := startServiceBackup(t, s, binding.RepositoryID)
 	_ = waitAccess(t, next)
 	finishSupervised(t, next)
-	t.Run("backup retry observation follows joined cleanup", func(t *testing.T) {
+	// The Agent receives the fixed observation only after the session has joined.
+	{
 		route := "/gateway/v1/repositories/" + binding.RepositoryID.String() + "/backup-sessions/" + uuid.Must(uuid.NewV7()).String()
 		var backup serviceBackupResponse
 		until := time.Now().Add(5 * time.Second)
@@ -257,9 +258,13 @@ func TestServiceReaderMTLSRoleIsolationDeduplicationAndCleanup(t *testing.T) {
 		}
 		for range 2 {
 			req, err := http.NewRequest(http.MethodDelete, root+route, nil)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			response, err := agentClient.Do(req)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			_ = response.Body.Close()
 			if response.StatusCode != 204 || response.Header.Get(backupRetryHeader) != "GATEWAY_RATE_LIMITED" {
 				t.Fatal("joined cleanup did not preserve the fixed retry observation")
@@ -268,6 +273,8 @@ func TestServiceReaderMTLSRoleIsolationDeduplicationAndCleanup(t *testing.T) {
 		if code, _ := request(agentClient, http.MethodGet, backup.EndpointPath+"config", nil); code != 403 || !s.repositories[0].owner.ready() {
 			t.Fatal("cleanup left an active route or poisoned the owner")
 		}
-		if err := os.Remove(failure); err != nil { t.Fatal(err) }
-	})
+		if err := os.Remove(failure); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

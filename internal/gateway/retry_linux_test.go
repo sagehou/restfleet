@@ -13,8 +13,8 @@ import (
 
 func TestSessionRetryObservationsRejectUnknownAndAmbiguousMutation(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		status int
+		name                     string
+		status                   int
 		method, path, body, want string
 	}{
 		{"read throttled", 429, "GET", "config", "", "GATEWAY_RATE_LIMITED"},
