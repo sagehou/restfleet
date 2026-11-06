@@ -15,6 +15,61 @@ type schedulerExecutor struct {
 	called chan struct{}
 }
 
+type blockingSchedulerExecutor struct {
+	started chan uuid.UUID
+}
+
+func (e *blockingSchedulerExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, _ uuid.UUID, _, _ time.Time) OperationOutcome {
+	e.started <- plan.PlanID
+	<-ctx.Done()
+	return OperationOutcome{Status: OperationCanceled}
+}
+
+func TestSchedulerSharesCapacityAcrossPlansAndWaitsForShutdown(t *testing.T) {
+	state, err := OpenState(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans := make([]domain.PlanSchedule, 2)
+	for i := range plans {
+		plans[i] = domain.PlanSchedule{PlanID: uuid.Must(uuid.NewV7()), Revision: 1, Name: "capacity",
+			HostID: uuid.Must(uuid.NewV7()), RepositoryID: uuid.Must(uuid.NewV7()),
+			Cron: "* * * * *", Timezone: "UTC", Paths: []string{"/data"}, MisfireGraceSeconds: 120}
+	}
+	agentID := uuid.Must(uuid.NewV7())
+	if result, err := state.ApplyDesiredState(agentID, desiredSnapshot(t, agentID, 1, plans...)); err != nil || !result.Accepted {
+		t.Fatalf("apply = %+v, %v", result, err)
+	}
+	for _, plan := range plans {
+		if err := state.PutPlanRuntime(PlanRuntime{PlanID: plan.PlanID, PlanRevision: 1, NextRunAt: time.Now().Add(-time.Second)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	executor := &blockingSchedulerExecutor{started: make(chan uuid.UUID, 2)}
+	if err := state.tickScheduler(context.Background(), executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-executor.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no plan started")
+	}
+	if running, err := state.RunningOperations(); err != nil || len(running) != 1 {
+		t.Fatalf("parallel limit exceeded: %+v, %v", running, err)
+	}
+	if err := state.tickScheduler(context.Background(), executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-executor.started:
+		t.Fatal("second plan bypassed capacity")
+	default:
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func (e *schedulerExecutor) Execute(context.Context, domain.PlanSchedule, uuid.UUID, time.Time, time.Time) OperationOutcome {
 	close(e.called)
 	return OperationOutcome{Status: OperationSucceeded}

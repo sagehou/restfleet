@@ -116,6 +116,19 @@ jobs:
       - name: Verify Gateway service formatting
         run: test -z "$(gofmt -l internal/gateway/service*_linux*.go internal/gateway/conformance_linux_test.go)"
       - run: make generate
+      - name: Format Go sources and retain generated source changes
+        id: generated
+        run: |
+          git ls-files -z '*.go' | xargs -0 gofmt -w
+          git diff --binary > "${RUNNER_TEMP}/generated-sources.patch"
+          if test -s "${RUNNER_TEMP}/generated-sources.patch"; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: steps.generated.outputs.changed == 'true'
+        with:
+          name: generated-sources
+          path: ${{ runner.temp }}/generated-sources.patch
       - run: git diff --exit-code
       - run: make lint
       - run: make migrate

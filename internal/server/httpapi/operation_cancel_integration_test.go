@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sagehou/restfleet/internal/domain"
 )
 
 // TestCancelDispatchRacePreventsExecution exercises the two orderings of the
@@ -17,6 +18,11 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 	store, pool, _, enrolled, repository, _ := deliveryFixture(t, "onedrive")
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Microsecond)
+	audit := func(action string, id uuid.UUID) domain.AuditEvent {
+		return domain.AuditEvent{ID: uuid.Must(uuid.NewV7()), OccurredAt: now,
+			ActorType: domain.ActorSystem, Action: action, ResourceType: "BACKUP_OPERATION",
+			ResourceID: id, RequestID: uuid.Must(uuid.NewV7()), Result: domain.AuditSuccess}
+	}
 	var userID uuid.UUID
 	if err := pool.QueryRow(ctx, "select id from users limit 1").Scan(&userID); err != nil {
 		t.Fatal(err)
@@ -57,7 +63,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 
 	// Cancel commits before the dispatcher claims the row: no dispatch may occur.
 	neverDispatched := insertOperation()
-	canceled, err := store.CancelBackupOperation(ctx, neverDispatched, "stop before start", now)
+	canceled, err := store.CancelBackupOperation(ctx, neverDispatched, "stop before start", now, audit("BACKUP_OPERATION_CANCEL", neverDispatched))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +83,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 	if claimed.ID != claimedID || claimed.DispatchedAt == nil {
 		t.Fatal("claim did not mark dispatched_at")
 	}
-	canceled, err = store.CancelBackupOperation(ctx, claimedID, "stop in flight", now.Add(3*time.Second))
+	canceled, err = store.CancelBackupOperation(ctx, claimedID, "stop in flight", now.Add(3*time.Second), audit("BACKUP_OPERATION_CANCEL", claimedID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +92,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 	}
 	// A late JobAccepted must not turn a canceled row back into RUNNING, but it
 	// proves the Agent received the job, so the unstarted closure must skip it.
-	if err := store.MarkOperationDispatched(ctx, claimedID); err != nil {
+	if err := store.MarkOperationDispatched(ctx, enrolled.AgentId, claimedID); err != nil {
 		t.Fatal(err)
 	}
 	if got := status(claimedID); got != "CANCEL_REQUESTED" {
@@ -117,7 +123,7 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 	if _, ok, err := store.ClaimManualOperationDispatch(ctx, enrolled.AgentId, now.Add(4*time.Second), 15*time.Second); err != nil || !ok {
 		t.Fatalf("second queued operation was not claimed: %v", err)
 	}
-	if _, err := store.CancelBackupOperation(ctx, undeliveredID, "stop undelivered", now.Add(5*time.Second)); err != nil {
+	if _, err := store.CancelBackupOperation(ctx, undeliveredID, "stop undelivered", now.Add(5*time.Second), audit("BACKUP_OPERATION_CANCEL", undeliveredID)); err != nil {
 		t.Fatal(err)
 	}
 	if closed, err := store.CloseUnstartedCancellations(ctx, now.Add(time.Minute), now.Add(2*time.Minute)); err != nil || closed != 1 {
@@ -125,5 +131,36 @@ func TestCancelDispatchRacePreventsExecution(t *testing.T) {
 	}
 	if got := status(undeliveredID); got != "CANCELED" {
 		t.Fatalf("unstarted cancellation closed as %s", got)
+	}
+
+	// An unavailable audit writer must leave both queue admission and cancel
+	// untouched. Otherwise the caller sees failure while Restic still starts.
+	if _, err := pool.Exec(ctx, `create function reject_manual_backup_audit() returns trigger language plpgsql as $$ begin
+		if new.action in ('PLAN_BACKUP_TRIGGER','BACKUP_OPERATION_RETRY','BACKUP_OPERATION_CANCEL') then raise exception 'audit unavailable'; end if;
+		return new; end $$;
+		create trigger reject_manual_backup before insert on audit_events for each row execute function reject_manual_backup_audit();`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), "drop trigger if exists reject_manual_backup on audit_events; drop function if exists reject_manual_backup_audit()")
+	})
+	protected := insertOperation()
+	if _, err := store.CancelBackupOperation(ctx, protected, "audit must succeed", now, audit("BACKUP_OPERATION_CANCEL", protected)); err == nil {
+		t.Fatal("cancel succeeded without audit")
+	}
+	if got := status(protected); got != "QUEUED" {
+		t.Fatalf("audit failure committed cancel: %s", got)
+	}
+	for _, action := range []string{"PLAN_BACKUP_TRIGGER", "BACKUP_OPERATION_RETRY"} {
+		id := uuid.Must(uuid.NewV7())
+		operation := domain.BackupOperation{ID: id, PlanID: planID, AgentID: enrolled.AgentId,
+			PlanRevision: 1, ConfigHash: hash, ScheduledAt: &now, CreatedAt: now}
+		if err := store.CreateManualOperation(ctx, operation, audit(action, id)); err == nil {
+			t.Fatal("manual backup succeeded without audit")
+		}
+		var count int
+		if err := pool.QueryRow(ctx, "select count(*) from backup_operations where id=$1", id).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("audit failure left dispatchable operation: count=%d err=%v", count, err)
+		}
 	}
 }

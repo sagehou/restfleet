@@ -89,16 +89,16 @@ type Store interface {
 	BackupOperations(context.Context, uuid.UUID, int) ([]domain.BackupOperation, error)
 	BackupOperation(context.Context, uuid.UUID) (domain.BackupOperation, error)
 	FleetBackupCounts(context.Context) (plans, operations, running, failed24h, unhealthy int64, err error)
-	CreateManualOperation(context.Context, domain.BackupOperation) error
+	CreateManualOperation(context.Context, domain.BackupOperation, domain.AuditEvent) error
 	ClaimManualOperationDispatch(context.Context, uuid.UUID, time.Time, time.Duration) (domain.BackupOperation, bool, error)
 	CloseUnstartedCancellations(context.Context, time.Time, time.Time) (int64, error)
 	ReconcileLostOperations(context.Context, time.Time, time.Time) (int64, error)
 	ReconcilePlanHealth(context.Context, time.Time) (int64, error)
 	DeleteExpiredSnapshotListResults(context.Context, time.Time) (int64, error)
-	MarkOperationDispatched(context.Context, uuid.UUID) error
-	CancelBackupOperation(context.Context, uuid.UUID, string, time.Time) (domain.BackupOperation, error)
+	MarkOperationDispatched(context.Context, uuid.UUID, uuid.UUID) error
+	CancelBackupOperation(context.Context, uuid.UUID, string, time.Time, domain.AuditEvent) (domain.BackupOperation, error)
 	PendingCancelOperations(context.Context, uuid.UUID) ([]domain.BackupOperation, error)
-	RejectManualOperation(context.Context, uuid.UUID, time.Time) error
+	RejectManualOperation(context.Context, uuid.UUID, uuid.UUID, time.Time) error
 	Snapshots(context.Context, int) ([]domain.Snapshot, error)
 	SnapshotsByID(context.Context, string) ([]domain.Snapshot, error)
 	EnqueueSnapshotList(context.Context, domain.Operation, string, string, string) (domain.Operation, error)

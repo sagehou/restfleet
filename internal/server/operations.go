@@ -99,10 +99,7 @@ func (c *ControlPlane) QueueBackupNow(ctx context.Context, planID uuid.UUID, act
 		return domain.BackupOperation{}, err
 	}
 	audit.Changes = json.RawMessage(`{"source":"MANUAL"}`)
-	if err := c.store.CreateManualOperation(ctx, operation); err != nil {
-		return domain.BackupOperation{}, err
-	}
-	if err := c.store.RecordAudit(ctx, audit); err != nil {
+	if err := c.store.CreateManualOperation(ctx, operation, audit); err != nil {
 		return domain.BackupOperation{}, err
 	}
 	return operation, nil
@@ -115,8 +112,8 @@ func (c *ControlPlane) ClaimQueuedJob(ctx context.Context, agentID uuid.UUID) (d
 	return c.store.ClaimManualOperationDispatch(ctx, agentID, c.clock().UTC(), dispatchRetryAfter)
 }
 
-func (c *ControlPlane) MarkJobDispatched(ctx context.Context, id uuid.UUID) error {
-	return c.store.MarkOperationDispatched(ctx, id)
+func (c *ControlPlane) MarkJobDispatched(ctx context.Context, agentID, id uuid.UUID) error {
+	return c.store.MarkOperationDispatched(ctx, agentID, id)
 }
 
 // CancelBackupOperation closes a queued operation immediately or asks the
@@ -138,11 +135,8 @@ func (c *ControlPlane) CancelBackupOperation(ctx context.Context, id uuid.UUID, 
 	if err != nil {
 		return domain.BackupOperation{}, err
 	}
-	operation, err := c.store.CancelBackupOperation(ctx, id, reason, c.clock().UTC())
+	operation, err := c.store.CancelBackupOperation(ctx, id, reason, c.clock().UTC(), audit)
 	if err != nil {
-		return domain.BackupOperation{}, err
-	}
-	if err := c.store.RecordAudit(ctx, audit); err != nil {
 		return domain.BackupOperation{}, err
 	}
 	return operation, nil
@@ -192,10 +186,7 @@ func (c *ControlPlane) RetryBackupOperation(ctx context.Context, id uuid.UUID,
 		return domain.BackupOperation{}, err
 	}
 	audit.Changes = json.RawMessage(`{"parent_operation_id":"` + source.ID.String() + `"}`)
-	if err := c.store.CreateManualOperation(ctx, operation); err != nil {
-		return domain.BackupOperation{}, err
-	}
-	if err := c.store.RecordAudit(ctx, audit); err != nil {
+	if err := c.store.CreateManualOperation(ctx, operation, audit); err != nil {
 		return domain.BackupOperation{}, err
 	}
 	return operation, nil
@@ -252,6 +243,6 @@ func (c *ControlPlane) RunOperationReconciler(ctx context.Context, interval time
 }
 
 // RejectManualOperation closes a dispatched manual run the Agent refused.
-func (c *ControlPlane) RejectManualOperation(ctx context.Context, id uuid.UUID) error {
-	return c.store.RejectManualOperation(ctx, id, c.clock().UTC())
+func (c *ControlPlane) RejectManualOperation(ctx context.Context, agentID, id uuid.UUID) error {
+	return c.store.RejectManualOperation(ctx, agentID, id, c.clock().UTC())
 }

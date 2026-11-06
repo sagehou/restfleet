@@ -341,6 +341,8 @@ func validateServerEnvelope(message *agentv1.ServerToAgent, protocol string) err
 func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_ConnectClient, state *State,
 	config RunConfig, job *agentv1.JobDispatch, sequence *uint64, protocol string,
 ) error {
+	state.schedulerMu.Lock()
+	defer state.schedulerMu.Unlock()
 	operationID, err := uuid.Parse(job.GetOperationId())
 	if err != nil {
 		return errors.New("job dispatch has an invalid operation id")
@@ -374,6 +376,13 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	if !found {
 		return reject("PLAN_UNAVAILABLE")
 	}
+	if job.GetPlanRevision() != plan.Revision || job.GetConfigHash() != plan.ConfigHash {
+		return reject("CONFIG_REVISION_MISMATCH")
+	}
+	if job.GetDeadline() == nil || job.GetDeadline().CheckValid() != nil ||
+		job.GetNotBefore() == nil || job.GetNotBefore().CheckValid() != nil {
+		return reject("DEADLINE_INVALID")
+	}
 	deadline := job.GetDeadline().AsTime().UTC()
 	if !deadline.After(time.Now()) {
 		return reject("DEADLINE_EXCEEDED")
@@ -397,7 +406,11 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 		}
 		return sendOperationResult(stream, sequence, protocol, record)
 	}
-	if existing, exists, err := state.Operation(operationID); err == nil && exists {
+	existing, exists, err := state.Operation(operationID)
+	if err != nil {
+		return reject("PERSIST_FAILED")
+	}
+	if exists {
 		if existing.Terminal() {
 			return sendOperationResult(stream, sequence, protocol, existing)
 		}
@@ -406,6 +419,20 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 				JobId: job.GetJobId(), OperationId: job.GetOperationId(),
 			}},
 		})
+	}
+	running, err := state.RunningOperations()
+	if err != nil {
+		return reject("PERSIST_FAILED")
+	}
+	if uint32(len(running)) >= desired.RuntimePolicy.MaxParallelIOJobs {
+		// Leave the durable Server job queued; its normal dispatch retry will
+		// offer it again when capacity is available, without starting a process.
+		return nil
+	}
+	for _, record := range running {
+		if record.PlanID == planID && plan.ConcurrencyPolicy != "ALLOW" {
+			return nil
+		}
 	}
 	scheduled := job.GetNotBefore().AsTime().UTC()
 	record := OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
@@ -425,19 +452,6 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 		binary = "restic"
 	}
 	executor := BackupExecutor{State: state, Binary: binary}
-	runCtx, endRun := state.BeginOperation(ctx, operationID)
-	go func() {
-		defer endRun()
-		outcome := executor.Execute(runCtx, plan, operationID, scheduled, deadline)
-		record.Status = outcome.Status
-		record.ExitCode = outcome.ExitCode
-		record.ErrorCode = outcome.ErrorCode
-		record.SnapshotID = outcome.SnapshotID
-		record.FilesDone, record.TotalFiles = outcome.FilesDone, outcome.TotalFiles
-		record.BytesDone, record.TotalBytes = outcome.BytesDone, outcome.TotalBytes
-		record.FilesNew, record.DataAdded = outcome.FilesNew, outcome.DataAdded
-		record.FinishedAt = time.Now().UTC()
-		_ = state.PutOperation(record)
-	}()
+	state.executeOperation(ctx, executor, plan, record, deadline, nil)
 	return nil
 }

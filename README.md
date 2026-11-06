@@ -1,18 +1,14 @@
 # RestFleet
 
-RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面。它通过轻量 Agent 统一下发备份计划、采集运行状态、浏览快照、触发恢复并集中执行仓库维护，同时把 rclone 与云存储凭据严格留在中心节点。
+RestFleet 面向管理少量到数十台 Linux VPS 的管理员，目标是通过一个自托管中心持续获得受隔离保护、状态可核对、能够恢复的备份。管理员在 Web Console 配置计划、识别风险并取回数据；Agent 在本机调度和执行 Restic，rclone、云存储凭据与仓库维护权限留在中心。完整目标与成功标准见 [产品规范](docs/spec/00-product.md)。
 
-> 当前进度（2026-10-21）：M0–M3 完成；M4 三项交付源码已合入，READY 已有 CI 证据，真实云后端/部署态轮换恢复按用户决定暂缓（不在 GitHub 保存凭据）；M5–M8 为部分实现，定时与扫描 P0 已修复，但仍有 P1 正确性/验收缺口；M9–M12 未开工。详细状态见 [当前开发状态](docs/development/current-state.md)。
+剩余开发按[三个交付阶段](IMPLEMENTATION_PLAN.md)推进，当前 ACTIVE 为“备份可靠”。已有配置、执行和快照能力仍有缺口，尚未达到 V1 发布条件；实现基线与证据见[当前开发状态](docs/development/current-state.md)。
 
-| 里程碑 | 状态 | 摘要 |
+| 交付阶段 | 状态 | 主 issue |
 |---|---|---|
-| M0–M3 | 完成 | 骨架、认证、Host/enrollment、心跳/库存/desired state |
-| M4 | 源码已合入，验收部分暂缓 | 凭据、仓库初始化、Gateway 会话/授权/轮换恢复源码已入 `main`；READY 正/负向已有 CI 证据；真实三后端与部署态轮换/恢复按用户决定暂缓（不在 GitHub 保存凭据） |
-| M5 | 部分 | 模板、Plan、状态机、本地调度核心已接入；PENDING_APPLY、状态机绕过、accepted_revision、jitter/DST 已修复；SCH/AGT/API 专项测试待补 |
-| M6 | 部分 | 手动与定时上报、终态 guard、取消竞态、崩溃恢复、调度器持久化已修复；结果/日志背压与专项测试待补 |
-| M7 | 部分 | NEVER_RUN/PAUSED/OVERDUE、next-run/last-success、unhealthy 计数已接入；Attention Queue 与分项指标待补 |
-| M8 | 部分 | 索引/列表/浏览 UI、周期 `snapshots --json` 索引、UNMANAGED/missing marker、cursor/continuation 已接入；cache tree_id 与虚拟化待补 |
-| M9–M12 | 未开工 | 下载、恢复、保留/维护、通知与发布 |
+| 备份可靠：配置、调度、执行、结果与快照元数据贯通 | ACTIVE | [#96](https://github.com/sagehou/restfleet/issues/96) |
+| 恢复可用：浏览、单文件下载、staging restore | 等待 #96 | [#98](https://github.com/sagehou/restfleet/issues/98) |
+| 长期运行与发布：维护、运维、通知、灾备和 V1 验收 | 等待 #98 | [#15](https://github.com/sagehou/restfleet/issues/15) |
 
 开发工具链与升级策略见 `docs/development/toolchain.md`，贡献前 MUST 阅读 `AGENTS.md`。
 
@@ -23,13 +19,13 @@ RestFleet 是一个面向多台 Linux VPS 的自托管 Restic 备份控制平面
 - rclone、后端 OAuth/认证密码、Crypt 密码与仓库维护权限只存在于中心节点。
 - Agent 可读取并追加其被授权仓库，但不能删除或改写已有仓库对象。
 - 默认每台 Host 使用独立 Repository、独立 Restic 密码和独立网关身份。
-- 中心离线时，Agent 使用最近一次已确认配置继续本地调度备份。
+- 控制面离线时，Agent 保留最近一次已确认配置和本地调度；Gateway 持续在线且预授权有效时，在剩余窗口内继续备份。
 - `forget`、`prune`、`check`、`unlock` 只能由中心 Maintenance Worker 执行。
 - Linux `amd64`、`arm64`，Native systemd 与 Docker 两种 Agent 部署方式均为 V1 要求。
 
 ## 开发与运行
 
-常用质量门禁：
+常用质量门禁（仅由 GitHub Actions 执行）：
 
 ```sh
 make generate
@@ -38,7 +34,7 @@ make test
 make build cross-build
 ```
 
-当前 Server 需要已经迁移到 schema v16 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。编译、测试、认证及运行验证 MUST 只在 GitHub Actions 执行；开发工作区只用于源码/文档编辑和只读检查。Compose 拆分 migrator/runtime 身份，不向宿主机发布 PostgreSQL 或 metrics 端口。
+当前 Server 需要已经迁移到 schema v27 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。编译、测试、认证及运行验证 MUST 只在 GitHub Actions 执行；开发工作区只用于源码/文档编辑和只读检查。Compose 拆分 migrator/runtime 身份，不向宿主机发布 PostgreSQL 或 metrics 端口。以下部署示例不作为开发工作区的验证步骤，MUST NOT 在开发工作区执行。
 
 首次启动：
 
@@ -70,7 +66,7 @@ Bootstrap token 仅在首次初始化时从本机 `secrets/bootstrap-token` 读�
 | [可观测性](docs/spec/10-observability.md) | Metrics、Logs、Health、Alert、Audit |
 | [V1 范围](docs/spec/11-v1-scope.md) | V1、V1.5、V2 的功能边界 |
 | [验收测试](docs/spec/12-acceptance-tests.md) | 可执行的功能、安全与故障验收条件 |
-| [实施计划](IMPLEMENTATION_PLAN.md) | M0–M12 的实现顺序和完成定义 |
+| [实施计划](IMPLEMENTATION_PLAN.md) | 三个交付阶段、退出条件与 GitHub issue 关联 |
 | [Codex 规则](AGENTS.md) | 实现时不可违反的仓库级规则 |
 
 ## 技术基线

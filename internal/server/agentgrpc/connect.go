@@ -226,7 +226,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			if err != nil {
 				return s.invalidMessage(stream, meta, "JOB_ACCEPTED_INVALID")
 			}
-			if err := s.control.MarkJobDispatched(stream.Context(), operationID); err != nil {
+			if err := s.control.MarkJobDispatched(stream.Context(), agentID, operationID); err != nil {
 				return status.Error(codes.Unavailable, "job acceptance persistence failed")
 			}
 		case message.GetJobRejected() != nil:
@@ -234,7 +234,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 			if err != nil {
 				return s.invalidMessage(stream, meta, "JOB_REJECTED_INVALID")
 			}
-			if err := s.control.RejectManualOperation(stream.Context(), operationID); err != nil {
+			if err := s.control.RejectManualOperation(stream.Context(), agentID, operationID); err != nil {
 				return status.Error(codes.Unavailable, "job rejection persistence failed")
 			}
 		case message.GetJobCancelAccepted() != nil:

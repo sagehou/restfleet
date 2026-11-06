@@ -23,6 +23,8 @@ type State struct {
 	directory    string
 	db           *bolt.DB
 	credentialMu sync.Mutex
+	schedulerMu  sync.Mutex
+	workers      sync.WaitGroup
 	runMu        sync.Mutex
 	running      map[uuid.UUID]context.CancelFunc
 	canceled     map[uuid.UUID]struct{}
@@ -67,6 +69,14 @@ func OpenState(directory string) (*State, error) {
 }
 
 func (s *State) Close() error {
+	s.schedulerMu.Lock()
+	defer s.schedulerMu.Unlock()
+	s.runMu.Lock()
+	for _, cancel := range s.running {
+		cancel()
+	}
+	s.runMu.Unlock()
+	s.workers.Wait()
 	return s.db.Close()
 }
 

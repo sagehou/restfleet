@@ -42,7 +42,7 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 		queued, planID, enrolled.AgentId, hash, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RejectManualOperation(ctx, queued, now); err != nil {
+	if err := store.RejectManualOperation(ctx, enrolled.AgentId, queued, now); err != nil {
 		t.Fatal(err)
 	}
 	var status string

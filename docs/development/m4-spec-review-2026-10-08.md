@@ -37,8 +37,8 @@ M4 长期未退出有两类原因：规格没有闭合关键依赖和运行协�
 
 证据：
 
-- [计划 M5](../../IMPLEMENTATION_PLAN.md#m5--templates-plans-and-local-scheduler) 的退出包含 AGT-003–006 和中心离线 12h 调度测试；AGT-005 要成功备份，AGT-006 要补报离线产生的 Operation。
-- [计划 M6](../../IMPLEMENTATION_PLAN.md#m6--backup-execution) 才实现 Agent Restic 执行、结果缓冲和本地结果 reconciliation。
+- [计划 M5](implementation-plan-m0-m12.md#m5--templates-plans-and-local-scheduler) 的退出包含 AGT-003–006 和中心离线 12h 调度测试；AGT-005 要成功备份，AGT-006 要补报离线产生的 Operation。
+- [计划 M6](implementation-plan-m0-m12.md#m6--backup-execution) 才实现 Agent Restic 执行、结果缓冲和本地结果 reconciliation。
 - [ADR-0014](../adr/0014-gateway-owned-lock-cleanup.md) 要求会话绑定可信 Operation，并禁止把每次定时备份改成必须在线请求 Control API。
 - [部署 §7.10](../spec/09-deployment.md#710-有界离线授权与待回写目标) 把会话交付、恢复和相关离线验收继续放在 M4 内；这些组件必须提前明确如何接入 M5/M6，但提前定义接口不等于交付完整调度与备份。
 

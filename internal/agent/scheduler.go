@@ -57,6 +57,8 @@ func (s *State) RunLocalScheduler(ctx context.Context, interval time.Duration, e
 }
 
 func (s *State) tickScheduler(ctx context.Context, executor PlanExecutor, onError func(error)) error {
+	s.schedulerMu.Lock()
+	defer s.schedulerMu.Unlock()
 	desired, ok, err := s.ActiveDesiredState()
 	if err != nil {
 		return err
@@ -75,6 +77,16 @@ func (s *State) tickScheduler(ctx context.Context, executor PlanExecutor, onErro
 	now := time.Now().UTC()
 	var firstErr error
 	for _, plan := range desired.Plans {
+		// Manual dispatch shares schedulerMu and persists RUNNING before its
+		// goroutine starts, so both admission paths observe the same capacity.
+		current, err := s.RunningOperations()
+		if err != nil {
+			return err
+		}
+		if uint32(len(current)) >= desired.RuntimePolicy.MaxParallelIOJobs &&
+			!schedule.ConcurrencySkip(plan.ConcurrencyPolicy, runningByPlan[plan.PlanID]) {
+			continue
+		}
 		if err := s.advancePlan(ctx, plan, now, runningByPlan, executor, onError); err != nil && firstErr == nil {
 			firstErr = err
 		}
@@ -98,7 +110,9 @@ func (s *State) advancePlan(ctx context.Context, plan domain.PlanSchedule, now t
 		return err
 	}
 	runtime.PlanID = plan.PlanID
-	if !found || runtime.NextRunAt.IsZero() {
+	changed := runtime.PlanRevision != 0 && (runtime.PlanRevision != plan.Revision || runtime.ConfigHash != plan.ConfigHash)
+	runtime.PlanRevision, runtime.ConfigHash = plan.Revision, plan.ConfigHash
+	if !found || runtime.NextRunAt.IsZero() || changed {
 		if next, ok := scheduler.NextRun(now); ok {
 			runtime.NextRunAt = next
 		}
@@ -145,10 +159,19 @@ func (s *State) advancePlan(ctx context.Context, plan domain.PlanSchedule, now t
 		return err
 	}
 	runningByPlan[plan.PlanID] = true
-	runCtx, endRun := s.BeginOperation(ctx, operationID)
+	s.executeOperation(ctx, executor, plan, record, deadline, onError)
+	return nil
+}
+
+func (s *State) executeOperation(ctx context.Context, executor PlanExecutor, plan domain.PlanSchedule,
+	record OperationRecord, deadline time.Time, onError func(error),
+) {
+	runCtx, endRun := s.BeginOperation(ctx, record.ID)
+	s.workers.Add(1)
 	go func() {
+		defer s.workers.Done()
 		defer endRun()
-		outcome := executor.Execute(runCtx, plan, operationID, scheduled, deadline)
+		outcome := executor.Execute(runCtx, plan, record.ID, record.ScheduledAt, deadline)
 		record.Status = outcome.Status
 		record.ExitCode = outcome.ExitCode
 		record.ErrorCode = outcome.ErrorCode
@@ -164,5 +187,4 @@ func (s *State) advancePlan(ctx context.Context, plan domain.PlanSchedule, now t
 			onError(err)
 		}
 	}()
-	return nil
 }

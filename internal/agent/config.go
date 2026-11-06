@@ -3,11 +3,13 @@ package agent
 import (
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
 
 	agentv1 "github.com/sagehou/restfleet/api/proto/gen/go/restfleet/agent/v1"
+	"github.com/sagehou/restfleet/internal/agent/schedule"
 	"github.com/sagehou/restfleet/internal/domain"
 )
 
@@ -50,6 +52,8 @@ func (s *State) ApplyDesiredState(
 	agentID uuid.UUID,
 	snapshot *agentv1.DesiredStateSnapshot,
 ) (PendingConfigResult, error) {
+	s.schedulerMu.Lock()
+	defer s.schedulerMu.Unlock()
 	state, err := desiredStateFromProto(agentID, snapshot)
 	if err != nil {
 		result := rejectedConfigResult(snapshot, err)
@@ -91,6 +95,9 @@ func (s *State) ApplyDesiredState(
 		return PendingConfigResult{}, err
 	}
 	if err := s.db.Update(func(tx *bolt.Tx) error {
+		if err := reconcilePlanRuntimes(tx, active, state, time.Now().UTC()); err != nil {
+			return err
+		}
 		if err := tx.Bucket([]byte(desiredActiveBucket)).Put([]byte(desiredStateKey), encoded); err != nil {
 			return err
 		}
@@ -102,6 +109,62 @@ func (s *State) ApplyDesiredState(
 		return PendingConfigResult{}, err
 	}
 	return result, nil
+}
+
+// Activation and runtime reconciliation share a transaction: an ACK can never
+// expose a new cron with the previous configuration's next execution time.
+func reconcilePlanRuntimes(tx *bolt.Tx, previous, next domain.DesiredState, now time.Time) error {
+	bucket, err := tx.CreateBucketIfNotExists([]byte(planRuntimeBucket))
+	if err != nil {
+		return err
+	}
+	oldPlans := make(map[uuid.UUID]domain.PlanSchedule, len(previous.Plans))
+	for _, plan := range previous.Plans {
+		oldPlans[plan.PlanID] = plan
+	}
+	present := make(map[uuid.UUID]bool, len(next.Plans))
+	for _, plan := range next.Plans {
+		present[plan.PlanID] = true
+		var runtime PlanRuntime
+		if raw := bucket.Get(plan.PlanID[:]); raw != nil {
+			if err := json.Unmarshal(raw, &runtime); err != nil {
+				return err
+			}
+		}
+		old, found := oldPlans[plan.PlanID]
+		if !found || old.Revision != plan.Revision || old.ConfigHash != plan.ConfigHash ||
+			old.Cron != plan.Cron || old.Timezone != plan.Timezone || old.JitterSeconds != plan.JitterSeconds {
+			clock, err := schedule.New(plan.PlanID, schedule.Spec{
+				Cron: plan.Cron, Timezone: plan.Timezone, JitterSeconds: plan.JitterSeconds,
+				MisfireGraceSeconds: plan.MisfireGraceSeconds, ConcurrencyPolicy: plan.ConcurrencyPolicy,
+			})
+			if err != nil {
+				return err
+			}
+			runtime.NextRunAt, _ = clock.NextRun(now)
+		}
+		runtime.PlanID, runtime.PlanRevision, runtime.ConfigHash = plan.PlanID, plan.Revision, plan.ConfigHash
+		encoded, err := json.Marshal(runtime)
+		if err != nil {
+			return err
+		}
+		if err := bucket.Put(plan.PlanID[:], encoded); err != nil {
+			return err
+		}
+	}
+	cursor := bucket.Cursor()
+	for key, _ := cursor.First(); key != nil; key, _ = cursor.Next() {
+		id, err := uuid.FromBytes(key)
+		if err != nil {
+			return err
+		}
+		if !present[id] {
+			if err := cursor.Delete(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *State) PendingConfigResult() (PendingConfigResult, bool, error) {

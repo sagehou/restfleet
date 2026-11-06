@@ -67,6 +67,8 @@ func (r OperationRecord) Terminal() bool {
 // duplicate a run.
 type PlanRuntime struct {
 	PlanID          uuid.UUID `json:"plan_id"`
+	PlanRevision    int64     `json:"plan_revision,omitempty"`
+	ConfigHash      string    `json:"config_hash,omitempty"`
 	LastScheduledAt time.Time `json:"last_scheduled_at,omitempty"`
 	NextRunAt       time.Time `json:"next_run_at,omitempty"`
 	LastOperationID uuid.UUID `json:"last_operation_id,omitempty"`

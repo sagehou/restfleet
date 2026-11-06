@@ -298,6 +298,8 @@ Agent 将 Restic `--json` JSONL 映射为：
 
 未知 JSON field/message type 记录 debug counter 后忽略；不得因为新增非关键字段崩溃。
 
+配置激活 MUST 同事务对账本地 Plan runtime 与接受结果，按接受时刻重算已变配置及恢复计划的 next-run，保留未变计划时刻和运行中 Operation；移除计划不得继续出现在 next-runs。手动和定时作业 MUST 共用 `max_parallel_io_jobs` 准入，满载时延后执行而不启动额外进程；计划仍遵守 misfire grace，手动任务保留中心队列等待重投。详见 [ADR-0038](../adr/0038-backup-runtime-reconciliation.md)。
+
 ## 11. 日志流与离线缓冲
 
 - 日志 chunk sequence 每 Operation 单调递增；
