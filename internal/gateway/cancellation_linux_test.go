@@ -16,6 +16,16 @@ type notifyingBody struct {
 	started chan struct{}
 }
 
+type cancelOnReadBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *cancelOnReadBody) Read(p []byte) (int, error) {
+	b.cancel()
+	return b.ReadCloser.Read(p)
+}
+
 func (b *notifyingBody) Read(p []byte) (int, error) {
 	b.once.Do(func() { close(b.started) })
 	return b.ReadCloser.Read(p)
@@ -130,8 +140,9 @@ func TestCanceledRequestStillCommitsBoundedSecurityAudit(t *testing.T) {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	defer cancel()
 	r := request(s, secret, http.MethodPost, object("data", "pending"), "short")
+	r.Body = &cancelOnReadBody{ReadCloser: r.Body, cancel: cancel}
 	r.ContentLength = 7
 	s.ServeHTTP(httptest.NewRecorder(), r.WithContext(ctx))
 	if !observed {

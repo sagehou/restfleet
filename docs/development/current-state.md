@@ -18,7 +18,7 @@
 | 请求与审计 | Backup Now/Retry/Cancel 事务幂等及业务审计；同 key 同请求重放原响应，冲突拒绝；取消原因不持久化任意输入 |
 | 中心快照读取 | 周期索引复用动态 READY 并遍历所有页；有 Gateway 占用时复用当前 owner 的短期独立 mTLS reader，不启动第二个 rclone；读任务核验持久 binding，失效后失败收尾；拒绝畸形索引和冲突 managed tags |
 
-关键设计见 ADR-0038–0041。Agent 的 Restic 仓库地址已补齐 `rest:` 前缀；该问题由真实贯通测试发现，不能用旧单元测试代替修复后的验证。
+关键设计见 ADR-0038–0041。真实贯通测试推动修复了 Agent 仓库地址缺少 `rest:`、stderr 警告漏计和取消上传误停 Gateway owner 的问题。请求审计使用可信服务/会话生命周期，客户端断线不取消可靠写入，服务关闭仍取消并 join；真实落盘故障继续停止授权。
 
 ## Actions 证据
 
