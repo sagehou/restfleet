@@ -53,7 +53,7 @@ type BackupSession struct {
 	binding   Binding
 	prefix    string
 	agentID   uuid.UUID
- reader *domain.GatewayReadBinding
+	reader    *domain.GatewayReadBinding
 	verifier  [sha256.Size]byte
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -193,10 +193,10 @@ func (s *BackupSession) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authenticated := false
-	if s.reader!=nil {
- reader,ok:=authenticatedGatewayReader(r)
- authenticated=ok && sameGatewayReader(reader,*s.reader)
- } else if s.agentID != uuid.Nil {
+	if s.reader != nil {
+		reader, ok := authenticatedGatewayReader(r)
+		authenticated = ok && sameGatewayReader(reader, *s.reader)
+	} else if s.agentID != uuid.Nil {
 		id, ok := authenticatedAgent(r)
 		authenticated = ok && id == s.agentID
 	} else {
@@ -248,9 +248,10 @@ func (s *BackupSession) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.read(w, r, path)
 		return
 	}
- if s.reader!=nil {
-  s.deny(w,r,true,"method_rejected",http.StatusForbidden);return
- }
+	if s.reader != nil {
+		s.deny(w, r, true, "method_rejected", http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		s.deny(w, r, true, "method_rejected", http.StatusForbidden)
 		return
@@ -449,16 +450,18 @@ func (s *BackupSession) backendFailure(w http.ResponseWriter, status int) {
 	http.Error(w, "gateway request failed", status)
 }
 
-func sameGatewayReader(a,b domain.GatewayReadBinding) bool {
- return a.RepositoryID==b.RepositoryID && a.OperationID==b.OperationID && a.AdmissionID==b.AdmissionID && a.RuntimeID==b.RuntimeID
+func sameGatewayReader(a, b domain.GatewayReadBinding) bool {
+	return a.RepositoryID == b.RepositoryID && a.OperationID == b.OperationID && a.AdmissionID == b.AdmissionID && a.RuntimeID == b.RuntimeID
 }
 
-func authenticatedGatewayReader(r *http.Request) (domain.GatewayReadBinding,bool) {
- if r.TLS==nil || r.TLS.Version<tls.VersionTLS12 || len(r.TLS.VerifiedChains)==0 || len(r.TLS.PeerCertificates)==0 || len(r.TLS.VerifiedChains[0])==0 {
-  return domain.GatewayReadBinding{},false
- }
- leaf:=r.TLS.PeerCertificates[0]
- if !bytes.Equal(leaf.Raw,r.TLS.VerifiedChains[0][0].Raw){return domain.GatewayReadBinding{},false}
- reader,err:=security.GatewayReaderFromCertificate(leaf)
- return reader,err==nil
+func authenticatedGatewayReader(r *http.Request) (domain.GatewayReadBinding, bool) {
+	if r.TLS == nil || r.TLS.Version < tls.VersionTLS12 || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 || len(r.TLS.VerifiedChains[0]) == 0 {
+		return domain.GatewayReadBinding{}, false
+	}
+	leaf := r.TLS.PeerCertificates[0]
+	if !bytes.Equal(leaf.Raw, r.TLS.VerifiedChains[0][0].Raw) {
+		return domain.GatewayReadBinding{}, false
+	}
+	reader, err := security.GatewayReaderFromCertificate(leaf)
+	return reader, err == nil
 }

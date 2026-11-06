@@ -2,7 +2,7 @@ package postgres
 
 import (
 	"context"
- "encoding/json"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -25,7 +25,7 @@ func validSnapshotIndexCode(code string) bool {
 
 // EnqueueSnapshotIndex creates one system-owned read-only index operation.
 // It uses the same repository lock and active-operation guard as SNAPSHOT_LIST.
-func (s *Store) EnqueueSnapshotIndex(ctx context.Context, operation domain.Operation,configurationHash string) (domain.Operation, error) {
+func (s *Store) EnqueueSnapshotIndex(ctx context.Context, operation domain.Operation, configurationHash string) (domain.Operation, error) {
 	if operation.RepositoryID == nil || operation.ID.Version() != 7 || operation.RequestedByUserID != nil {
 		return operation, domain.ErrOperationTransition
 	}
@@ -63,9 +63,14 @@ func (s *Store) EnqueueSnapshotIndex(ctx context.Context, operation domain.Opera
 	if credential.Status == "DISABLED" {
 		return operation, domain.ErrCredentialDisabled
 	}
- readBinding,err:=gatewayReadBinding(ctx,tx,repo,operation.ID,configurationHash)
- if err!=nil{return operation,err}
- readJSON,err:=json.Marshal(readBinding);if err!=nil{return operation,err}
+	readBinding, err := gatewayReadBinding(ctx, tx, repo, operation.ID, configurationHash)
+	if err != nil {
+		return operation, err
+	}
+	readJSON, err := json.Marshal(readBinding)
+	if err != nil {
+		return operation, err
+	}
 	var now time.Time
 	if err = tx.QueryRow(ctx, "select clock_timestamp()").Scan(&now); err != nil {
 		return operation, err
@@ -89,7 +94,7 @@ func (s *Store) EnqueueSnapshotIndex(ctx context.Context, operation domain.Opera
 		return operation, err
 	}
 	if _, err = tx.Exec(ctx, `insert into jobs(id,operation_id,queue,status,available_at,payload,created_at,updated_at,gateway_read_binding)
-		values($1,$2,'SNAPSHOT_INDEX','READY',$3,'{}'::jsonb,$3,$3,$4::jsonb)`, jobID, operation.ID, now,string(readJSON)); err != nil {
+		values($1,$2,'SNAPSHOT_INDEX','READY',$3,'{}'::jsonb,$3,$3,$4::jsonb)`, jobID, operation.ID, now, string(readJSON)); err != nil {
 		return operation, err
 	}
 	if err = recordOperationEvent(ctx, tx, operation, "", now); err != nil {
@@ -129,12 +134,14 @@ func (s *Store) FinishSnapshotIndexJob(ctx context.Context, id, owner uuid.UUID,
 	if !job.RepositoryAvailable {
 		code = "REPOSITORY_UNAVAILABLE"
 	}
- if job.GatewayRead!=nil {
-  if err=ensureReadJobBinding(ctx,tx,job);err!=nil {
-   if !errors.Is(err,domain.ErrRepositoryBusy) && !errors.Is(err,domain.ErrRepositoryUnavailable){return err}
-   code="REPOSITORY_UNAVAILABLE"
-  }
- }
+	if job.GatewayRead != nil {
+		if err = ensureReadJobBinding(ctx, tx, job); err != nil {
+			if !errors.Is(err, domain.ErrRepositoryBusy) && !errors.Is(err, domain.ErrRepositoryUnavailable) {
+				return err
+			}
+			code = "REPOSITORY_UNAVAILABLE"
+		}
+	}
 	to := "FAILED"
 	if code == "" {
 		if len(result.Entries) > 50_000 {
@@ -195,7 +202,13 @@ func (s *Store) FinishSnapshotIndexJob(ctx context.Context, id, owner uuid.UUID,
 		to = "TIMED_OUT"
 	}
 	job.Operation.ErrorCode = code
-	if err=finishSnapshotReadJob(ctx,tx,&job,to,now);err!=nil{return err}
-	if code=="" && job.GatewayRead!=nil {if err=ensureReadJobBinding(ctx,tx,job);err!=nil{return err}}
+	if err = finishSnapshotReadJob(ctx, tx, &job, to, now); err != nil {
+		return err
+	}
+	if code == "" && job.GatewayRead != nil {
+		if err = ensureReadJobBinding(ctx, tx, job); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }

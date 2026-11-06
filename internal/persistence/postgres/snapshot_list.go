@@ -51,7 +51,7 @@ func lockRepositoryForRead(ctx context.Context, tx pgx.Tx, id uuid.UUID) (domain
 // EnqueueSnapshotList creates one read-only scan job. It reuses the existing
 // repository serialization. A live Gateway admission must be borrowed through
 // its current owner; a direct-cloud reader still requires no admission.
-func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operation, snapshotID, path, cursor,configurationHash string) (domain.Operation, error) {
+func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operation, snapshotID, path, cursor, configurationHash string) (domain.Operation, error) {
 	if operation.RepositoryID == nil || operation.RequestedByUserID == nil || *operation.RequestedByUserID == uuid.Nil ||
 		operation.ID.Version() != 7 || len(path) == 0 || len(path) > 4096 ||
 		len(cursor) > 4096 || (cursor != "" && (!strings.HasPrefix(cursor, "/") ||
@@ -96,9 +96,14 @@ func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operat
 	if credential.Status == "DISABLED" {
 		return operation, domain.ErrCredentialDisabled
 	}
- readBinding,err:=gatewayReadBinding(ctx,tx,repo,operation.ID,configurationHash)
- if err!=nil{return operation,err}
- readJSON,err:=json.Marshal(readBinding);if err!=nil{return operation,err}
+	readBinding, err := gatewayReadBinding(ctx, tx, repo, operation.ID, configurationHash)
+	if err != nil {
+		return operation, err
+	}
+	readJSON, err := json.Marshal(readBinding)
+	if err != nil {
+		return operation, err
+	}
 	var now time.Time
 	if err = tx.QueryRow(ctx, "select clock_timestamp()").Scan(&now); err != nil {
 		return operation, err
@@ -122,7 +127,7 @@ func (s *Store) EnqueueSnapshotList(ctx context.Context, operation domain.Operat
 		return operation, err
 	}
 	if _, err = tx.Exec(ctx, `insert into jobs(id,operation_id,queue,status,available_at,payload,created_at,updated_at,gateway_read_binding)
-		values($1,$2,'SNAPSHOT_LIST','READY',$3,$4,$3,$3,$5::jsonb)`, jobID, operation.ID, now, payload,string(readJSON)); err != nil {
+		values($1,$2,'SNAPSHOT_LIST','READY',$3,$4,$3,$3,$5::jsonb)`, jobID, operation.ID, now, payload, string(readJSON)); err != nil {
 		return operation, err
 	}
 	if err = recordOperationEvent(ctx, tx, operation, "", now); err != nil {
@@ -217,12 +222,14 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 	if !job.RepositoryAvailable {
 		code = "REPOSITORY_UNAVAILABLE"
 	}
- if job.GatewayRead!=nil {
-  if err=ensureReadJobBinding(ctx,tx,job);err!=nil {
-   if !errors.Is(err,domain.ErrRepositoryBusy) && !errors.Is(err,domain.ErrRepositoryUnavailable){return err}
-   code="REPOSITORY_UNAVAILABLE"
-  }
- }
+	if job.GatewayRead != nil {
+		if err = ensureReadJobBinding(ctx, tx, job); err != nil {
+			if !errors.Is(err, domain.ErrRepositoryBusy) && !errors.Is(err, domain.ErrRepositoryUnavailable) {
+				return err
+			}
+			code = "REPOSITORY_UNAVAILABLE"
+		}
+	}
 	to := "FAILED"
 	if code == "" {
 		var request struct {
@@ -271,8 +278,14 @@ func (s *Store) FinishSnapshotListJob(ctx context.Context, id, owner uuid.UUID, 
 		to = "TIMED_OUT"
 	}
 	job.Operation.ErrorCode = code
-	if err=finishSnapshotReadJob(ctx,tx,&job,to,now);err!=nil{return err}
-	if code=="" && job.GatewayRead!=nil {if err=ensureReadJobBinding(ctx,tx,job);err!=nil{return err}}
+	if err = finishSnapshotReadJob(ctx, tx, &job, to, now); err != nil {
+		return err
+	}
+	if code == "" && job.GatewayRead != nil {
+		if err = ensureReadJobBinding(ctx, tx, job); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 

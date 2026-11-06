@@ -152,17 +152,19 @@ watching:
 // token watcher and end audit. Any failure permanently blocks this owner. Even a
 // successful return neither freezes/drains the source nor releases its fence.
 func (a *AuthorizedBackup) WithBackup(ctx context.Context, operation uuid.UUID, run func(context.Context, Access) error) (result error) {
-	return a.withBackup(ctx, operation, run, false,nil)
+	return a.withBackup(ctx, operation, run, false, nil)
 }
 
 // WithRead reuses the sole material/token owner and opens an object-read-only route.
-func (a *AuthorizedBackup) WithRead(ctx context.Context,session uuid.UUID,reader domain.GatewayReadBinding,run func(context.Context,Access) error) error {
- b:=a.authorization.binding
- if !reader.Valid() || reader.RepositoryID!=b.RepositoryID || reader.AdmissionID!=b.AdmissionID || reader.RuntimeID!=b.RuntimeID || reader.ConfigurationHash!=b.ConfigurationHash{return ErrAuthorization}
- return a.withBackup(ctx,session,run,false,&reader)
+func (a *AuthorizedBackup) WithRead(ctx context.Context, session uuid.UUID, reader domain.GatewayReadBinding, run func(context.Context, Access) error) error {
+	b := a.authorization.binding
+	if !reader.Valid() || reader.RepositoryID != b.RepositoryID || reader.AdmissionID != b.AdmissionID || reader.RuntimeID != b.RuntimeID || reader.ConfigurationHash != b.ConfigurationHash {
+		return ErrAuthorization
+	}
+	return a.withBackup(ctx, session, run, false, &reader)
 }
 
-func (a *AuthorizedBackup) withBackup(ctx context.Context, operation uuid.UUID, run func(context.Context, Access) error, probe bool,reader *domain.GatewayReadBinding) (result error) {
+func (a *AuthorizedBackup) withBackup(ctx context.Context, operation uuid.UUID, run func(context.Context, Access) error, probe bool, reader *domain.GatewayReadBinding) (result error) {
 	if operation.Version() != 7 || operation.Variant() != uuid.RFC4122 || run == nil || ctx.Err() != nil {
 		return ErrAuthorization
 	}
@@ -215,7 +217,7 @@ func (a *AuthorizedBackup) withBackup(ctx context.Context, operation uuid.UUID, 
 	a.material.Unlock()
 	defer clear(raw)
 	request := BackupRequest{Binding: Binding{HostID: b.HostID, RepositoryID: b.RepositoryID, GatewayID: b.GatewayID, OperationID: operation},
-		CredentialID: b.StorageCredentialID, Config: raw, Remote: a.remote,Reader:reader}
+		CredentialID: b.StorageCredentialID, Config: raw, Remote: a.remote, Reader: reader}
 	persist := func(ctx context.Context, next []byte) error {
 		a.material.Lock()
 		defer a.material.Unlock()

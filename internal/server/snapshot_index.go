@@ -39,22 +39,34 @@ func (c *ControlPlane) RunSnapshotIndexer(ctx context.Context, interval time.Dur
 }
 
 func (c *ControlPlane) indexReadyRepositories(ctx context.Context) error {
- after:=uuid.Nil
- for {
-  repositories,err:=c.Repositories(ctx,after,200);if err!=nil{return err}
-  for _,repository:=range repositories {
-   after=repository.ID
-   if repository.Status!="READY"{continue}
-   operationID,err:=uuid.NewV7();if err!=nil{return err}
-   id:=repository.ID
-   _,err=c.store.EnqueueSnapshotIndex(ctx,domain.Operation{ID:operationID,RepositoryID:&id},c.credentialConfigurationHash())
-   switch {
-   case err==nil,errors.Is(err,domain.ErrRepositoryBusy),errors.Is(err,domain.ErrRepositoryUnavailable),errors.Is(err,domain.ErrCredentialDisabled):continue
-   default:return err
-   }
-  }
-  if len(repositories)<200{return nil}
- }
+	after := uuid.Nil
+	for {
+		repositories, err := c.Repositories(ctx, after, 200)
+		if err != nil {
+			return err
+		}
+		for _, repository := range repositories {
+			after = repository.ID
+			if repository.Status != "READY" {
+				continue
+			}
+			operationID, err := uuid.NewV7()
+			if err != nil {
+				return err
+			}
+			id := repository.ID
+			_, err = c.store.EnqueueSnapshotIndex(ctx, domain.Operation{ID: operationID, RepositoryID: &id}, c.credentialConfigurationHash())
+			switch {
+			case err == nil, errors.Is(err, domain.ErrRepositoryBusy), errors.Is(err, domain.ErrRepositoryUnavailable), errors.Is(err, domain.ErrCredentialDisabled):
+				continue
+			default:
+				return err
+			}
+		}
+		if len(repositories) < 200 {
+			return nil
+		}
+	}
 }
 
 func resolveSnapshotPlan(tags []string) *uuid.UUID {

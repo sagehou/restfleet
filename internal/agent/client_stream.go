@@ -18,6 +18,8 @@ import (
 )
 
 func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, error) {
+	ctx,cancel:=context.WithCancel(ctx)
+	defer cancel()
 	identity, err := LoadIdentity(state)
 	if err != nil {
 		return false, err

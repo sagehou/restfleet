@@ -37,7 +37,7 @@ func (s *Service) observeRepositories() {
 				// still own cancellation; a probe cannot revive failed owners.
 				_ = s.supervisor.observeActiveBackend(work, r.config.Binding.RepositoryID)
 			} else if id, err := uuid.NewV7(); err == nil {
-				_ = r.owner.withBackup(work, id, func(context.Context, Access) error { return nil }, true,nil)
+				_ = r.owner.withBackup(work, id, func(context.Context, Access) error { return nil }, true, nil)
 			}
 			cancel()
 			s.mu.Lock()
