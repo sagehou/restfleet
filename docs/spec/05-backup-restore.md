@@ -143,6 +143,8 @@ Restic 的 JSON `error` 事件来自 stderr，Agent MUST 分别读取 stdout 的
 
 每次 retry 创建新 Operation，关联 parent/root operation；遵守 Plan deadline，避免下一计划窗口重叠。
 
+网络、Gateway 429/5xx 和 provider 限流 MUST 采用可信传输或 Gateway 的固定响应分类，MUST NOT 从任意 stderr 猜测。首次 POST 连接前的明确 dial 暂态失败可重试；请求可能已被接收时 MUST 先以原 ID 获得清理 204。后端只读 429、500/502/503/504 或网络故障 MAY 在清理响应中给出固定分类；权限拒绝、未知故障、写入/删除不确定及已提交 snapshot MUST 抑制提示。Agent 仅对 exit 1 且没有 summary/snapshot/源读取错误的失败采用该提示，不能把已有备份结果重跑。rclone 折叠的错误不声称能识别具体 provider 原因；旧 Gateway 无提示时保守失败。见 ADR-0042。
+
 `retry_policy` MUST 仅接受 `max_attempts`（0..10）、`initial_backoff_seconds`、`max_backoff_seconds`（0..86400）。0/省略分别采用 1 次、60s、1800s；initial MUST 不超过 maximum。指数退避 MUST 有上限；默认不启用自动重试。自动 retry MUST 持久化新 ID、parent/root、attempt、等待时刻和 deadline；等待期间保留同一 I/O 槽位与取消上下文，崩溃后 MUST 报告 LOST，不能静默重跑。配置变更/暂停或下一计划窗口到来 MUST 停止重试链。结果补报 MUST 先得到 parent 的持久 ACK 再补报 child，保持外键与顺序。
 
 ## 7. Snapshot 索引

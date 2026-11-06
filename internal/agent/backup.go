@@ -138,12 +138,14 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 	warnings := &backupWarningSink{}
 	var runResult restic.Result
 	var runErr error
+	started := false
 	sessionErr := e.State.WithGatewaySession(runCtx, operation, deadline, func(sessionCtx context.Context, endpoint string) error {
 		request.Repository = "rest:" + endpoint
 		args, err := restic.BackupArgs(request, prepared)
 		if err != nil {
 			return err
 		}
+		started = true
 		runResult, runErr = restic.Run{
 			Binary: e.Binary, Args: args, Env: restic.Env(request),
 			Stdout: progress, Stderr: warnings, KillGrace: e.KillGrace,
@@ -173,18 +175,21 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: "BACKUP_TIMED_OUT", ExitCode: runResult.ExitCode}
 	}
-	if errors.Is(runErr, restic.ErrCanceled) || errors.Is(sessionErr, context.Canceled) {
+	if ctx.Err() != nil || errors.Is(runErr, restic.ErrCanceled) || errors.Is(sessionErr, context.Canceled) {
 		return OperationOutcome{Status: OperationCanceled, ErrorCode: "CANCELED", ExitCode: runResult.ExitCode,
 			FilesDone: progress.files, TotalFiles: progress.totalFiles, BytesDone: progress.bytes,
 			TotalBytes: progress.totalBytes, FilesNew: progress.filesNew, DataAdded: progress.dataAdded}
 	}
+	if !started && gatewayFailureCode(sessionErr) != "" {
+		return OperationOutcome{Status: OperationFailed, ErrorCode: gatewayFailureCode(sessionErr)}
+	}
 	if sessionErr != nil && runErr == nil {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: "GATEWAY_SESSION_FAILED"}
 	}
-	return classify(runResult.ExitCode, progress.snapshotID, progress.sawSummary, progress)
+	return classify(runResult.ExitCode, progress.snapshotID, progress.sawSummary, progress, sessionErr)
 }
 
-func classify(exitCode int, snapshotID string, sawSummary bool, progress *progressSink) OperationOutcome {
+func classify(exitCode int, snapshotID string, sawSummary bool, progress *progressSink, sessionErr error) OperationOutcome {
 	outcome := OperationOutcome{ExitCode: exitCode, SnapshotID: snapshotID,
 		FilesDone: progress.files, TotalFiles: progress.totalFiles,
 		BytesDone: progress.bytes, TotalBytes: progress.totalBytes,
@@ -217,6 +222,9 @@ func classify(exitCode int, snapshotID string, sawSummary bool, progress *progre
 		outcome.Status, outcome.ErrorCode = OperationFailed, "REPOSITORY_MISSING"
 	case 1:
 		outcome.Status, outcome.ErrorCode = OperationFailed, "BACKUP_FAILED"
+		if !sawSummary && snapshotID == "" && progress.warnings == 0 && gatewayFailureCode(sessionErr) != "" {
+			outcome.ErrorCode = gatewayFailureCode(sessionErr)
+		}
 	default:
 		outcome.Status, outcome.ErrorCode = OperationFailed, "UNKNOWN_EXIT_CODE"
 	}

@@ -365,6 +365,8 @@ ACK 仅含 delivery_id/revision，MUST 精确匹配当前绑定、密钥引用�
 
 接口使用已有中心授权，不要求每次在线请求 Control API；Gateway 丢失/授权到期按 §15 暂停并保留身份/配置，不离线冷启动或复活失败 owner。
 
+`Restfleet-Backup-Retry` 是可选增量响应头，仅允许 `GATEWAY_UNAVAILABLE` / `GATEWAY_RATE_LIMITED`。POST 503/429 携带匹配值时 MUST 保证本请求未进入准入；DELETE 204 MAY 在全部请求、进程、材料与审计收尾后携带本会话的可信只读暂态故障。Agent MUST 拒绝未知值及不匹配状态组合，其他通信不确定 MUST 清理原 Operation；没有 204 MUST NOT 自动重跑。已执行的 Restic 只有 exit 1 且无 summary/snapshot/源读取错误时才可采用清理提示。此字段不证明备份结果、不恢复 owner、不释放 fence；兼容性及分类见 [ADR-0042](../adr/0042-verified-backup-retry-observations.md)。
+
 ## 14. Certificate Rotation
 
 - Agent 在证书剩余 7 天时生成新 CSR；

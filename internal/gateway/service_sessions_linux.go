@@ -25,6 +25,7 @@ type serviceBackup struct {
 	state, endpoint       string // Under Service.mu.
 	ready, done, finish   chan struct{}
 	finishOnce            sync.Once
+	retry                 *backupRetryObservation
 }
 
 type serviceBackupResponse struct {
@@ -124,6 +125,11 @@ func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			closed := backup.state == "CLOSED"
 			s.mu.Unlock()
 			if closed {
+				if !readOnly && backup.retry != nil {
+					if code := backup.retry.code(); code != "" {
+						w.Header().Set(backupRetryHeader, code)
+					}
+				}
 				w.WriteHeader(http.StatusNoContent)
 			} else {
 				http.Error(w, "gateway cleanup unavailable", http.StatusServiceUnavailable)
@@ -201,6 +207,9 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 	}
 	if s.stopping || s.ctx.Err() != nil || len(s.sessions) >= 4096 {
 		s.mu.Unlock()
+		if reader == nil {
+			w.Header().Set(backupRetryHeader, "GATEWAY_UNAVAILABLE")
+		}
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -216,6 +225,9 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 	id, err := uuid.NewV7()
 	if err != nil {
 		s.mu.Unlock()
+		if reader == nil {
+			w.Header().Set(backupRetryHeader, "GATEWAY_UNAVAILABLE")
+		}
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -244,6 +256,7 @@ func (s *Service) openSession(w http.ResponseWriter, r *http.Request, owner *ser
 		// authority are used; only the Gateway-generated session ID scopes locks.
 		run := func(work context.Context, access Access) error {
 			s.mu.Lock()
+			backup.retry = access.retry
 			backup.state, backup.endpoint = "ACTIVE", access.EndpointPath
 			s.mu.Unlock()
 			close(backup.ready)

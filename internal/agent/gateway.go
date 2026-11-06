@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +21,8 @@ import (
 var ErrGatewaySession = errors.New("gateway backup session unavailable")
 var ErrGatewayCleanup = errors.New("gateway backup session cleanup unconfirmed")
 var ErrGatewayBusy = errors.New("gateway backup session admission busy")
+var ErrGatewayUnavailable = errors.New("gateway temporarily unavailable")
+var ErrGatewayRateLimited = errors.New("gateway temporarily rate limited")
 
 type gatewaySessionResponse struct {
 	SessionID    uuid.UUID `json:"session_id"`
@@ -68,6 +71,12 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 	basePath := "/restic/" + credential.GatewayID.String() + "/" + credential.RepositoryID.String() + "/"
 	origin := strings.TrimSuffix(credential.Endpoint, basePath)
 	control := origin + "/gateway/v1/repositories/" + credential.RepositoryID.String() + "/backup-sessions/" + operation.String()
+	return withGatewayClientSession(ctx, client, control, origin, basePath, deadline, run)
+}
+
+func withGatewayClientSession(ctx context.Context, client *http.Client, control, origin, basePath string, deadline time.Time,
+	run func(context.Context, string) error,
+) (result error) {
 	body, err := json.Marshal(struct {
 		Deadline time.Time `json:"deadline"`
 	}{deadline.UTC()})
@@ -81,6 +90,7 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 	request.Header.Set("Content-Type", "application/json")
 	retryUntil := time.Now().Add(30 * time.Second)
 	cleanupRequired := false
+	executed := false
 	// Also clean up an ambiguously accepted POST. A lost response cannot grant
 	// permission to start another session with a different operation ID.
 	defer func() {
@@ -102,16 +112,38 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 		_ = response.Body.Close()
 		if response.StatusCode != http.StatusNoContent {
 			result = ErrGatewayCleanup
+		} else if executed && errors.Is(result, ErrGatewaySession) {
+			if hint := gatewayRetryHint(response); hint != nil {
+				result = hint
+			}
 		}
 	}()
 	for {
 		cleanupRequired = true
 		response, err := client.Do(request)
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if transientGatewayNetwork(err) {
+				var dial *net.OpError
+				if request.Method == http.MethodPost && errors.As(err, &dial) && dial.Op == "dial" {
+					cleanupRequired = false // No connection, so no request could be accepted.
+				}
+				return ErrGatewayUnavailable
+			}
 			return ErrGatewaySession
 		}
 		raw, readErr := io.ReadAll(io.LimitReader(response.Body, 4097))
 		_ = response.Body.Close()
+		if readErr == nil && len(raw) <= 4096 {
+			if failure := gatewayStatusFailure(response.StatusCode); failure != nil {
+				if request.Method == http.MethodPost && (response.StatusCode == http.StatusServiceUnavailable || response.StatusCode == http.StatusTooManyRequests) && gatewayRetryHint(response) == failure {
+					cleanupRequired = false
+				}
+				return failure
+			}
+		}
 		if request.Method == http.MethodPost && response.StatusCode == http.StatusConflict && response.Header.Get("Retry-After") == "1" {
 			// Only this response proves no session was consumed. Other conflicts
 			// and ambiguous responses retain cleanup and are never retried here.
@@ -144,6 +176,7 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 			}
 			work, cancel := context.WithDeadline(ctx, session.ExpiresAt)
 			defer cancel()
+			executed = true
 			if run(work, origin+session.EndpointPath) != nil || work.Err() != nil {
 				return ErrGatewaySession
 			}
@@ -165,4 +198,51 @@ func (s *State) WithGatewaySession(ctx context.Context, operation uuid.UUID, dea
 			return ErrGatewaySession
 		}
 	}
+}
+
+func gatewayStatusFailure(status int) error {
+	switch status {
+	case http.StatusTooManyRequests:
+		return ErrGatewayRateLimited
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return ErrGatewayUnavailable
+	}
+	return nil
+}
+
+func gatewayRetryHint(response *http.Response) error {
+	values := response.Header.Values("Restfleet-Backup-Retry")
+	if len(values) == 1 {
+		switch values[0] {
+		case "GATEWAY_UNAVAILABLE":
+			return ErrGatewayUnavailable
+		case "GATEWAY_RATE_LIMITED":
+			return ErrGatewayRateLimited
+		}
+	}
+	return nil
+}
+
+func transientGatewayNetwork(err error) bool {
+	for _, code := range []syscall.Errno{syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.ENETUNREACH, syscall.EHOSTUNREACH, syscall.ETIMEDOUT, syscall.EPIPE} {
+		if errors.Is(err, code) {
+			return true
+		}
+	}
+	var network net.Error
+	if errors.As(err, &network) && network.Timeout() {
+		return true
+	}
+	var dns *net.DNSError
+	return errors.As(err, &dns) && dns.IsTemporary
+}
+
+func gatewayFailureCode(err error) string {
+	if errors.Is(err, ErrGatewayUnavailable) {
+		return "GATEWAY_UNAVAILABLE"
+	}
+	if errors.Is(err, ErrGatewayRateLimited) {
+		return "GATEWAY_RATE_LIMITED"
+	}
+	return ""
 }

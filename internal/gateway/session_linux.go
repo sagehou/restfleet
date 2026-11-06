@@ -64,6 +64,7 @@ type BackupSession struct {
 	requests  chan struct{}
 	writes    chan struct{}
 	locks     map[string]bool // Under writes: false means consumed or ambiguous.
+	retry     backupRetryObservation
 }
 
 // NewBackupSession requires a live, deadline-bound authorization and a private
@@ -296,6 +297,7 @@ func (s *BackupSession) objectPath(r *http.Request) (string, bool) {
 
 func (s *BackupSession) request(ctx context.Context, method, path string, body []byte, headers http.Header) (*http.Response, error) {
 	if s.guard != nil && !s.guard() {
+		s.retry.flags.Or(retryUnsafe)
 		return nil, ErrAuthorization
 	}
 	u := &url.URL{Scheme: "http", Host: "gateway-backend.invalid", Path: "/" + path}
@@ -310,7 +312,12 @@ func (s *BackupSession) request(ctx context.Context, method, path string, body [
 	if method == http.MethodGet && headers.Get("Range") != "" {
 		r.Header.Set("Range", headers.Get("Range"))
 	}
-	return s.transport.RoundTrip(r)
+	if method == http.MethodPost && strings.HasPrefix(path, "snapshots/") {
+		s.retry.flags.Or(retryUnsafe) // A committed or uncertain snapshot must never be repeated.
+	}
+	response, err := s.transport.RoundTrip(r)
+	s.retry.observe(ctx, method, response, err)
+	return response, err
 }
 
 func (s *BackupSession) read(w http.ResponseWriter, r *http.Request, path string) {
@@ -324,6 +331,9 @@ func (s *BackupSession) read(w http.ResponseWriter, r *http.Request, path string
 		// Restic treats ordinary list 404 as empty. Backend list errors must not
 		// hide locks or snapshots, even when rclone misclassifies the failure.
 		if strings.HasSuffix(path, "/") {
+			if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+				s.retry.flags.Or(retryUnsafe)
+			}
 			resp.StatusCode = http.StatusBadGateway
 		}
 		s.backendFailure(w, resp.StatusCode)
@@ -342,6 +352,7 @@ func (s *BackupSession) read(w http.ResponseWriter, r *http.Request, path string
 	w.WriteHeader(resp.StatusCode)
 	if r.Method != http.MethodHead {
 		if _, err := io.Copy(w, resp.Body); err != nil {
+			s.retry.flags.Or(retryUnsafe)
 			panic(http.ErrAbortHandler) // Never turn a truncated list/object into success.
 		}
 	}
@@ -437,6 +448,11 @@ func (s *BackupSession) record(authenticated bool, action, reason string) bool {
 }
 
 func (s *BackupSession) deny(w http.ResponseWriter, r *http.Request, authenticated bool, reason string, status int) {
+	if authenticated && reason == "request_limit" {
+		s.retry.flags.Or(retryRateLimited)
+	} else {
+		s.retry.flags.Or(retryUnsafe)
+	}
 	if !s.record(authenticated, "denied", reason) {
 		http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		return

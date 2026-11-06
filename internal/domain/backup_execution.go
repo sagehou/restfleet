@@ -5,7 +5,7 @@ import "github.com/google/uuid"
 const BackupExecutionCapability = "backup_execution_v1"
 
 func RetryableBackupError(code string) bool {
-	return code == "REPOSITORY_LOCKED" || code == "GATEWAY_BUSY"
+	return code == "REPOSITORY_LOCKED" || code == "GATEWAY_BUSY" || code == "GATEWAY_UNAVAILABLE" || code == "GATEWAY_RATE_LIMITED"
 }
 
 // Zero values retain the V1 defaults; configured values are bounded at both

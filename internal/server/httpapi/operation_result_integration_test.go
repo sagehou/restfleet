@@ -165,6 +165,28 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 			t.Fatalf("forged retry chain accepted: %v", err)
 		}
 	}
+	for _, code := range []string{"GATEWAY_UNAVAILABLE", "GATEWAY_RATE_LIMITED", "GATEWAY_CLEANUP_UNCONFIRMED", "GATEWAY_SESSION_FAILED"} {
+		parent := parentResult
+		parent.OperationID, parent.ErrorCode, parent.ExitCode = uuid.Must(uuid.NewV7()), code, 1
+		if err := store.UpsertOperationResult(ctx, parent); err != nil {
+			t.Fatal(err)
+		}
+		child := childResult
+		child.OperationID = uuid.Must(uuid.NewV7())
+		child.ParentOperationID, child.RootOperationID = &parent.OperationID, &parent.OperationID
+		err := store.UpsertOperationResult(ctx, child)
+		if domain.RetryableBackupError(code) {
+			if err != nil {
+				t.Fatalf("verified transient retry was rejected: %s %v", code, err)
+			}
+		} else if !errors.Is(err, domain.ErrPlanBindingInvalid) {
+			t.Fatalf("uncertain Gateway failure gained retry permission: %s %v", code, err)
+		}
+		entry := domain.BackupLogEntry{Sequence: 1, ObservedAt: now, Section: "backup", Level: "ERROR", Code: code}
+		if ack, err := store.AppendOperationLogs(ctx, enrolled.AgentId, parent.OperationID, []domain.BackupLogEntry{entry}); err != nil || ack != 1 {
+			t.Fatalf("fixed Gateway classification could not be reported: %s %v", code, err)
+		}
+	}
 	progressID := uuid.Must(uuid.NewV7())
 	progress := domain.BackupOperationProgress{OperationID: progressID, PlanID: planID, AgentID: enrolled.AgentId,
 		PlanRevision: 1, ScheduledAt: now, ObservedAt: now, Sequence: 2, Stage: "backup", FilesDone: 8}

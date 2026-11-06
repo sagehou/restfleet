@@ -46,6 +46,7 @@ type Access struct {
 	EndpointPath string
 	Username     string
 	Password     []byte
+	retry        *backupRetryObservation // Fixed metadata only; readable after all work joins.
 }
 
 type activeBackup struct {
@@ -273,7 +274,7 @@ func (s *Supervisor) withBackend(ctx context.Context, entry *activeBackup, remot
 	}
 	entry.session = session
 	s.mu.Unlock()
-	err = run(backendCtx, Access{EndpointPath: session.prefix, Username: entry.binding.GatewayID.String(), Password: password})
+	err = run(backendCtx, Access{EndpointPath: session.prefix, Username: entry.binding.GatewayID.String(), Password: password, retry: &session.retry})
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

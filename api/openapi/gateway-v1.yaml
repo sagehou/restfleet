@@ -88,6 +88,20 @@ paths:
                 enum: ["1"]
         "503":
           description: Gateway 或容量不可用
+          headers:
+            Restfleet-Backup-Retry:
+              description: 仅本请求未创建或接受会话时返回；缺失时不能推断清理完成。未知值不得触发自动重试。
+              schema:
+                type: string
+                enum: [GATEWAY_UNAVAILABLE]
+        "429":
+          description: 请求在会话准入前被限流
+          headers:
+            Restfleet-Backup-Retry:
+              description: 仅本请求未进入会话准入时返回；按 Plan 策略创建新 Operation，不延长原 deadline。
+              schema:
+                type: string
+                enum: [GATEWAY_RATE_LIMITED]
     get:
       operationId: getGatewayBackupSession
       responses:
@@ -109,6 +123,12 @@ paths:
       responses:
         "204":
           description: 会话已清理；原 ID 不能再次打开
+          headers:
+            Restfleet-Backup-Retry:
+              description: 可选的固定故障分类，仅在请求、进程和材料已 join 后返回。只读后端请求的网络/500/502/503/504 或 429 可分类；权限拒绝、未知故障、写入/删除不确定及已提交 snapshot 会抑制此字段。不能据此认定备份失败或释放 fence。
+              schema:
+                type: string
+                enum: [GATEWAY_UNAVAILABLE, GATEWAY_RATE_LIMITED]
         "403":
           description: 无权访问
         "404":

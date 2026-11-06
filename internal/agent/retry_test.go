@@ -47,7 +47,13 @@ func TestRetryCreatesNewDurableIdentityAndRespectsWindow(t *testing.T) {
 	if err != nil || len(afterAck) != 1 || afterAck[0].ID != child.ID {
 		t.Fatalf("child not released by parent ACK: %+v %v", afterAck, err)
 	}
-	for _, code := range []string{"WRONG_REPOSITORY_PASSWORD", "CONFIG_INVALID", "GATEWAY_CLEANUP_UNCONFIRMED", "INVALID_ENGINE_OUTPUT"} {
+	for _, code := range []string{"GATEWAY_UNAVAILABLE", "GATEWAY_RATE_LIMITED"} {
+		failed.ID, failed.ErrorCode = uuid.Must(uuid.NewV7()), code
+		if next, err := state.finishWithRetry(plan, failed, deadline, true); err != nil || next == nil || next.ParentOperationID != failed.ID || next.Attempt != 2 || !next.Deadline.Equal(deadline) {
+			t.Fatalf("verified transient failure lost durable retry: %s %+v %v", code, next, err)
+		}
+	}
+	for _, code := range []string{"WRONG_REPOSITORY_PASSWORD", "CONFIG_INVALID", "GATEWAY_CLEANUP_UNCONFIRMED", "GATEWAY_SESSION_FAILED", "INVALID_ENGINE_OUTPUT", "HTTP_429", "provider-secret-canary"} {
 		failed.ErrorCode = code
 		if next, err := state.finishWithRetry(plan, failed, deadline, true); err != nil || next != nil {
 			t.Fatalf("permanent/uncertain failure retried: %s %v", code, err)

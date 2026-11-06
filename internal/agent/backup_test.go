@@ -22,9 +22,39 @@ func TestBackupResultClassification(t *testing.T) {
 		{12, false, "", OperationFailed, "WRONG_REPOSITORY_PASSWORD"},
 		{99, true, strings.Repeat("a", 64), OperationFailed, "UNKNOWN_EXIT_CODE"},
 	} {
-		got := classify(test.exit, test.snapshot, test.summary, &progressSink{})
+		got := classify(test.exit, test.snapshot, test.summary, &progressSink{}, nil)
 		if got.Status != test.status || got.ErrorCode != test.code {
 			t.Fatalf("exit %d summary %v: %+v", test.exit, test.summary, got)
+		}
+	}
+}
+
+func TestGatewayRetryHintCannotRepeatKnownBackupResult(t *testing.T) {
+	for _, hint := range []error{ErrGatewayUnavailable, ErrGatewayRateLimited} {
+		if got := classify(1, "", false, &progressSink{warnings: 1}, hint); got.ErrorCode != "BACKUP_FAILED" {
+			t.Fatal("known source read error became a transient Gateway failure")
+		}
+		for _, test := range []struct {
+			exit int
+			summary bool
+			snapshot, status, code string
+		}{
+			{1, false, "", OperationFailed, gatewayFailureCode(hint)},
+			{1, true, strings.Repeat("a", 64), OperationFailed, "BACKUP_FAILED"},
+			{1, false, strings.Repeat("a", 64), OperationFailed, "BACKUP_FAILED"},
+			{0, true, strings.Repeat("a", 64), OperationSucceeded, ""},
+			{0, true, "", OperationSucceeded, ""},
+			{3, true, strings.Repeat("a", 64), OperationSucceededWarnings, "PARTIAL_READ"},
+			{10, false, "", OperationFailed, "REPOSITORY_MISSING"},
+			{11, false, "", OperationFailed, "REPOSITORY_LOCKED"},
+			{12, false, "", OperationFailed, "WRONG_REPOSITORY_PASSWORD"},
+			{130, false, "", OperationCanceled, "CANCELED"},
+			{99, false, "", OperationFailed, "UNKNOWN_EXIT_CODE"},
+		} {
+			got := classify(test.exit, test.snapshot, test.summary, &progressSink{}, hint)
+			if got.Status != test.status || got.ErrorCode != test.code {
+				t.Fatalf("hint %v exit %d summary %v: %+v", hint, test.exit, test.summary, got)
+			}
 		}
 	}
 }

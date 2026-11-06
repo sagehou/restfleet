@@ -157,6 +157,14 @@ func TestGatewayBackendChild(t *testing.T) {
 			return
 		}
 		if r.URL.Path == "/config" {
+			if failure, err := os.ReadFile(filepath.Join(state, "read-failure-"+parts[1])); err == nil {
+				status, err := strconv.Atoi(string(failure))
+				if err != nil || status < 400 || status > 599 {
+					fail()
+				}
+				http.Error(w, "provider-error-canary", status)
+				return
+			}
 			_, _ = fmt.Fprint(w, "fixture:"+parts[1])
 			return
 		}

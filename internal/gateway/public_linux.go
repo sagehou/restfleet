@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -170,6 +171,9 @@ func (p *PublicServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if report && !p.supervisor.record(r.Context(), Binding{}, "denied", "rate_limited") {
 			http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 			return
+		}
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/gateway/v1/repositories/") && strings.Contains(r.URL.Path, "/backup-sessions/") {
+			w.Header().Set(backupRetryHeader, "GATEWAY_RATE_LIMITED")
 		}
 		http.Error(w, "gateway request limited", http.StatusTooManyRequests)
 		return
