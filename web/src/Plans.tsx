@@ -19,7 +19,7 @@ const statusLabels: Record<Plan['status'], string> = {
   DRAFT: '草稿', PENDING_APPLY: '待应用', ACTIVE: '已启用', PAUSED: '已暂停', INVALID: '配置无效', ARCHIVED: '已归档',
 }
 const healthLabels: Record<Plan['backup_health'], string> = {
-  UNKNOWN: '未知', HEALTHY: '健康', OVERDUE: '已逾期', FAILED: '失败', NEVER_RUN: '从未运行', PAUSED: '已暂停',
+  UNKNOWN: '未知', HEALTHY: '健康', WARNING: '有告警', OVERDUE: '已逾期', FAILED: '失败', NEVER_RUN: '从未运行', PAUSED: '已暂停',
 }
 
 export function Plans({ hosts, canManage, onUnauthorized }: Props) {
@@ -143,6 +143,16 @@ export function Plans({ hosts, canManage, onUnauthorized }: Props) {
     setLoading(true)
     setMessage('')
     void load()
+    if (selected) {
+      setBusy(true)
+      void requestJSON<Plan>(`${endpoint}/${selected.id}`)
+        .then((updated) => {
+          setSelected((current) => current?.id === updated.id ? updated : current)
+          setItems((current) => current.map((plan) => plan.id === updated.id ? updated : plan))
+        })
+        .catch(handleError)
+        .finally(() => setBusy(false))
+    }
   }
 
   const hostName = (id: string) => hosts.find((host) => host.id === id)?.display_name ?? id

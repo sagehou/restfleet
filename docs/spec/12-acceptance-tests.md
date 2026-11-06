@@ -306,7 +306,7 @@ ADR-0034 对 REP-052/053、REP-059/060 增加生产终结流程要求：普通�
 | API-003 | P1 | 旧 If-Match 更新 Plan；412，当前配置不被覆盖。 |
 | API-004 | P1 | 10k snapshots cursor pagination；无重复/遗漏（固定 snapshot view）。 |
 | API-005 | P0 | Problem response；无 subprocess command、backend path credential 或 secret。 |
-| API-006 | P1 | SSE 断线重连；从 event ID 恢复，无状态倒退。 |
+| API-006 | P1 | 状态查询断线重连；按 Operation ID 和日志 cursor 恢复当前完整状态，分页不丢失已打开任务，无状态倒退（ADR-0043；SSE 为可选扩展）。 |
 
 ## 13. Restart 与灾备
 

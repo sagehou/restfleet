@@ -96,8 +96,8 @@ Agent 只依赖自身二进制与可执行的 Restic。Native 安装推荐由 sy
 ### 5.1 计划下发
 
 1. 管理员修改 Plan；
-2. Server 在事务中写入新 revision、AuditEvent 与 OutboxEvent；
-3. Reconciler 生成 Host 的完整 DesiredState；
+2. Server MUST 在同一事务写入 Plan 变更、适用的新 revision、AuditEvent、完整 DesiredState 与 OutboxEvent；
+3. Dispatcher 根据持久 OutboxEvent 通知 Agent，进程中断 MUST NOT 丢失下发意图；
 4. 在线 Agent 收到 revision，验证后原子保存；
 5. Agent 回 `ConfigAccepted` 或结构化 `ConfigRejected`；
 6. Server 记录 accepted revision，不把“已发送”当作“已生效”。

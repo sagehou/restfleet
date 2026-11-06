@@ -218,6 +218,8 @@ Agent 处理步骤：
 
 若失败，保留 last-known-good，不部分应用，并返回 `ConfigRejected{revision,error_code,field_path}`。Server 显示 Pending/Rejected，不把 desired revision 当 active。
 
+Agent MUST 在每次 Welcome 后重报本地当前已接受配置的 revision/hash，随后补报尚未发送的拒绝结果；中心 MUST 根据对应持久快照幂等更新 Agent 与 Plan 的接受状态。传输发送成功不等于中心提交，Hello/heartbeat 的 revision 不能代替该核验。API、Agent 激活与执行 MUST 使用一致的 paths/exclude 校验，非法快照 MUST 在替换 last-known-good 前拒绝。
+
 ## 8. 本地调度
 
 每个 Plan 包含：
@@ -238,6 +240,7 @@ retry_policy
 - Agent 计算并持久化 `next_run_at`；
 - jitter 基于 `(plan_id, scheduled_at)` 的稳定 hash，重启不改变；
 - 在 misfire grace 内重启可执行一次补偿；超过 grace 跳过并上报 MISSED；
+- 健康循环跨越计划时刻时，MAY 容忍一个配置轮询周期加 1s 的唤醒误差；`misfire_grace_seconds=0` 只禁止停机或超出正常唤醒误差后的补跑，MUST NOT 跳过正常调度。此观察状态不跨进程重启继承；
 - 同一 scheduled time 只生成一个 deterministic local operation key；该 key 是 UUIDv5（ADR-0037），Server 与 Gateway 的 `operation_id` 校验 MUST 接受规范 UUIDv5 或 UUIDv7；
 - `FORBID` 时前一 backup 仍运行则跳过并上报 CONCURRENCY_SKIPPED；
 - 暂停 Plan 不取消已经 RUNNING 的 Operation，除非另行发送 cancel。
@@ -266,6 +269,7 @@ Agent 必须：
 - deadline 已过时不执行；
 - config hash 不匹配且 job 依赖 Plan 时拒绝；
 - 接受后先持久化，再回 ACK；
+- 本地持久准入后 MUST 注册执行者，再发送 ACK；ACK 发送失败 MUST NOT 留下无执行者的 RUNNING。手动作业 MUST 使用 Agent 服务生命周期；控制连接断线或续证 MUST NOT 隐式取消，用户 cancel、deadline 与 Agent 关闭仍有效；
 - 运行前检查本地资源/并发锁。
 
 Delivery 是 at-least-once。不得假设单次消息只到达一次。

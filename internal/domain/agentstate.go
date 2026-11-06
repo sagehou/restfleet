@@ -234,6 +234,13 @@ func (p PlanSchedule) Validate() error {
 	if validateTimezone(p.Timezone) != nil {
 		return &DesiredStateError{Code: "PLAN_TIMEZONE_INVALID", FieldPath: "plans.timezone"}
 	}
+	if err := ValidateBackupPaths(p.Paths, p.ExcludePatterns); err != nil {
+		var pathError *TemplateError
+		if errors.As(err, &pathError) {
+			return &DesiredStateError{Code: "PLAN_PATHS_INVALID", FieldPath: "plans." + pathError.Field}
+		}
+		return &DesiredStateError{Code: "PLAN_PATHS_INVALID", FieldPath: "plans.paths"}
+	}
 	if p.Execution.Validate() != nil {
 		return &DesiredStateError{Code: "PLAN_EXECUTION_INVALID", FieldPath: "plans.execution"}
 	}

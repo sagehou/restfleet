@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata" // Keep IANA zones available in static binaries and scratch images.
 	"unicode"
 
 	"github.com/google/uuid"
@@ -79,19 +80,8 @@ func (t Template) Archived() bool { return t.ArchivedAt != nil }
 // Validate checks one revision body before persistence. It rejects fields the
 // Agent could not schedule deterministically instead of accepting them softly.
 func (c TemplateConfig) Validate() error {
-	if len(c.Paths) == 0 {
-		return &TemplateError{Field: "paths", Code: "REQUIRED"}
-	}
-	for i, path := range c.Paths {
-		if strings.TrimSpace(path) == "" || len(path) > 4096 || !filepath.IsAbs(path) ||
-			filepath.Clean(path) != path || strings.IndexFunc(path, unicode.IsControl) >= 0 {
-			return &TemplateError{Field: fmt.Sprintf("paths.%d", i), Code: "INVALID"}
-		}
-	}
-	for i, pattern := range c.ExcludePatterns {
-		if len(pattern) > 4096 || strings.IndexFunc(pattern, unicode.IsControl) >= 0 {
-			return &TemplateError{Field: fmt.Sprintf("exclude_patterns.%d", i), Code: "INVALID"}
-		}
+	if err := ValidateBackupPaths(c.Paths, c.ExcludePatterns); err != nil {
+		return err
 	}
 	if err := validateCron(c.ScheduleCron); err != nil {
 		return &TemplateError{Field: "schedule_cron", Code: "INVALID"}
@@ -112,6 +102,25 @@ func (c TemplateConfig) Validate() error {
 		return &TemplateError{Field: "retention_policy_id", Code: "INVALID"}
 	}
 	return c.BackupExecution().Validate()
+}
+
+// ValidateBackupPaths is shared by API config, Agent activation and execution.
+func ValidateBackupPaths(paths, excludes []string) error {
+	if len(paths) == 0 {
+		return &TemplateError{Field: "paths", Code: "REQUIRED"}
+	}
+	for i, path := range paths {
+		if strings.TrimSpace(path) == "" || len(path) > 4096 || !filepath.IsAbs(path) ||
+			filepath.Clean(path) != path || strings.IndexFunc(path, unicode.IsControl) >= 0 {
+			return &TemplateError{Field: fmt.Sprintf("paths.%d", i), Code: "INVALID"}
+		}
+	}
+	for i, pattern := range excludes {
+		if len(pattern) > 4096 || strings.IndexFunc(pattern, unicode.IsControl) >= 0 {
+			return &TemplateError{Field: fmt.Sprintf("exclude_patterns.%d", i), Code: "INVALID"}
+		}
+	}
+	return nil
 }
 
 func duplicateUUID(values []uuid.UUID) bool {

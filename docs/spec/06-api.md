@@ -296,20 +296,13 @@ Plan create/update 返回 normalized effective config、warnings 与 status。Se
 GET   /api/v1/backup-operations
 GET   /api/v1/backup-operations/{operation_id}
 GET   /api/v1/backup-operations/{operation_id}/logs
-GET   /api/v1/backup-operations/{operation_id}/events
 POST  /api/v1/backup-operations/{operation_id}/cancel
 POST  /api/v1/backup-operations/{operation_id}/retry
 ```
 
 Filter：type、status、host_id、repo_id、plan_id、created_after/before。
 
-Logs：cursor + stream filter，返回 redacted chunks。可选 SSE endpoint：
-
-```http
-GET /api/v1/backup-operations/{id}/stream
-```
-
-SSE 只传 progress/status/redacted log，不传 secret。断线用 event ID 恢复。
+V1 MUST 通过按 Operation ID 查询完整当前状态及日志 cursor 轮询恢复进度；列表分页刷新 MUST NOT 导致已打开任务停止更新或状态倒退。Logs 返回固定字段的 redacted chunks。SSE MAY 后续增量扩展，扩展时 MUST 定义 event ID 恢复且不能传输 secret；当前验收按 ADR-0043 的完整状态轮询执行。
 
 Cancel 对终态 Operation 返回 409 `OPERATION_ALREADY_TERMINAL`。Retry 创建新 Operation，响应含新 ID。
 

@@ -18,6 +18,7 @@ import (
 )
 
 func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, error) {
+	operationCtx := ctx
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	identity, err := LoadIdentity(state)
@@ -90,11 +91,21 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 	resultAck := slices.Contains(welcome.GetServerCapabilities(), domain.JobResultAckCapability)
 	logAck := slices.Contains(welcome.GetServerCapabilities(), domain.BackupLogsCapability)
 
+	// Send success is not a durable Server ACK; replay the active config on reconnect.
+	if active, ok, err := state.ActiveDesiredState(); err != nil {
+		return true, err
+	} else if ok {
+		if err := sendConfigResult(stream, &agentSequence, protocol, acceptedConfigResult(active)); err != nil {
+			return true, err
+		}
+	}
 	if pending, ok, err := state.PendingConfigResult(); err != nil {
 		return true, err
 	} else if ok {
-		if err := sendConfigResult(stream, &agentSequence, protocol, pending); err != nil {
-			return true, err
+		if !pending.Accepted || pending.Revision != acceptedRevision {
+			if err := sendConfigResult(stream, &agentSequence, protocol, pending); err != nil {
+				return true, err
+			}
 		}
 		if err := state.ClearPendingConfigResult(pending.Revision); err != nil {
 			return true, err
@@ -202,7 +213,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 					return true, err
 				}
 			case message.GetJobDispatch() != nil:
-				if err := handleJobDispatch(ctx, stream, state, config, message.GetJobDispatch(), &agentSequence, protocol); err != nil {
+				if err := handleJobDispatch(operationCtx, stream, state, config, message.GetJobDispatch(), &agentSequence, protocol); err != nil {
 					return true, err
 				}
 			case message.GetJobCancel() != nil:
@@ -485,18 +496,16 @@ func handleJobDispatch(ctx context.Context, stream agentv1.AgentControlService_C
 	if err := state.PutOperation(record); err != nil {
 		return reject("PERSIST_FAILED")
 	}
-	if err := sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
-		Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
-			JobId: job.GetJobId(), OperationId: job.GetOperationId(),
-		}},
-	}); err != nil {
-		return err
-	}
 	binary := config.ResticBinary
 	if binary == "" {
 		binary = "restic"
 	}
 	executor := BackupExecutor{State: state, Binary: binary}
+	// Register the worker before sending: a failed ACK must not strand RUNNING.
 	state.executeOperation(ctx, executor, plan, record, deadline, nil)
-	return nil
+	return sendAgentMessage(stream, sequence, protocol, &agentv1.AgentToServer{
+		Payload: &agentv1.AgentToServer_JobAccepted{JobAccepted: &agentv1.JobAccepted{
+			JobId: job.GetJobId(), OperationId: job.GetOperationId(),
+		}},
+	})
 }

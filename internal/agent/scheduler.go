@@ -42,6 +42,9 @@ func (s *State) RunLocalScheduler(ctx context.Context, interval time.Duration, e
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
+	s.schedulerMu.Lock()
+	s.schedulerTickAt, s.schedulerInterval = time.Now().UTC(), interval
+	s.schedulerMu.Unlock()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -78,6 +81,7 @@ func (s *State) tickScheduler(ctx context.Context, executor PlanExecutor, onErro
 		runningByPlan[record.PlanID] = true
 	}
 	now := time.Now().UTC()
+	defer func() { s.schedulerTickAt = now }()
 	var firstErr error
 	for _, plan := range desired.Plans {
 		// Manual dispatch shares schedulerMu and persists RUNNING before its
@@ -141,7 +145,10 @@ func (s *State) advancePlan(ctx context.Context, plan domain.PlanSchedule, now t
 		// The slot was already recorded; only advance the runtime.
 		return s.PutPlanRuntime(runtime)
 	}
-	if schedule.DecideMisfire(now, scheduled, plan.MisfireGraceSeconds) == schedule.ReportMissed {
+	// An ordinary poll may wake just after a slot even when catch-up is disabled.
+	normalWakeup := !s.schedulerTickAt.IsZero() && !scheduled.Before(s.schedulerTickAt) &&
+		now.Sub(s.schedulerTickAt) <= s.schedulerInterval+time.Second
+	if !normalWakeup && schedule.DecideMisfire(now, scheduled, plan.MisfireGraceSeconds) == schedule.ReportMissed {
 		return s.PutOperationWithRuntime(OperationRecord{ID: operationID, PlanID: plan.PlanID, PlanRevision: plan.Revision,
 			ConfigHash: plan.ConfigHash, ScheduledAt: scheduled, FinishedAt: now,
 			Status: OperationMissed, ErrorCode: "MISFIRE_GRACE_EXCEEDED"}, runtime)

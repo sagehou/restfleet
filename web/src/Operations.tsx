@@ -103,12 +103,35 @@ export function Operations({ canManage, onUnauthorized }: Props) {
     }
   }, [handleError, actionKey])
 
-  // Refresh while anything is running or cancellation is pending.
+  const activeIDs = [...new Set([
+    ...items.filter((item) => !terminal(item.status)).map((item) => item.id),
+    ...(selected && !terminal(selected.status) ? [selected.id] : []),
+  ])].join(',')
+
+  // Poll resources by ID so refreshing cannot discard loaded pages or details.
   useEffect(() => {
-    if (!items.some((item) => item.status === 'QUEUED' || item.status === 'RUNNING' || item.status === 'CANCEL_REQUESTED')) return
-    const timer = setInterval(() => { void load() }, 5000)
-    return () => clearInterval(timer)
-  }, [items, load])
+    if (!activeIDs) return
+    const controller = new AbortController()
+    let pending = false
+    const refresh = async () => {
+      if (pending) return
+      pending = true
+      try {
+        const updated = await Promise.all(activeIDs.split(',').map((id) =>
+          requestJSON<BackupOperation>(`${endpoint}/${id}`, { signal: controller.signal })))
+        if (controller.signal.aborted) return
+        const byID = new Map(updated.map((item) => [item.id, item]))
+        setItems((current) => current.map((item) => byID.get(item.id) ?? item))
+        setSelected((current) => current ? byID.get(current.id) ?? current : null)
+      } catch (error) {
+        if (!controller.signal.aborted) handleError(error)
+      } finally {
+        pending = false
+      }
+    }
+    const timer = setInterval(() => { void refresh() }, 5000)
+    return () => { controller.abort(); clearInterval(timer) }
+  }, [activeIDs, handleError])
 
   return (
     <section>

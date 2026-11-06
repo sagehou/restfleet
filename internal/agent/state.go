@@ -20,15 +20,17 @@ const (
 )
 
 type State struct {
-	directory    string
-	db           *bolt.DB
-	credentialMu sync.Mutex
-	schedulerMu  sync.Mutex
-	workers      sync.WaitGroup
-	runMu        sync.Mutex
-	running      map[uuid.UUID]context.CancelFunc
-	canceled     map[uuid.UUID]struct{}
-	hooks        map[uuid.UUID]LocalHook
+	directory         string
+	db                *bolt.DB
+	credentialMu      sync.Mutex
+	schedulerMu       sync.Mutex
+	schedulerTickAt   time.Time
+	schedulerInterval time.Duration
+	workers           sync.WaitGroup
+	runMu             sync.Mutex
+	running           map[uuid.UUID]context.CancelFunc
+	canceled          map[uuid.UUID]struct{}
+	hooks             map[uuid.UUID]LocalHook
 }
 
 func OpenState(directory string) (*State, error) {

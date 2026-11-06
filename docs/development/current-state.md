@@ -8,7 +8,7 @@
 
 ## 已合入基线与分支实现
 
-`main` 的本轮核对基线为 `1700198`（#117，最近功能 #116），schema 27。原配置、调度、取消、崩溃对账、基础健康和快照缓存实现继续复用。下列改动位于 PR #127，尚未合入；schema 28 随该 PR 一起迁移。
+`main` 的本轮核对基线为 `1700198`（#117，最近功能 #116），schema 27。原配置、调度、取消、崩溃对账、基础健康和快照缓存实现继续复用。下列改动位于 PR #127；schema 28–29 随该 PR 一起迁移，合并状态以 PR 为准。
 
 | 链路 | 当前分支实现 |
 |---|---|
@@ -17,6 +17,7 @@
 | 日志与补报 | 固定字段脱敏事件、累计 10MiB 预算与关键事件预留；持久 ACK、精确重放、有界背压与重连补报；中心事务保存连续日志，Web 分页轮询 |
 | 请求与审计 | Backup Now/Retry/Cancel 事务幂等及业务审计；同 key 同请求重放原响应，冲突拒绝；取消原因不持久化任意输入 |
 | 中心快照读取 | 周期索引复用动态 READY 并遍历所有页；有 Gateway 占用时复用当前 owner 的短期独立 mTLS reader，不启动第二个 rclone；读任务核验持久 binding，失效后失败收尾；拒绝畸形索引和冲突 managed tags |
+| 交付审查修正 | Plan/DesiredState/outbox/审计同事务并重验生命周期状态；任务先注册执行者再发送 ACK，手动备份跨控制重连继续；重连重报配置接受结果；内嵌 IANA 时区、统一路径校验、零宽限正常调度；WARNING 健康贯通数据库/API/Web；详情按 ID 刷新并保留操作分页 |
 
 关键设计见 ADR-0038–0042。真实贯通测试推动修复了 Agent 仓库地址缺少 `rest:`、stderr 警告漏计和取消上传误停 Gateway owner 的问题。请求审计使用可信服务/会话生命周期，客户端断线不取消可靠写入，服务关闭仍取消并 join；真实落盘故障继续停止授权。
 
@@ -29,6 +30,7 @@
 - 基线 [run 39619788725](https://github.com/sagehou/restfleet/actions/runs/39619788725) 成功，仅证明旧基线。
 - `defc3d6` 的 [run 42170110931](https://github.com/sagehou/restfleet/actions/runs/42170110931) 完整通过：lint、迁移、普通/race 测试、构建/交叉构建、六个应用镜像、双架构 migrator、服务 UID 隔离、依赖审计、gitleaks 和生成产物检查。
 - 安全重试提交 `670ffd4` 的 [run 42171751669](https://github.com/sagehou/restfleet/actions/runs/42171751669) 通过以上功能、race、构建、镜像和扫描检查，仅最后的生成产物一致性因 Go 格式补丁未提交而失败；Actions 补丁已回填到同一 PR。当前 HEAD 的完整结果以 [PR 检查](https://github.com/sagehou/restfleet/pull/127/checks) 为准，不将该轮称为完整绿色。
+- 审查基准 `a0cceb9` 的 [run 42172707476](https://github.com/sagehou/restfleet/actions/runs/42172707476) 全部成功；这不替代[三轮交付审查](delivery-review-2026-11-06.md)发现的故障窗口回归和剩余阶段验收。
 - 该 run 的真实贯通测试使用本地替代云 remote、固定 Restic/rclone 和生产 Agent/Gateway 路径，覆盖离线调度、无变化、exit 3、传输中取消、bbolt 重开、丢失结果/日志 ACK 后的精确补报，以及同一 owner 下的中心 index/list。真实 TLS 客户端断线及可信服务关闭的审计回归也通过。
 - gRPC 故障 peer 只验证传输与补报；生产授权、数据库事务和撤回收尾由独立 PostgreSQL 集成测试覆盖，不能宣称运行过完整部署态 API/DB 故障演练。
 
@@ -36,7 +38,7 @@
 
 | 归属 | 仍需完成 |
 |---|---|
-| #96 备份可靠 | 核对配置/手动与定时执行、页面及阶段验收证据；补完整部署态 API/DB 中断证据；阶段退出前确认 PR 当前 HEAD 全部门禁 |
+| #96 备份可靠 | [三轮交付审查](delivery-review-2026-11-06.md)的 R1–R10 已完成源码修正，提交编译与生成物同步；补完整部署态 API/DB 中断和阶段验收证据；阶段退出前确认 PR 当前 HEAD 全部门禁 |
 | #98 恢复可用 | 快照列表分页/filter、cache tree/目录资源边界、单文件下载和 staging restore；中心 snapshot index 输出仍有上限，超限失败而非假装完整索引 |
 | #15 长期运行与发布 | policy CRUD/revision diff、完整 Attention Queue/指标、Gateway 运维收敛、保留维护、通知、灾备、部署及剩余发布验收 |
 

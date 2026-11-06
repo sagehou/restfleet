@@ -180,6 +180,7 @@ func Run(ctx context.Context, state *State, config RunConfig) error {
 	defer func() {
 		stopScheduler()
 		<-schedulerDone
+		state.workers.Wait()
 	}()
 	go func() {
 		defer close(schedulerDone)

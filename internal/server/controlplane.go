@@ -83,9 +83,8 @@ type Store interface {
 	Plans(context.Context, uuid.UUID, int) ([]domain.Plan, error)
 	Plan(context.Context, uuid.UUID) (domain.Plan, error)
 	CreatePlan(context.Context, domain.Plan, domain.AuditEvent) (domain.Plan, error)
-	SavePlanRevision(context.Context, domain.Plan, int64, domain.AuditEvent) (domain.Plan, error)
-	UpdatePlanStatus(context.Context, domain.Plan, int64, domain.AuditEvent) (domain.Plan, error)
-	PublishAgentDesiredState(context.Context, uuid.UUID, time.Time) error
+	SavePlanRevision(context.Context, domain.Plan, int64, string, domain.AuditEvent) (domain.Plan, error)
+	UpdatePlanStatus(context.Context, domain.Plan, int64, string, domain.AuditEvent) (domain.Plan, error)
 	UpsertOperationProgress(context.Context, domain.BackupOperationProgress) error
 	UpsertOperationResult(context.Context, domain.BackupOperationResult) error
 	BackupOperations(context.Context, uuid.UUID, int) ([]domain.BackupOperation, error)

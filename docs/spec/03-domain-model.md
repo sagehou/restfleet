@@ -333,6 +333,8 @@ created_at / updated_at
 
 `effective_config` 在 Server 生成并存档，Agent 不负责动态合并 Template。历史 Operation 必须引用当时的 Plan revision 与 config hash。
 
+`backup_health` MUST 区分 UNKNOWN、HEALTHY、WARNING、OVERDUE、FAILED、NEVER_RUN、PAUSED。部分成功的 WARNING MUST 保留成功时间并出现在不健康计划计数中；取消及并发跳过 MUST NOT 清除已有健康告警。暂停恢复 MUST 根据最近健康相关终态重建健康状态。
+
 ### Plan tags
 
 每次 backup 自动添加：

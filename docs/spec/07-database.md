@@ -1,5 +1,7 @@
 # 07 — PostgreSQL 数据库规范
 
+schema 29（ADR-0043）新增 Plan 的 `backup_health=WARNING`，保留部分成功的成功时间并计入不健康计划。Plan 变更、DesiredState、outbox 和审计 MUST 同事务提交；状态更新 MUST 同时验证读取时的状态与配置 revision。该迁移在仍有 WARNING 行时 MUST 拒绝降级，不能把告警改写为健康。
+
 schema 28（ADR-0039）为备份 Operation 保存有界 `attempt` 与结构化 `summary_json`，parent/root 沿用既有外键。新自动 attempt MUST 验证前一终态、暂态原因、Agent/Plan/revision、root 与递增次数；已有行绑定不可被重写。Plan 的 `last_result_at` MUST 防止离线旧结果覆盖更新的健康状态；`last_success_at` MUST 单调向前，结果与快照索引仍同事务提交。旧 Agent 缺少增量字段时保持原报告兼容。
 
 ADR-0033 兼容说明：schema 16 的 Gateway secret 引用继续保留，不新增身份表、verifier 或候选密码状态；生产认证复用 AgentCertificate/Agent 身份，Gateway secret MUST NOT 用于生产密码回退。新 capability 仅接收 Restic 密码，其余交付/ACK/占用 fencing 仍复用原事务。

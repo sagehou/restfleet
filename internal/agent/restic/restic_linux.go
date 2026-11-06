@@ -22,7 +22,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/sagehou/restfleet/internal/domain"
@@ -60,19 +59,8 @@ type PreparedFiles struct {
 // with --files-from-verbatim / --exclude-file so argv stays small and logs never
 // contain the patterns.
 func Prepare(paths, excludes []string) (PreparedFiles, error) {
-	if len(paths) == 0 {
-		return PreparedFiles{}, errors.New("restic: at least one path is required")
-	}
-	for _, path := range paths {
-		if len(path) == 0 || len(path) > 4096 || !filepath.IsAbs(path) || filepath.Clean(path) != path ||
-			strings.IndexFunc(path, unicode.IsControl) >= 0 {
-			return PreparedFiles{}, errors.New("restic: path is not canonical")
-		}
-	}
-	for _, pattern := range excludes {
-		if len(pattern) > 4096 || strings.IndexFunc(pattern, unicode.IsControl) >= 0 {
-			return PreparedFiles{}, errors.New("restic: exclude pattern is invalid")
-		}
+	if err := domain.ValidateBackupPaths(paths, excludes); err != nil {
+		return PreparedFiles{}, errors.New("restic: invalid backup paths or excludes")
 	}
 	directory, err := os.MkdirTemp("", "restfleet-restic-")
 	if err != nil {

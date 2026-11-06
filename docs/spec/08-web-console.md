@@ -18,7 +18,7 @@ Web Console 服务于日常运维判断，不只是 CRUD：
 - Server 提供静态产物，同源访问 API；
 - 使用生成自 OpenAPI 的 request/response types；
 - 数据请求缓存必须以 resource revision/filters 作为 key；
-- SSE 用于 Operation 实时状态，可退化为 polling；
+- V1 MUST 按 Operation ID polling 当前状态，日志按 cursor 读取；SSE MAY 后续扩展（ADR-0043）；
 - WCAG 2.2 AA 作为可访问性目标；
 - Desktop-first，但核心状态/确认流程在窄屏可用。
 
@@ -303,6 +303,7 @@ Replace 操作成功后不能通过浏览器 history/cache 再看到 secret。�
 | ONLINE + OVERDUE | Agent 在线，但备份已逾期 |
 | OFFLINE + HEALTHY | Agent 离线；最近备份仍在 SLA 内 |
 | SUCCEEDED_WITH_WARNINGS | 已创建快照，但有文件未读取 |
+| backup health WARNING | 最近备份有告警，需查看操作详情 |
 | PENDING_APPLY | 配置已保存，Agent 尚未确认 |
 | ConfigRejected | Agent 拒绝配置：显示字段与错误码 |
 | credential DEGRADED | 当前仍可访问，但刷新/测试失败 |
@@ -317,7 +318,7 @@ Replace 操作成功后不能通过浏览器 history/cache 再看到 secret。�
 - 412 revision conflict 显示当前值与用户改动，不自动覆盖；
 - 409 stale preview 重新获取 preview，不自动执行；
 - 网络断开时状态修改不盲目重发，使用 idempotency key 查询结果；
-- SSE 断开退化为 polling；
+- 状态查询中断后 MUST 恢复完整当前状态；已加载的列表分页和打开的任务 MUST 继续正确跟踪；
 - 页面刷新不丢失 Operation 跟踪。
 
 ## 18. 可访问性与本地化

@@ -162,8 +162,10 @@ func (s *Store) UpsertOperationResult(ctx context.Context, result domain.BackupO
 	health := ""
 	success := false
 	switch result.Status {
-	case "SUCCEEDED", "SUCCEEDED_WITH_WARNINGS":
+	case "SUCCEEDED":
 		health, success = "HEALTHY", true
+	case "SUCCEEDED_WITH_WARNINGS":
+		health, success = "WARNING", true
 	case "FAILED", "LOST":
 		health = "FAILED"
 	case "MISSED":
@@ -250,7 +252,7 @@ func (s *Store) FleetBackupCounts(ctx context.Context) (plans, operations, runni
 		(select count(*) from backup_operations),
 		(select count(*) from backup_operations where status='RUNNING'),
 		(select count(*) from backup_operations where status='FAILED' and finished_at > now() - interval '24 hours'),
-		(select count(*) from plans where archived_at is null and backup_health in ('FAILED','OVERDUE','NEVER_RUN'))`).
+		(select count(*) from plans where archived_at is null and backup_health in ('WARNING','FAILED','OVERDUE','NEVER_RUN'))`).
 		Scan(&plans, &operations, &running, &failed24h, &unhealthy)
 	return
 }

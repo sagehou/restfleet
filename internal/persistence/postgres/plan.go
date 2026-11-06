@@ -56,7 +56,7 @@ func (s *Store) Plans(ctx context.Context, after uuid.UUID, limit int) ([]domain
 }
 
 // CreatePlan verifies Host/Agent/Repository binding in the same transaction
-// that writes the plan and its first revision snapshot.
+// that writes the plan, revision, desired state, outbox and audit.
 func (s *Store) CreatePlan(ctx context.Context, p domain.Plan, audit domain.AuditEvent) (domain.Plan, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -65,7 +65,7 @@ func (s *Store) CreatePlan(ctx context.Context, p domain.Plan, audit domain.Audi
 	defer func() { _ = tx.Rollback(ctx) }()
 	var hostID uuid.UUID
 	var agentStatus string
-	err = tx.QueryRow(ctx, "select host_id,status from agents where id=$1 for update", p.AgentID).Scan(&hostID, &agentStatus)
+	err = tx.QueryRow(ctx, "select host_id,status from agents where id=$1 for no key update", p.AgentID).Scan(&hostID, &agentStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Plan{}, domain.ErrNotFound
 	}
@@ -114,6 +114,9 @@ func (s *Store) CreatePlan(ctx context.Context, p domain.Plan, audit domain.Audi
 	if err = appendAudit(ctx, tx, audit); err != nil {
 		return domain.Plan{}, err
 	}
+	if err = publishAgentDesiredState(ctx, tx, p.AgentID, p.CreatedAt); err != nil {
+		return domain.Plan{}, err
+	}
 	p.DesiredRevision = 1
 	if err = tx.Commit(ctx); err != nil {
 		return domain.Plan{}, err
@@ -123,7 +126,7 @@ func (s *Store) CreatePlan(ctx context.Context, p domain.Plan, audit domain.Audi
 
 // SavePlanRevision appends the next desired revision. Applied revisions stay
 // untouched until the Agent acknowledges the new one.
-func (s *Store) SavePlanRevision(ctx context.Context, p domain.Plan, expectedRevision int64, audit domain.AuditEvent) (domain.Plan, error) {
+func (s *Store) SavePlanRevision(ctx context.Context, p domain.Plan, expectedRevision int64, expectedStatus string, audit domain.AuditEvent) (domain.Plan, error) {
 	effective, err := json.Marshal(p.EffectiveConfig)
 	if err != nil {
 		return domain.Plan{}, err
@@ -133,9 +136,13 @@ func (s *Store) SavePlanRevision(ctx context.Context, p domain.Plan, expectedRev
 		return domain.Plan{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err = lockPlanAgent(ctx, tx, p.ID, p.AgentID); err != nil {
+		return domain.Plan{}, err
+	}
 	var current int64
+	var currentStatus string
 	var archivedAt *time.Time
-	err = tx.QueryRow(ctx, "select desired_revision,archived_at from plans where id=$1 for update", p.ID).Scan(&current, &archivedAt)
+	err = tx.QueryRow(ctx, "select desired_revision,status,archived_at from plans where id=$1 for update", p.ID).Scan(&current, &currentStatus, &archivedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Plan{}, domain.ErrNotFound
 	}
@@ -147,6 +154,9 @@ func (s *Store) SavePlanRevision(ctx context.Context, p domain.Plan, expectedRev
 	}
 	if current != expectedRevision {
 		return domain.Plan{}, domain.ErrRevisionConflict
+	}
+	if currentStatus != expectedStatus {
+		return domain.Plan{}, domain.ErrPlanStateInvalid
 	}
 	var exists bool
 	if err = tx.QueryRow(ctx, "select exists(select 1 from template_revisions where template_id=$1 and revision=$2)", p.TemplateID, p.TemplateRevision).Scan(&exists); err != nil {
@@ -168,6 +178,9 @@ func (s *Store) SavePlanRevision(ctx context.Context, p domain.Plan, expectedRev
 	if err = appendAudit(ctx, tx, audit); err != nil {
 		return domain.Plan{}, err
 	}
+	if err = publishAgentDesiredState(ctx, tx, p.AgentID, p.UpdatedAt); err != nil {
+		return domain.Plan{}, err
+	}
 	p.DesiredRevision = next
 	if err = tx.Commit(ctx); err != nil {
 		return domain.Plan{}, err
@@ -178,15 +191,19 @@ func (s *Store) SavePlanRevision(ctx context.Context, p domain.Plan, expectedRev
 // UpdatePlanStatus changes only the plan lifecycle state. It does not append a
 // plan revision or change desired_revision; apply/pause/resume are not config
 // edits.
-func (s *Store) UpdatePlanStatus(ctx context.Context, p domain.Plan, expectedRevision int64, audit domain.AuditEvent) (domain.Plan, error) {
+func (s *Store) UpdatePlanStatus(ctx context.Context, p domain.Plan, expectedRevision int64, expectedStatus string, audit domain.AuditEvent) (domain.Plan, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return domain.Plan{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err = lockPlanAgent(ctx, tx, p.ID, p.AgentID); err != nil {
+		return domain.Plan{}, err
+	}
 	var current int64
+	var currentStatus string
 	var archivedAt *time.Time
-	if err = tx.QueryRow(ctx, "select desired_revision,archived_at from plans where id=$1 for update", p.ID).Scan(&current, &archivedAt); err != nil {
+	if err = tx.QueryRow(ctx, "select desired_revision,status,archived_at from plans where id=$1 for update", p.ID).Scan(&current, &currentStatus, &archivedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Plan{}, domain.ErrNotFound
 		}
@@ -198,21 +215,31 @@ func (s *Store) UpdatePlanStatus(ctx context.Context, p domain.Plan, expectedRev
 	if current != expectedRevision {
 		return domain.Plan{}, domain.ErrRevisionConflict
 	}
+	if currentStatus != expectedStatus {
+		return domain.Plan{}, domain.ErrPlanStateInvalid
+	}
 	if _, err = tx.Exec(ctx, `update plans set status=$2,updated_at=$3,
 		backup_health=case
 			when $2='PAUSED' then 'PAUSED'
-			when $2='ACTIVE' then case
-				when last_success_at is null then 'NEVER_RUN'
-				when last_operation_id is not null and exists(
-					select 1 from backup_operations where id=last_operation_id and status in ('FAILED','LOST')
-				) then 'FAILED'
-				else 'HEALTHY' end
+			when $2='ACTIVE' then coalesce((
+				select case o.status
+					when 'SUCCEEDED' then 'HEALTHY'
+					when 'SUCCEEDED_WITH_WARNINGS' then 'WARNING'
+					when 'MISSED' then 'OVERDUE'
+					else 'FAILED' end
+				from backup_operations o where o.plan_id=$1
+				and o.status in ('SUCCEEDED','SUCCEEDED_WITH_WARNINGS','FAILED','LOST','MISSED')
+				order by o.finished_at desc,o.id desc limit 1
+			),case when last_success_at is null then 'NEVER_RUN' else 'HEALTHY' end)
 			else backup_health end,
 		next_run_at=case when $2='PAUSED' then null else next_run_at end
 		where id=$1`, p.ID, p.Status, p.UpdatedAt); err != nil {
 		return domain.Plan{}, persistenceError(err)
 	}
 	if err = appendAudit(ctx, tx, audit); err != nil {
+		return domain.Plan{}, err
+	}
+	if err = publishAgentDesiredState(ctx, tx, p.AgentID, p.UpdatedAt); err != nil {
 		return domain.Plan{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -239,19 +266,29 @@ func (s *Store) ReconcilePlanHealth(ctx context.Context, now time.Time) (int64, 
 	return tag.RowsAffected(), nil
 }
 
-// PublishAgentDesiredState rewrites the Agent snapshot from its current plans
-// and queues one outbox event. It runs after a plan mutation commits; a repeat
-// simply produces the next revision, so retries are harmless.
-func (s *Store) PublishAgentDesiredState(ctx context.Context, agentID uuid.UUID, now time.Time) error {
-	tx, err := s.pool.Begin(ctx)
+// Lock the Agent before its Plans, matching config acceptance and heartbeats.
+func lockPlanAgent(ctx context.Context, tx pgx.Tx, planID, expectedAgentID uuid.UUID) error {
+	var agentID uuid.UUID
+	err := tx.QueryRow(ctx, `select a.id from agents a join plans p on p.agent_id=a.id
+		where p.id=$1 for no key update of a`, planID).Scan(&agentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	if agentID != expectedAgentID {
+		return domain.ErrPlanBindingInvalid
+	}
+	return nil
+}
+
+// The caller holds the Agent lock and commits the snapshot with its mutation.
+func publishAgentDesiredState(ctx context.Context, tx pgx.Tx, agentID uuid.UUID, now time.Time) error {
 	var hostID uuid.UUID
 	var status string
 	var currentRevision int64
-	err = tx.QueryRow(ctx, "select host_id,status,desired_revision from agents where id=$1 for update", agentID).Scan(&hostID, &status, &currentRevision)
+	err := tx.QueryRow(ctx, "select host_id,status,desired_revision from agents where id=$1 for no key update", agentID).Scan(&hostID, &status, &currentRevision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ErrNotFound
 	}
@@ -259,7 +296,7 @@ func (s *Store) PublishAgentDesiredState(ctx context.Context, agentID uuid.UUID,
 		return err
 	}
 	if status != "ACTIVE" {
-		return domain.ErrNotFound
+		return nil
 	}
 	var configJSON []byte
 	err = tx.QueryRow(ctx, "select config_json from agent_desired_states where agent_id=$1 and revision=$2", agentID, currentRevision).Scan(&configJSON)
@@ -332,5 +369,5 @@ func (s *Store) PublishAgentDesiredState(ctx context.Context, agentID uuid.UUID,
 		eventID, agentID, state.Revision, now.UTC()); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
 }
