@@ -40,6 +40,16 @@ type PublicServer struct {
 	running  sync.WaitGroup
 }
 
+type publicAuditContextKey struct{}
+
+// Use the trusted server lifetime for ingress audit, independent of the peer.
+func publicAuditContext(ctx context.Context) context.Context {
+	if parent, ok := ctx.Value(publicAuditContextKey{}).(context.Context); ok {
+		return parent
+	}
+	return ctx
+}
+
 // NewPublicServer validates the borrowed PEM key pair before the caller binds a
 // public socket. The parsed key is retained for the server lifetime. Load it
 // from protected files; never log PEM, paths, handshake errors or raw requests.
@@ -99,7 +109,9 @@ func (p *PublicServer) Serve(ctx context.Context, listener net.Listener) error {
 
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	p.http.BaseContext = func(net.Listener) context.Context { return requestCtx }
+	p.http.BaseContext = func(net.Listener) context.Context {
+		return context.WithValue(requestCtx, publicAuditContextKey{}, requestCtx)
+	}
 	stop := context.AfterFunc(ctx, func() { _ = p.http.Close() })
 	err := p.http.ServeTLS(netutil.LimitListener(listener, p.connections), "", "")
 	stop()

@@ -431,7 +431,7 @@ func (s *BackupSession) removeLock(w http.ResponseWriter, r *http.Request, path 
 
 func (s *BackupSession) record(ctx context.Context, authenticated bool, action, reason string) bool {
 	// A disconnected client cannot cancel the durable security observation.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	ctx, cancel := context.WithTimeout(s.ctx, 3*time.Second)
 	defer cancel()
 	return s.audit(ctx, Event{Binding: s.binding, Authenticated: authenticated, Action: action, Reason: reason}) == nil
 }

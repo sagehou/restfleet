@@ -236,7 +236,7 @@ func startService(ctx context.Context, config ServiceConfig, managed bool) (_ *S
 
 func (s *Service) denied(reason string) func(context.Context) error {
 	return func(ctx context.Context) error {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		ctx, cancel := context.WithTimeout(publicAuditContext(ctx), 3*time.Second)
 		defer cancel()
 		return s.global.Record(ctx, Event{Action: "channel_denied", Reason: reason})
 	}

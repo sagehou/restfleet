@@ -486,3 +486,58 @@ func TestPublicShutdownWaitsForUnauthenticatedAudit(t *testing.T) {
 		t.Fatal("request did not stop")
 	}
 }
+
+func TestPublicClientDisconnectDoesNotPoisonGlobalAudit(t *testing.T) {
+	recorder, _, _, _, _ := globalRecorderFixture(t, 8)
+	entered := make(chan context.Context, 1)
+	release, committed, disconnected := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	s := &Supervisor{audit: func(ctx context.Context, event Event) error {
+		entered <- ctx
+		<-release
+		err := recorder.Record(ctx, event)
+		close(committed)
+		return err
+	}}
+	f := startPublicFixture(t, s, func(p *PublicServer) {
+		p.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			go func() { <-r.Context().Done(); close(disconnected) }()
+			s.ServeHTTP(w, r)
+		})
+	})
+	t.Cleanup(func() { once.Do(func() { close(release) }) })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, f.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		response, err := f.client.Do(r)
+		if err == nil { _ = response.Body.Close() }
+	}()
+	var auditCtx context.Context
+	select {
+	case auditCtx = <-entered:
+	case <-time.After(2*time.Second):
+		t.Fatal("audit did not start")
+	}
+	cancel()
+	select {
+	case <-disconnected:
+	case <-time.After(2*time.Second):
+		t.Fatal("server did not observe client disconnect")
+	}
+	if deadline, ok := auditCtx.Deadline(); auditCtx.Err() != nil || !ok || time.Until(deadline) > 3*time.Second {
+		t.Fatal("client disconnect canceled or unbounded the security audit")
+	}
+	once.Do(func() { close(release) })
+	select {
+	case <-committed:
+	case <-time.After(2*time.Second):
+		t.Fatal("audit did not commit")
+	}
+	if !recorder.Ready() {
+		t.Fatal("client disconnect permanently stopped global audit")
+	}
+}
