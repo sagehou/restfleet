@@ -23,9 +23,24 @@ type BackupExecutor struct {
 }
 
 // Execute satisfies PlanExecutor.
-func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, operation uuid.UUID, scheduled, deadline time.Time) OperationOutcome {
+func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, operation uuid.UUID, scheduled, deadline time.Time) (outcome OperationOutcome) {
 	if e.State == nil {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: "EXECUTOR_UNAVAILABLE"}
+	}
+	if plan.Execution!=nil && plan.Execution.ResourceLimits!=nil && plan.Execution.ResourceLimits.MaxDurationSeconds>0 {
+		if limited:=time.Now().Add(time.Duration(plan.Execution.ResourceLimits.MaxDurationSeconds)*time.Second);limited.Before(deadline) {deadline=limited}
+	}
+	ctx,cancel:=context.WithDeadline(ctx,deadline)
+	defer cancel()
+	if plan.Execution!=nil {
+		if err:=e.State.runHooks(ctx,plan.Execution.PreHookIDs);err!=nil {return OperationOutcome{Status:OperationFailed,ErrorCode:"PRE_HOOK_FAILED"}}
+		defer func(){
+			if ctx.Err()==nil {
+				if err:=e.State.runHooks(ctx,plan.Execution.PostHookIDs);err!=nil && outcome.Status==OperationSucceeded {
+					outcome.Status,outcome.ErrorCode=OperationSucceededWarnings,"POST_HOOK_FAILED"
+				}
+			}
+		}()
 	}
 	identity, err := LoadIdentity(e.State)
 	if err != nil {
@@ -67,6 +82,12 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 		ExcludeCaches: plan.ExcludeCaches, OneFileSystem: plan.OneFileSystem,
 		TLSClientCertFile: certFile, CACertFile: caFile, SkipIfUnchanged: true,
 	}
+	request.CacheDirectory=filepath.Join(e.State.Directory(),"cache")
+	if os.MkdirAll(request.CacheDirectory,0700)!=nil {return OperationOutcome{Status:OperationFailed,ErrorCode:"WORKDIR_UNAVAILABLE"}}
+	if plan.Execution!=nil && plan.Execution.ResourceLimits!=nil {
+		limits:=plan.Execution.ResourceLimits
+		request.LimitUploadKiB,request.LimitDownloadKiB,request.ReadConcurrency=limits.LimitUploadKiB,limits.LimitDownloadKiB,limits.ReadConcurrency
+	}
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	progress := &progressSink{state: e.State, operation: operation, cancel: stop}
@@ -88,6 +109,7 @@ func (e BackupExecutor) Execute(ctx context.Context, plan domain.PlanSchedule, o
 	if progress.errorCode != "" {
 		return OperationOutcome{Status: OperationFailed, ErrorCode: progress.errorCode, ExitCode: runResult.ExitCode}
 	}
+	if errors.Is(ctx.Err(),context.DeadlineExceeded) {return OperationOutcome{Status:OperationFailed,ErrorCode:"BACKUP_TIMED_OUT",ExitCode:runResult.ExitCode}}
 	if errors.Is(runErr, restic.ErrCanceled) || errors.Is(sessionErr, context.Canceled) {
 		return OperationOutcome{Status: OperationCanceled, ErrorCode: "CANCELED", ExitCode: runResult.ExitCode,
 			FilesDone: progress.files, TotalFiles: progress.totalFiles, BytesDone: progress.bytes,

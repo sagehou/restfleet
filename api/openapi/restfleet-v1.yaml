@@ -1421,7 +1421,7 @@ components:
         schedule_timezone: { type: string, minLength: 1, maxLength: 64, description: IANA timezone name. }
         jitter_seconds: { type: integer, minimum: 0, maximum: 3600, default: 0 }
         misfire_grace_seconds: { type: integer, minimum: 0, maximum: 86400, default: 900 }
-        retry_policy: { type: object, additionalProperties: true, description: Opaque retry metadata stored verbatim for the Agent scheduler. }
+        retry_policy: { $ref: "#/components/schemas/BackupRetryPolicy" }
         retention_policy_id: { type: string, format: uuid }
         pre_hook_ids:
           type: array
@@ -1429,8 +1429,25 @@ components:
         post_hook_ids:
           type: array
           items: { type: string, format: uuid }
-        resource_limits: { type: object, additionalProperties: true, description: Opaque resource limits stored verbatim for the Agent runtime. }
+        resource_limits: { $ref: "#/components/schemas/BackupResourceLimits" }
         enabled_by_default: { type: boolean, default: true }
+    BackupRetryPolicy:
+      type: object
+      additionalProperties: false
+      description: Zero or omitted values use defaults (1 attempt, 60s initial, 1800s maximum); each retry creates a new Operation.
+      properties:
+        initial_backoff_seconds: { type: integer, minimum: 0, maximum: 86400 }
+        max_attempts: { type: integer, minimum: 0, maximum: 10 }
+        max_backoff_seconds: { type: integer, minimum: 0, maximum: 86400 }
+    BackupResourceLimits:
+      type: object
+      additionalProperties: false
+      description: Zero or omitted limits retain Restic defaults; maximum duration is also capped by the operation deadline.
+      properties:
+        limit_download_kib: { type: integer, minimum: 0, maximum: 1073741824 }
+        limit_upload_kib: { type: integer, minimum: 0, maximum: 1073741824 }
+        max_duration_seconds: { type: integer, minimum: 0, maximum: 86400 }
+        read_concurrency: { type: integer, minimum: 0, maximum: 64 }
     Template:
       type: object
       additionalProperties: false

@@ -161,6 +161,9 @@ message PlanSchedule {
   bool exclude_caches = 13;
   bool one_file_system = 14;
   string config_hash = 15;
+  // backup_execution_v1: bounded, strict JSON for the documented execution
+  // config, never executable commands or secrets. Absent preserves old hashes.
+  bytes execution_config_json = 16;
 }
 
 message RuntimePolicy {

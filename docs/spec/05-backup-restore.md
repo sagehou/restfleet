@@ -78,6 +78,8 @@ V1 统一 `--group-by tags`，并在 retention 中使用相同分组逻辑。用
 
 ## 4. Pre/Post Hook
 
+Agent MUST 通过本机 `--hooks-file` 读取 version=1 的受保护 JSON allowlist，文件及父目录归 Agent 服务用户所有，权限分别为 0400/0600、0700。`hooks` 是至多 64 项的数组，每项包含 UUIDv7 `id`、规范绝对路径 `executable`、本机 `args` 和 1..3600 的 `timeout_seconds`。MUST 拒绝 symlink、重复 ID、未知字段、过长参数和可被其他用户写入的 executable。中心仅下发每阶段至多 16 个 ID；未知本机 ID MUST 拒绝配置，保留 last-known-good。
+
 执行顺序：
 
 ```text
@@ -96,6 +98,12 @@ acquire plan lock
 - Hook 有独立 timeout、exit code、log section；
 - Dump 产物必须位于 Plan 明确包含的路径；
 - Agent 不自动猜测数据库一致性方案。
+
+Hook MUST 直接通过 argv 执行，并沿整个进程组执行 timeout/cancel。输出 MUST 只产生固定结果的独立日志 section，不上传原始 stdout/stderr、路径或参数；秘密 MUST NOT 放入 Hook 参数。
+
+### 4.1 资源限制
+
+`resource_limits` MUST 仅接受 `limit_upload_kib`、`limit_download_kib`（0..1073741824）、`read_concurrency`（0..64）、`max_duration_seconds`（0..86400）。非整数、未知键和越界值 MUST 拒绝；0/省略表示 Restic 默认或 Operation 的既有 deadline。带宽/读取并发 MUST 分别接入 Restic 对应参数；duration MUST 同时约束 Hooks 和 backup，并且不能延长原 deadline。MUST 使用 Agent 私有 cache directory。
 
 ## 5. Backup 结果
 
@@ -132,6 +140,8 @@ Restic JSON `summary` 是成功输出的必要证据。未知字段忽略；缺�
 - repository missing exit `10`（除 provisioning race 外）。
 
 每次 retry 创建新 Operation，关联 parent/root operation；遵守 Plan deadline，避免下一计划窗口重叠。
+
+`retry_policy` MUST 仅接受 `max_attempts`（0..10）、`initial_backoff_seconds`、`max_backoff_seconds`（0..86400）。0/省略分别采用 1 次、60s、1800s；initial MUST 不超过 maximum。指数退避 MUST 有上限；默认不启用自动重试。自动 retry MUST 持久化新 ID、parent/root、attempt、等待时刻和 deadline；等待期间保留同一 I/O 槽位与取消上下文，崩溃后 MUST 报告 LOST，不能静默重跑。配置变更/暂停或下一计划窗口到来 MUST 停止重试链。结果补报 MUST 先得到 parent 的持久 ACK 再补报 child，保持外键与顺序。
 
 ## 7. Snapshot 索引
 

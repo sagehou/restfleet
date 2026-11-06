@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -37,6 +38,10 @@ type BackupRequest struct {
 	ExcludeCaches   bool
 	OneFileSystem   bool
 	SkipIfUnchanged bool
+	LimitUploadKiB int
+	LimitDownloadKiB int
+	ReadConcurrency int
+	CacheDirectory string
 	// TLSClientCertFile holds the combined client certificate and key for the
 	// Gateway REST endpoint; CACertFile pins the Gateway CA.
 	TLSClientCertFile string
@@ -152,6 +157,10 @@ func BackupArgs(request BackupRequest, prepared PreparedFiles) ([]string, error)
 	if request.SkipIfUnchanged {
 		args = append(args, "--skip-if-unchanged")
 	}
+	if request.CacheDirectory!="" {args=append(args,"--cache-dir",request.CacheDirectory)}
+	if request.LimitUploadKiB>0 {args=append(args,"--limit-upload",strconv.Itoa(request.LimitUploadKiB))}
+	if request.LimitDownloadKiB>0 {args=append(args,"--limit-download",strconv.Itoa(request.LimitDownloadKiB))}
+	if request.ReadConcurrency>0 {args=append(args,"--read-concurrency",strconv.Itoa(request.ReadConcurrency))}
 	if request.TLSClientCertFile != "" {
 		args = append(args, "--tls-client-cert", request.TLSClientCertFile)
 	}
@@ -293,6 +302,7 @@ type Result struct {
 var ErrCanceled = errors.New("restic: run canceled")
 
 func (r Run) Execute(ctx context.Context) (Result, error) {
+	if ctx.Err()!=nil {return Result{ExitCode:-1},ErrCanceled}
 	binary := r.Binary
 	if binary == "" {
 		binary = "restic"

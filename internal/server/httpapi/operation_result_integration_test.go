@@ -47,8 +47,7 @@ func TestOperationTerminalGuardAndRejectedQueue(t *testing.T) {
 	// A second enrolled Host may report its own plan but cannot select the ID
 	// of an existing operation belonging to the first Host.
 	otherHost := createTestHost(t, b, "Other operation Host")
-	otherCredential := createBackendCredential(t, b, "onedrive")
-	otherRepository := createTestRepository(t, b, otherHost.Id, otherCredential.Id, "Other operation Repository")
+	otherRepository := createTestRepository(t, b, otherHost.Id, repository.StorageCredentialId, "Other operation Repository")
 	token := createTestEnrollmentToken(t, b, otherHost.Id)
 	csr, key := agentCSR(t)
 	clear(key)

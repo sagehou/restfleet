@@ -2,6 +2,7 @@ package agentgrpc
 
 import (
 	"errors"
+	"encoding/json"
 	"slices"
 	"strings"
 	"time"
@@ -89,7 +90,7 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 		return err
 	}
 	if hello.GetAcceptedConfigRevision() < agent.DesiredRevision {
-		if err := s.sendDesiredState(stream, agentID, selected, &serverSequence); err != nil {
+		if err := s.sendDesiredState(stream, agentID, selected, &serverSequence, hello.GetCapabilities()...); err != nil {
 			return err
 		}
 	}
@@ -129,7 +130,8 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				s.observeHeartbeatResult("rejected")
 				return s.invalidMessage(stream, meta, "HEARTBEAT_INVALID")
 			}
-			if _, err := s.control.RecordAgentHeartbeat(stream.Context(), heartbeat); err != nil {
+			updatedAgent, err := s.control.RecordAgentHeartbeat(stream.Context(), heartbeat)
+			if err != nil {
 				s.observeHeartbeatResult("rejected")
 				var validation *control.ValidationError
 				if errors.As(err, &validation) {
@@ -141,6 +143,9 @@ func (s *Service) Connect(stream agentv1.AgentControlService_ConnectServer) erro
 				return status.Error(codes.Unavailable, "heartbeat persistence failed")
 			}
 			s.observeHeartbeatResult("accepted")
+			if heartbeat.AcceptedRevision<updatedAgent.DesiredRevision {
+				if err:=s.sendDesiredState(stream,agentID,selected,&serverSequence,hello.GetCapabilities()...);err!=nil{return err}
+			}
 			if credentialCapable {
 				if err := s.sendAgentCredential(stream, agentID, selected, &serverSequence, false, identityCapable); err != nil {
 					return err
@@ -300,6 +305,7 @@ func (s *Service) sendDesiredState(
 	agentID uuid.UUID,
 	protocol string,
 	sequence *uint64,
+	capabilities ...string,
 ) error {
 	state, err := s.control.DesiredState(stream.Context(), agentID)
 	if err != nil {
@@ -307,6 +313,17 @@ func (s *Service) sendDesiredState(
 	}
 	plans := make([]*agentv1.PlanSchedule, 0, len(state.Plans))
 	for _, plan := range state.Plans {
+		var execution []byte
+		if plan.Execution!=nil {
+			if !slices.Contains(capabilities,domain.BackupExecutionCapability) {
+				if err:=s.control.RejectAgentConfig(stream.Context(),agentID,domain.AgentConfigResult{Revision:state.Revision,ErrorCode:"AGENT_CAPABILITY_REQUIRED",FieldPath:"plans.execution"});err!=nil {
+					return status.Error(codes.Unavailable,"configuration compatibility persistence failed")
+				}
+				return nil
+			}
+			execution,err=json.Marshal(plan.Execution)
+			if err!=nil || len(execution)>16<<10 {return status.Error(codes.Internal,"invalid execution configuration")}
+		}
 		plans = append(plans, &agentv1.PlanSchedule{
 			PlanId: plan.PlanID.String(), Revision: plan.Revision, Name: plan.Name,
 			HostId: plan.HostID.String(), RepositoryId: plan.RepositoryID.String(),
@@ -315,6 +332,7 @@ func (s *Service) sendDesiredState(
 			ConcurrencyPolicy: plan.ConcurrencyPolicy, Paths: plan.Paths,
 			ExcludePatterns: plan.ExcludePatterns, ExcludeCaches: plan.ExcludeCaches,
 			OneFileSystem: plan.OneFileSystem, ConfigHash: plan.ConfigHash,
+			ExecutionConfigJson:execution,
 		})
 	}
 	if err := sendServerMessage(stream, sequence, protocol, &agentv1.ServerToAgent{

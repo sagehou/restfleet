@@ -32,12 +32,12 @@ func templateConfigResponse(c domain.TemplateConfig) TemplateConfig {
 		ScheduleTimezone:    c.ScheduleTimezone,
 	}
 	if c.RetryPolicy != nil {
-		retry := c.RetryPolicy
-		config.RetryPolicy = &retry
+		p := c.RetryPolicy
+		config.RetryPolicy = &BackupRetryPolicy{InitialBackoffSeconds:&p.InitialBackoffSeconds,MaxAttempts:&p.MaxAttempts,MaxBackoffSeconds:&p.MaxBackoffSeconds}
 	}
 	if c.ResourceLimits != nil {
-		limits := c.ResourceLimits
-		config.ResourceLimits = &limits
+		p := c.ResourceLimits
+		config.ResourceLimits = &BackupResourceLimits{LimitDownloadKib:&p.LimitDownloadKiB,LimitUploadKib:&p.LimitUploadKiB,MaxDurationSeconds:&p.MaxDurationSeconds,ReadConcurrency:&p.ReadConcurrency}
 	}
 	if c.RetentionPolicyID != nil {
 		retention := *c.RetentionPolicyID
@@ -79,16 +79,23 @@ func templateConfigRequest(request TemplateConfig) domain.TemplateConfig {
 		config.EnabledByDefault = *request.EnabledByDefault
 	}
 	if request.RetryPolicy != nil {
-		config.RetryPolicy = *request.RetryPolicy
+		p := request.RetryPolicy
+		config.RetryPolicy = &domain.BackupRetryPolicy{InitialBackoffSeconds:intValue(p.InitialBackoffSeconds),MaxAttempts:intValue(p.MaxAttempts),MaxBackoffSeconds:intValue(p.MaxBackoffSeconds)}
 	}
 	if request.ResourceLimits != nil {
-		config.ResourceLimits = *request.ResourceLimits
+		p := request.ResourceLimits
+		config.ResourceLimits = &domain.BackupResourceLimits{LimitDownloadKiB:intValue(p.LimitDownloadKib),LimitUploadKiB:intValue(p.LimitUploadKib),MaxDurationSeconds:intValue(p.MaxDurationSeconds),ReadConcurrency:intValue(p.ReadConcurrency)}
 	}
 	if request.RetentionPolicyId != nil {
 		retention := *request.RetentionPolicyId
 		config.RetentionPolicyID = &retention
 	}
 	return config
+}
+
+func intValue(value *int) int {
+	if value==nil {return 0}
+	return *value
 }
 
 func templateResponse(t domain.Template) Template {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -46,14 +47,17 @@ func TestOperationReportsAcceptScheduledUUIDv5(t *testing.T) {
 	control := &ControlPlane{store: store}
 	scheduled := uuid.NewSHA1(uuid.NameSpaceOID, []byte("plan|2026-10-21T00:00:00Z"))
 	planID, agentID := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	now:=time.Now().UTC()
 
 	if err := control.RecordOperationProgress(context.Background(), domain.BackupOperationProgress{
 		OperationID: scheduled, PlanID: planID, AgentID: agentID,
+		PlanRevision:1,ScheduledAt:now,ObservedAt:now,Stage:"backup",Sequence:1,
 	}); err != nil || !store.progress {
 		t.Fatalf("scheduled progress rejected: %v", err)
 	}
 	if err := control.RecordOperationResult(context.Background(), domain.BackupOperationResult{
 		OperationID: scheduled, PlanID: planID, AgentID: agentID, Status: "SUCCEEDED",
+		PlanRevision:1,ScheduledAt:now,FinishedAt:now,
 	}); err != nil || !store.result {
 		t.Fatalf("scheduled result rejected: %v", err)
 	}

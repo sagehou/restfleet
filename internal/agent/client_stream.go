@@ -66,6 +66,7 @@ func connectOnce(ctx context.Context, state *State, config RunConfig) (bool, err
 			Capabilities: []string{
 				"certificate_rotation_v1", "desired_state_v1", "inventory_v1", domain.RepositoryCredentialsCapability, domain.RepositoryIdentityCapability,
 				domain.JobResultAckCapability, domain.JobCancelCapability,
+				domain.BackupExecutionCapability,
 			},
 			LocalTime: timestamppb.Now(),
 		}},

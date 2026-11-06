@@ -295,6 +295,7 @@ func (s *Store) PublishAgentDesiredState(ctx context.Context, agentID uuid.UUID,
 			ExcludePatterns: plan.EffectiveConfig.ExcludePatterns,
 			ExcludeCaches:   plan.EffectiveConfig.ExcludeCaches, OneFileSystem: plan.EffectiveConfig.OneFileSystem,
 			ConfigHash: plan.ConfigHash,
+			Execution: plan.EffectiveConfig.BackupExecution(),
 		})
 	}
 	rows.Close()

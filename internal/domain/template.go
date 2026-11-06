@@ -29,9 +29,7 @@ type TemplateError struct {
 
 func (e *TemplateError) Error() string { return e.Field + ": " + e.Code }
 
-// TemplateConfig is one immutable revision body. RetryPolicy and ResourceLimits
-// stay opaque so the server stores exactly what a later scheduler understands;
-// every other field is validated before the revision is written.
+// TemplateConfig is one immutable, validated revision body.
 type TemplateConfig struct {
 	Paths               []string       `json:"paths"`
 	ExcludePatterns     []string       `json:"exclude_patterns"`
@@ -41,11 +39,11 @@ type TemplateConfig struct {
 	ScheduleTimezone    string         `json:"schedule_timezone"`
 	JitterSeconds       int            `json:"jitter_seconds"`
 	MisfireGraceSeconds int            `json:"misfire_grace_seconds"`
-	RetryPolicy         map[string]any `json:"retry_policy"`
+	RetryPolicy         *BackupRetryPolicy `json:"retry_policy"`
 	RetentionPolicyID   *uuid.UUID     `json:"retention_policy_id"`
 	PreHookIDs          []uuid.UUID    `json:"pre_hook_ids"`
 	PostHookIDs         []uuid.UUID    `json:"post_hook_ids"`
-	ResourceLimits      map[string]any `json:"resource_limits"`
+	ResourceLimits      *BackupResourceLimits `json:"resource_limits"`
 	EnabledByDefault    bool           `json:"enabled_by_default"`
 }
 
@@ -113,7 +111,7 @@ func (c TemplateConfig) Validate() error {
 	if c.RetentionPolicyID != nil && *c.RetentionPolicyID == uuid.Nil {
 		return &TemplateError{Field: "retention_policy_id", Code: "INVALID"}
 	}
-	return nil
+	return c.BackupExecution().Validate()
 }
 
 func duplicateUUID(values []uuid.UUID) bool {

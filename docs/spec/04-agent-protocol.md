@@ -2,6 +2,8 @@
 
 ## 1. 协议目标
 
+`backup_execution_v1` 是 V1 增量能力。PlanSchedule 的可选 `execution_config_json` MUST 是至多 16KiB 的明确执行结构（retry_policy、resource_limits、pre_hook_ids、post_hook_ids），Agent MUST 严格验证且不能接收命令或秘密。不存在扩展时 MUST 保留原 canonical hash；有扩展但旧 Agent 未声明能力时，Server MUST 记录 `AGENT_CAPABILITY_REQUIRED` 并保持连接及旧配置，不能静默丢字段。Server MUST 在在线心跳核对 desired/accepted revision，重放未接受的新配置。JobProgress/JobResult 的增量 parent/root/attempt MUST 与已有 Operation 绑定核验。
+
 Agent 协议必须支持：
 
 - 一次性安全 Enrollment；

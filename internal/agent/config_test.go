@@ -3,6 +3,7 @@ package agent
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -151,12 +152,15 @@ func desiredSnapshot(t *testing.T, agentID uuid.UUID, revision int64, plans ...d
 	state.ConfigHash = "sha256:" + hex.EncodeToString(sum[:])
 	var protoPlans []*agentv1.PlanSchedule
 	for _, plan := range plans {
+		var execution []byte
+		if plan.Execution!=nil {execution,err=json.Marshal(plan.Execution);if err!=nil{t.Fatal(err)}}
 		protoPlans = append(protoPlans, &agentv1.PlanSchedule{
 			PlanId: plan.PlanID.String(), Revision: plan.Revision, Name: plan.Name,
 			HostId: plan.HostID.String(), RepositoryId: plan.RepositoryID.String(),
 			Cron: plan.Cron, Timezone: plan.Timezone, Paths: plan.Paths, ConfigHash: plan.ConfigHash,
 			JitterSeconds: int32(plan.JitterSeconds), MisfireGraceSeconds: int32(plan.MisfireGraceSeconds),
 			ConcurrencyPolicy: plan.ConcurrencyPolicy,
+			ExecutionConfigJson:execution, ExcludePatterns:plan.ExcludePatterns,ExcludeCaches:plan.ExcludeCaches,OneFileSystem:plan.OneFileSystem,
 		})
 	}
 	return &agentv1.DesiredStateSnapshot{
@@ -168,4 +172,21 @@ func desiredSnapshot(t *testing.T, agentID uuid.UUID, revision int64, plans ...d
 			LogLimitBytes:     state.RuntimePolicy.LogLimitBytes,
 		},
 	}
+}
+
+func TestExecutionConfigIsNotSilentlyDropped(t *testing.T) {
+	agentID:=uuid.Must(uuid.NewV7())
+	plan:=domain.PlanSchedule{PlanID:uuid.Must(uuid.NewV7()),Revision:1,Name:"execution",HostID:uuid.Must(uuid.NewV7()),RepositoryID:uuid.Must(uuid.NewV7()),Cron:"0 * * * *",Timezone:"UTC",Paths:[]string{"/data"}}
+	plan.Execution=&domain.BackupExecution{RetryPolicy:&domain.BackupRetryPolicy{MaxAttempts:3},ResourceLimits:&domain.BackupResourceLimits{LimitUploadKiB:512}}
+	snapshot:=desiredSnapshot(t,agentID,1,plan)
+	parsed,err:=desiredStateFromProto(agentID,snapshot)
+	if err!=nil || parsed.Plans[0].Execution==nil || parsed.Plans[0].Execution.ResourceLimits.LimitUploadKiB!=512{t.Fatalf("execution config dropped: %v",err)}
+	for _,raw:=range []string{`{"retry_policy":{"unknown":true}}`,`{"resource_limits":{"read_concurrency":100}}`,`null`,`{} {}`} {
+		snapshot.Plans[0].ExecutionConfigJson=[]byte(raw)
+		if _,err:=desiredStateFromProto(agentID,snapshot);err==nil{t.Fatalf("unsafe execution accepted: %s",raw)}
+	}
+	state,err:=OpenState(t.TempDir());if err!=nil{t.Fatal(err)};defer state.Close()
+	plan.Execution.PreHookIDs=[]uuid.UUID{uuid.Must(uuid.NewV7())}
+	result,err:=state.ApplyDesiredState(agentID,desiredSnapshot(t,agentID,2,plan))
+	if err!=nil || result.Accepted || result.ErrorCode!="HOOK_UNAVAILABLE"{t.Fatalf("unknown local Hook accepted: %+v %v",result,err)}
 }

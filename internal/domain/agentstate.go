@@ -53,6 +53,7 @@ type PlanSchedule struct {
 	ExcludeCaches       bool      `json:"exclude_caches"`
 	OneFileSystem       bool      `json:"one_file_system"`
 	ConfigHash          string    `json:"config_hash"`
+	Execution           *BackupExecution `json:"execution,omitempty"`
 }
 
 type DesiredState struct {
@@ -233,5 +234,6 @@ func (p PlanSchedule) Validate() error {
 	if validateTimezone(p.Timezone) != nil {
 		return &DesiredStateError{Code: "PLAN_TIMEZONE_INVALID", FieldPath: "plans.timezone"}
 	}
+	if p.Execution.Validate()!=nil {return &DesiredStateError{Code:"PLAN_EXECUTION_INVALID",FieldPath:"plans.execution"}}
 	return nil
 }

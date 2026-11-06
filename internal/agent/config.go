@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,6 +57,9 @@ func (s *State) ApplyDesiredState(
 	s.schedulerMu.Lock()
 	defer s.schedulerMu.Unlock()
 	state, err := desiredStateFromProto(agentID, snapshot)
+	if err==nil {
+		for _,plan:=range state.Plans {if !s.validateHooks(plan.Execution) {err=&domain.DesiredStateError{Code:"HOOK_UNAVAILABLE",FieldPath:"plans.execution"};break}}
+	}
 	if err != nil {
 		result := rejectedConfigResult(snapshot, err)
 		if result.Revision < 1 {
@@ -242,6 +247,16 @@ func desiredStateFromProto(
 		if err != nil {
 			return domain.DesiredState{}, &domain.DesiredStateError{Code: "PLAN_HOST_INVALID", FieldPath: "plans.host_id"}
 		}
+		var execution *domain.BackupExecution
+		if raw:=plan.GetExecutionConfigJson();len(raw)>0 {
+			decoder:=json.NewDecoder(bytes.NewReader(raw))
+			decoder.DisallowUnknownFields()
+			if len(raw)>16<<10 || decoder.Decode(&execution)!=nil || execution==nil || execution.Validate()!=nil {
+				return domain.DesiredState{}, &domain.DesiredStateError{Code:"PLAN_EXECUTION_INVALID",FieldPath:"plans.execution"}
+			}
+			var extra any
+			if decoder.Decode(&extra)!=io.EOF {return domain.DesiredState{}, &domain.DesiredStateError{Code:"PLAN_EXECUTION_INVALID",FieldPath:"plans.execution"}}
+		}
 		state.Plans = append(state.Plans, domain.PlanSchedule{
 			PlanID: planID, Revision: plan.GetRevision(), Name: plan.GetName(),
 			HostID: hostID, RepositoryID: repositoryID, Cron: plan.GetCron(), Timezone: plan.GetTimezone(),
@@ -249,6 +264,7 @@ func desiredStateFromProto(
 			ConcurrencyPolicy: plan.GetConcurrencyPolicy(), Paths: plan.GetPaths(),
 			ExcludePatterns: plan.GetExcludePatterns(), ExcludeCaches: plan.GetExcludeCaches(),
 			OneFileSystem: plan.GetOneFileSystem(), ConfigHash: plan.GetConfigHash(),
+			Execution:execution,
 		})
 	}
 	return state, state.Validate()
