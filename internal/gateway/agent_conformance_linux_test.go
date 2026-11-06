@@ -142,9 +142,12 @@ func TestPinnedAgentOfflineScheduleAndCentralGatewayIndex(t *testing.T) {
 	if accepted, err := state.ApplyDesiredState(binding.AgentID, snapshot); err != nil || !accepted.Accepted {
 		t.Fatal("offline configuration not accepted")
 	}
+	// Deterministic schedule IDs have second precision; exercise distinct slots.
+	nextScheduled := time.Now().UTC().Truncate(time.Second).Add(-10 * time.Second)
 	runScheduled := func(expected string, cancelWhileRunning bool) agent.OperationRecord {
 		t.Helper()
-		scheduled := time.Now().UTC().Add(-time.Second)
+		scheduled := nextScheduled
+		nextScheduled = nextScheduled.Add(time.Second)
 		runtime := agent.PlanRuntime{PlanID: plan.PlanID, PlanRevision: 1, ConfigHash: plan.ConfigHash, NextRunAt: scheduled}
 		if err := state.PutPlanRuntime(runtime); err != nil {
 			t.Fatal(err)

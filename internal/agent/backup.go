@@ -226,34 +226,48 @@ func classify(exitCode int, snapshotID string, sawSummary bool, progress *progre
 // Restic emits JSON error events on stderr. Count them separately from stdout
 // and merge after the process joins; raw messages and paths never leave here.
 type backupWarningSink struct {
-	pending []byte
-	count int64
+	pending    []byte
+	count      int64
 	discarding bool
 }
 
-func (s *backupWarningSink) Write(chunk []byte) (int,error) {
-	length:=len(chunk)
-	for len(chunk)>0 {
-		index:=bytes.IndexByte(chunk,'\n')
-		part:=chunk
-		if index>=0 {part=chunk[:index]}
-		if len(s.pending)+len(part)>1<<20 {clear(s.pending);s.pending=nil;s.discarding=true}
-		if !s.discarding {s.pending=append(s.pending,part...)}
-		if index<0 {break}
+func (s *backupWarningSink) Write(chunk []byte) (int, error) {
+	length := len(chunk)
+	for len(chunk) > 0 {
+		index := bytes.IndexByte(chunk, '\n')
+		part := chunk
+		if index >= 0 {
+			part = chunk[:index]
+		}
+		if len(s.pending)+len(part) > 1<<20 {
+			clear(s.pending)
+			s.pending = nil
+			s.discarding = true
+		}
+		if !s.discarding {
+			s.pending = append(s.pending, part...)
+		}
+		if index < 0 {
+			break
+		}
 		s.finish()
-		chunk=chunk[index+1:]
+		chunk = chunk[index+1:]
 	}
-	return length,nil
+	return length, nil
 }
 
-func(s *backupWarningSink) finish(){
+func (s *backupWarningSink) finish() {
 	if !s.discarding {
-		var event struct{Type string `json:"message_type"`}
-		if json.Unmarshal(s.pending,&event)==nil && event.Type=="error" {s.count++}
+		var event struct {
+			Type string `json:"message_type"`
+		}
+		if json.Unmarshal(s.pending, &event) == nil && event.Type == "error" {
+			s.count++
+		}
 	}
 	clear(s.pending)
-	s.pending=nil
-	s.discarding=false
+	s.pending = nil
+	s.discarding = false
 }
 
 func writeSecretFile(directory, name string, payload []byte) (string, error) {

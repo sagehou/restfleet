@@ -53,18 +53,26 @@ func TestProgressSinkBoundsAndFinalLine(t *testing.T) {
 }
 
 func TestBackupWarningsCountStderrWithoutKeepingRawErrors(t *testing.T) {
-	sink:=&backupWarningSink{}
-	for _,chunk:=range []string{
+	sink := &backupWarningSink{}
+	for _, chunk := range []string{
 		"fatal engine text secret-canary\n{\"message_type\":\"err",
 		"or\",\"error\":{\"message\":\"secret-canary\"},\"item\":\"/private/file\"}\n",
 		"{\"message_type\":\"new_type\"}\n{broken}\n",
 		"{\"message_type\":\"error\"}",
-	}{_,_=sink.Write([]byte(chunk))}
+	} {
+		_, _ = sink.Write([]byte(chunk))
+	}
 	sink.finish()
-	if sink.count!=2 || len(sink.pending)!=0{t.Fatal("typed stderr warnings were lost or raw errors retained")}
-	_,_=sink.Write(bytes.Repeat([]byte("x"),(1<<20)+1))
-	if len(sink.pending)!=0 || !sink.discarding{t.Fatal("oversized stderr event exceeded its bound")}
-	_,_=sink.Write([]byte("{\"message_type\":\"error\"}\n{\"message_type\":\"error\"}"))
+	if sink.count != 2 || len(sink.pending) != 0 {
+		t.Fatal("typed stderr warnings were lost or raw errors retained")
+	}
+	_, _ = sink.Write(bytes.Repeat([]byte("x"), (1<<20)+1))
+	if len(sink.pending) != 0 || !sink.discarding {
+		t.Fatal("oversized stderr event exceeded its bound")
+	}
+	_, _ = sink.Write([]byte("{\"message_type\":\"error\"}\n{\"message_type\":\"error\"}"))
 	sink.finish()
-	if sink.count!=3 || len(sink.pending)!=0{t.Fatal("stderr parser did not resume after the discarded line")}
+	if sink.count != 3 || len(sink.pending) != 0 {
+		t.Fatal("stderr parser did not resume after the discarded line")
+	}
 }
