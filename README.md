@@ -34,7 +34,7 @@ make test
 make build cross-build
 ```
 
-当前 Server 需要已经迁移到 schema v28 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。编译、测试、认证及运行验证 MUST 只在 GitHub Actions 执行；开发工作区只用于源码/文档编辑和只读检查。Compose 拆分 migrator/runtime 身份，不向宿主机发布 PostgreSQL 或 metrics 端口。以下部署示例不作为开发工作区的验证步骤，MUST NOT 在开发工作区执行。
+当前 Server 需要已经迁移到 schema v29 的 PostgreSQL。生产模式 MUST 通过只读 secret 文件提供数据库连接，且禁止关闭 Secure Cookie。编译、测试、认证及运行验证 MUST 只在 GitHub Actions 执行；开发工作区只用于源码/文档编辑和只读检查。Compose 拆分 migrator/runtime 身份，不向宿主机发布 PostgreSQL 或 metrics 端口。以下部署示例不作为开发工作区的验证步骤，MUST NOT 在开发工作区执行。
 
 首次启动：
 
@@ -46,6 +46,28 @@ docker compose -f compose.yaml -f compose.bootstrap.yaml up --build
 ```
 
 Bootstrap token 仅在首次初始化时从本机 `secrets/bootstrap-token` 读取，不应复制到日志或命令参数。在 Web 中创建首个管理员后，MUST 停止开发栈、删除 `secrets/bootstrap-token`，并只用 `docker compose up --build` 重启；数据库中的 bootstrap 状态会保持永久关闭。启用 Agent enrollment 后，Web/API 默认使用开发自签名证书监听 `https://localhost:8080`，Agent gRPC 监听 `localhost:8443`；两者默认只绑定到宿主机 loopback。浏览器首次访问需要信任开发证书。
+
+## GHCR 镜像
+
+| 组件 | 镜像 |
+|---|---|
+| Server | `ghcr.io/sagehou/restfleet-server:main` |
+| Gateway | `ghcr.io/sagehou/restfleet-gateway:main` |
+| Agent | `ghcr.io/sagehou/restfleet-agent:main` |
+| 数据库迁移 | `ghcr.io/sagehou/restfleet-migrator:main` |
+
+`main` 的完整 CI 成功后发布四个双架构镜像（`linux/amd64`、`linux/arm64`），同时提供 `sha-<完整提交 SHA>` 标签。Actions 的发布 job 记录每个镜像的 digest；固定部署版本时 SHOULD 使用 `镜像名@sha256:...`。SBOM 和 provenance 随镜像上传。
+
+在部署主机拉取：
+
+```sh
+docker pull ghcr.io/sagehou/restfleet-server:main
+docker pull ghcr.io/sagehou/restfleet-gateway:main
+docker pull ghcr.io/sagehou/restfleet-agent:main
+docker pull ghcr.io/sagehou/restfleet-migrator:main
+```
+
+GHCR 新包默认私有。私有包需先使用具备 `read:packages` 权限的凭据登录；需要匿名拉取时，仓库所有者在对应 GitHub Package 的设置中将可见性改为 Public。当前 Compose 仍用于源码构建的开发部署；完整 Gateway 交接见[启动文档](docs/gateway-run.md)。
 
 ## 文档导航
 

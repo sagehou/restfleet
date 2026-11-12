@@ -668,6 +668,13 @@ RESTFLEET_ENROLLMENT_TOKEN_FILE=/run/secrets/... restfleet-agent enroll ...
 - release artifacts 包含 checksums 和可验证签名；
 - CI 在两架构至少做启动/版本/协议 smoke test，arm64 可使用原生 runner 或受控 emulation。
 
+### 11.1 GHCR 开发镜像
+
+- 镜像 MUST 发布至 `ghcr.io/sagehou/restfleet-server`、`restfleet-gateway`、`restfleet-agent` 和 `restfleet-migrator`，每个 manifest MUST 同时包含 `linux/amd64` 与 `linux/arm64`。
+- 仅 `main` 的 push 工作流在质量、依赖、隔离及所有镜像构建检查成功后 MAY 发布；PR MUST NOT 登录或推送 GHCR。`packages: write` MUST 只授予发布 job，并使用当前仓库的 `GITHUB_TOKEN`。
+- 开发镜像 MUST 使用可移动的 `main` 与完整提交 ID 的 `sha-<40 位 SHA>` 标签，附带 OCI source/revision、SBOM 和 provenance；发布 job MUST 从 registry 检查双架构 manifest 并记录 digest。部署 SHOULD 固定 digest。
+- 旧提交重跑 MUST NOT 覆盖当前 `main` 标签。开发镜像不使用 `latest` 或 SemVer 标签；正式版本产物仍须满足本章及 V1 发布验收。
+
 ## 12. 版本与升级
 
 版本：SemVer。Server、Agent、protocol、DB schema 独立记录。
